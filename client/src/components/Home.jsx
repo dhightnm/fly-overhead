@@ -1,6 +1,7 @@
-import React, { useRef, useState } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import { MapContainer, Marker, Popup, TileLayer, useMapEvents} from 'react-leaflet';
 import axios from 'axios';
+import PlaneMarker from './PlaneMarker';
 
 
 
@@ -8,10 +9,11 @@ const Home = () => {
 
   const [planes, setPlanes] = useState([]);
   const [userPosition, setUserPosition] = useState(null)
-
+  
+  
   function MyComponent() {
     const map = useMapEvents({
-      load: () => {
+      click: () => {
         map.locate();
         console.log(map.locate());
       },
@@ -39,12 +41,12 @@ const Home = () => {
      // eslint-disable-next-line array-callback-return
      return planes.map((plane, i) => {
       if (plane[6] !== null) {
-        return <Marker position={[plane[6], plane[5]]}>
-          <Popup>{plane[1]}</Popup>
-        </Marker>
+        return <PlaneMarker key={i} plane={plane}>
+        </PlaneMarker>
       } 
     })
   };
+  
 
 
   const mapRef = useRef(null)
