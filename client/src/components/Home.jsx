@@ -7,21 +7,26 @@ import axios from 'axios';
 const Home = () => {
 
   const [planes, setPlanes] = useState([]);
+  const [userPosition, setUserPosition] = useState(null)
 
   function MyComponent() {
     const map = useMapEvents({
-      click: () => {
-        map.locate()
+      load: () => {
+        map.locate();
+        console.log(map.locate());
       },
       locationfound: (location) => {
+        setUserPosition(location.latlng);
+        map.flyTo(location.latlng, map.getZoom())
+        console.log(userPosition);
         console.log('location found:', location)
       },
       moveend: async () => {
         const bounds = map.getBounds();
         const wrapBounds = map.wrapLatLngBounds(bounds);
-        // console.log(bounds._southWest.lat, bounds._southWest.lng, bounds._northEast.lat, bounds._northEast.lng);
-        console.log(wrapBounds);
-        const res = await axios.get(`https://opensky-network.org/api/states/all?lamin=${wrapBounds._southWest.lat}&lomin=${wrapBounds._southWest.lng}&lamax=${wrapBounds._northEast.lat}&lomax=${wrapBounds._northEast.lng}`);
+        // console.log(wrapBounds._southWest.lat, wrapBounds._southWest.lng, wrapBounds._northEast.lat, wrapBounds._northEast.lng);
+
+        const res = await axios.get(`http://localhost:3001/api/area/${wrapBounds._southWest.lat}/${wrapBounds._southWest.lng}/${wrapBounds._northEast.lat}/${wrapBounds._northEast.lng}`);
         console.log(res.data);
         setPlanes(res.data.states)
         
@@ -31,25 +36,26 @@ const Home = () => {
   }
 
   const renderPlanes = () => {
+     // eslint-disable-next-line array-callback-return
      return planes.map((plane, i) => {
-      console.log(plane[6], plane[5]);
-      return <Marker position={[plane[6], plane[5]]}>
-        <Popup>{plane[1]}</Popup>
-      </Marker>
+      if (plane[6] !== null) {
+        return <Marker position={[plane[6], plane[5]]}>
+          <Popup>{plane[1]}</Popup>
+        </Marker>
+      } 
     })
   };
 
 
   const mapRef = useRef(null)
 
-    const position = [46.79, 11.4696]
+    const position = [36.1087, -115.1796]
     return <>
     <MapContainer
       center={position} 
-      zoom={8} 
+      zoom={12} 
       scrollWheelZoom={true}
-      style={{height: 500}}
-      ref={mapRef}>
+      style={{height: 500}}>
         <MyComponent />
     <TileLayer
       attribution='&copy; <a href="http://osm.org/copyright">OpenStreetMap</a> contributors'
