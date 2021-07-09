@@ -30,9 +30,19 @@ const Home = () => {
     return null
   }
 
+  const renderPlanes = () => {
+     return planes.map((plane, i) => {
+      console.log(plane[6], plane[5]);
+      return <Marker position={[plane[6], plane[5]]}>
+        <Popup>{plane[1]}</Popup>
+      </Marker>
+    })
+  };
+
+
   const mapRef = useRef(null)
 
-    const position = [46.79, -351.70]
+    const position = [46.79, 11.4696]
     return <>
     <MapContainer
       center={position} 
@@ -50,6 +60,8 @@ const Home = () => {
         A pretty CSS3 popup. <br /> Easily customizable.
       </Popup>
     </Marker>
+    
+    {renderPlanes()}
   </MapContainer>
     </>
 };
