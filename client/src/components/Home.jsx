@@ -25,6 +25,7 @@ const Home = () => {
       },
       moveend: async () => {
         const bounds = map.getBounds();
+        console.log(bounds);
         const wrapBounds = map.wrapLatLngBounds(bounds);
         // console.log(wrapBounds._southWest.lat, wrapBounds._southWest.lng, wrapBounds._northEast.lat, wrapBounds._northEast.lng);
 
@@ -51,7 +52,7 @@ const Home = () => {
 
   const mapRef = useRef(null)
 
-    const position = [36.1087, -115.1796]
+    const position = [35.1858, -106.8107]
     return <>
     <MapContainer
       center={position} 
