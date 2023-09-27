@@ -1,4 +1,4 @@
-import React, { useRef, useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { MapContainer, Marker, Popup, TileLayer, useMapEvents} from 'react-leaflet';
 import axios from 'axios';
 import PlaneMarker from './PlaneMarker';
@@ -39,19 +39,22 @@ const Home = () => {
   }
 
   const renderPlanes = () => {
-     // eslint-disable-next-line array-callback-return
-     return planes.map((plane, i) => {
+    if (planes === null) {
+      return null;
+    }
+  
+    if (planes.length === 0) {
+      return <p>No planes to display.</p>;
+    }
+  
+    return planes.map((plane, i) => {
       if (plane[6] !== null) {
-        return <PlaneMarker key={i} plane={plane}>
-        </PlaneMarker>
-      } 
-    })
+        return <PlaneMarker key={i} plane={plane} />;
+      }
+      return null;
+    });
   };
   
-
-
-  const mapRef = useRef(null)
-
     const position = [35.1858, -106.8107]
     return <>
     <MapContainer
