@@ -1,7 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useContext, useEffect, useRef } from 'react';
 import { MapContainer, Marker, Popup, TileLayer, useMapEvents } from 'react-leaflet';
 import axios from 'axios';
 import PlaneMarker from './PlaneMarker';
+import { PlaneProvider } from '../contexts/PlaneContext';
+
 
 const MapEventsHandler = ({ setUserPosition, setPlanes }) => {
   const map = useMapEvents({
@@ -17,7 +19,9 @@ const MapEventsHandler = ({ setUserPosition, setPlanes }) => {
       const wrapBounds = map.wrapLatLngBounds(bounds);
 
       const res = await axios.get(`http://localhost:3001/api/area/${wrapBounds._southWest.lat}/${wrapBounds._southWest.lng}/${wrapBounds._northEast.lat}/${wrapBounds._northEast.lng}`);
-      setPlanes(res.data.states);
+      if (res.data.states) {
+        setPlanes(res.data.states);
+      } else { console.log('no planes found');}
     },
   });
 
@@ -27,20 +31,20 @@ const MapEventsHandler = ({ setUserPosition, setPlanes }) => {
 const Home = () => {
   const [planes, setPlanes] = useState([]);
   const [userPosition, setUserPosition] = useState(null);
-  const [searchLatlng, setSearchLatlng] = useState(null);
 
-  const handleSearch = async (search) => {
-    const res = await axios.get(`http://localhost:3001/api/planes/${search}`);
-    const allPlanes = res.data.states;
+  const contextValue = useContext(PlaneProvider);
+  const searchLatlng = contextValue ? contextValue.searchLatlng : userPosition;
 
-    const foundPlane = allPlanes.find(plane => {
-      return plane[0] === search;
-    });
+  
+  const mapRef = useRef();
 
-    if (foundPlane) {
-      setSearchLatlng([foundPlane[6], foundPlane[5]]);
+
+  useEffect(() => {
+    if (mapRef.current && searchLatlng) {
+      mapRef.current.flyTo(searchLatlng, 12);
     }
-  };
+
+  }, [searchLatlng]);
 
   const renderPlanes = () => {
     if (planes === null) {
