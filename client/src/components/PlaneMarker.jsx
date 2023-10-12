@@ -12,15 +12,15 @@ const PlaneMarker = ({ plane }) => {
         popupAnchor: [0, 0],
     });
 
-    const rotationAngle = plane[10];
+    const rotationAngle = plane.true_track;
 
     return (
-        <Marker position={[plane[6], plane[5]]} icon={customIcon} rotationAngle={rotationAngle}>
+        <Marker position={[plane.latitude, plane.longitude]} icon={customIcon} rotationAngle={rotationAngle}>
             <Popup>
-                {plane[1]} <br />
-                Altitude: {Math.round(plane[7] * 3.281)}ft <br />
-                Speed: {Math.round(plane[9] * 1.944)}kts <br />
-                Heading: {Math.round(plane[10])}
+                {plane.callsign} <br />
+                Altitude: {Math.round(plane.baro_altitude * 3.281)}ft <br />
+                Speed: {Math.round(plane.velocity * 1.944)}kts <br />
+                Heading: {Math.round(plane.true_track)}
             </Popup>
         </Marker>
     );

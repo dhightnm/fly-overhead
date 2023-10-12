@@ -33,13 +33,52 @@ console.log("STATE", state.length, state)
 await db.query(queryString, state);
 };
 
+const createTable = async () => {
+    const createTableQuery = `
+    CREATE TABLE aircraft_states (
+        id SERIAL PRIMARY KEY,
+        icao24 TEXT NOT NULL UNIQUE, 
+        callsign TEXT,
+        origin_country TEXT,
+        time_position INT,
+        last_contact INT,
+        longitude FLOAT8,
+        latitude FLOAT8,
+        baro_altitude FLOAT8,
+        on_ground BOOLEAN,
+        velocity FLOAT8,
+        true_track FLOAT8,
+        vertical_rate FLOAT8,
+        sensors INT[],
+        geo_altitude FLOAT8,
+        squawk TEXT,
+        spi BOOLEAN,
+        position_source INT CHECK (position_source BETWEEN 0 AND 3),
+        category INT CHECK (category BETWEEN 0 AND 19) NULL,
+        created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+    );`;
+    await db.query(createTableQuery);
+    console.log("Table aircraft_states created successfully.");
+}
+
 const populateDatabase = async () => {
     try {
-        const areaRes = await axios.get(`https://opensky-network.org/api/states/all`);
-        for (const state of areaRes.data.states) {
-            const currentStateWithDate = [...state, new Date()];
-            await insertOrUpdateAircraftState(currentStateWithDate);
-        }
+        await db.query(`DROP TABLE IF EXISTS aircraft_states;`);
+        console.log("Dropped table");
+
+        await createTable();
+        console.log("Created table");
+
+        const boundingBoxes = [
+            { lamin: -90, lomin: -180, lamax: 0, lomax: 0 },
+            { lamin: 0, lomin: -180, lamax: 90, lomax: 0 },
+            { lamin: -90, lomin: 0, lamax: 0, lomax: 180 },
+            { lamin: 0, lomin: 0, lamax: 90, lomax: 180 }
+        ];
+
+        const fetchPromises = boundingBoxes.map(box => fetchDataForBoundingBox(box));
+
+        await Promise.all(fetchPromises);
         console.log('Database populated');
     } catch (err) {
         console.log(err);
@@ -47,4 +86,26 @@ const populateDatabase = async () => {
 };
 
 
-module.exports = { db, populateDatabase, insertOrUpdateAircraftState };
+const fetchDataForBoundingBox = async (box) => {
+    const areaRes = await axios.get(`https://${process.env.OPENSKY_USER}:${process.env.OPENSKY_PASS}@opensky-network.org/api/states/all?lamin=${box.lamin}&lomin=${box.lomin}&lamax=${box.lamax}&lomax=${box.lomax}`);
+    const promises = [];
+    for (const state of areaRes.data.states) {
+        const currentStateWithDate = [...state, new Date()];
+        promises.push(insertOrUpdateAircraftState(currentStateWithDate));
+    }
+    await Promise.all(promises);
+}
+
+
+const getAircraftWithinBounds = async (latmin, lonmin, latmax, lonmax) => {
+    const queryString = `
+    SELECT * FROM aircraft_states
+    WHERE latitude BETWEEN ${latmin} AND ${latmax}
+    AND longitude BETWEEN ${lonmin} AND ${lonmax};`;
+    const aircraftStates = await db.query(queryString);
+    return aircraftStates;
+};
+
+
+
+module.exports = { db, populateDatabase, insertOrUpdateAircraftState, getAircraftWithinBounds };

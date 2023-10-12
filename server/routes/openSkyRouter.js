@@ -2,7 +2,7 @@ const router = require('express').Router();
 const axios = require('axios');
 const nodeCache = require('node-cache');
 require('dotenv').config();
-const { insertOrUpdateAircraftState } = require('../database/database');
+const { db, insertOrUpdateAircraftState, getAircraftWithinBounds } = require('../database/database');
 
 
 const cache = new nodeCache({maxKeys: 100});
@@ -37,14 +37,15 @@ router.get('/area/:latmin/:lonmin/:latmax/:lonmax', async (req, res) => {
     const lonmax = req.params.lonmax;
 
     try {
-    const areaRes = await axios.get(`https://${process.env.OPENSKY_USER}:${process.env.OPENSKY_PASS}@opensky-network.org/api/states/all?lamin=${latmin}&lomin=${lonmin}&lamax=${latmax}&lomax=${lonmax}`);
-    res.json(areaRes.data);
+    const states = await getAircraftWithinBounds(latmin, lonmin, latmax, lonmax);
+    console.log(states);
+    res.json(states); // The time is added to mimic the OpenSky API structure. Adjust as needed.
 
-    if (areaRes.data.states !== null) {
-        for (const state of areaRes.data.states) {
-            await insertOrUpdateAircraftState(state);
-        }
-    }
+    // if (areaRes.data.states !== null) {
+    //     for (const state of areaRes.data.states) {
+    //         await insertOrUpdateAircraftState(state);
+    //     }
+    // }
     }
     catch(err) {
         console.log(err);

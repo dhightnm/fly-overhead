@@ -14,6 +14,7 @@ app.use(morgan("short"));
 
 app.use('/api', require('./routes/openSkyRouter'));
 
+
 populateDatabase();
 
 app.listen(PORT, () => console.log(`Listening on port: ${PORT}`));

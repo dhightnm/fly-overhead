@@ -7,6 +7,9 @@ import { PlaneProvider } from '../contexts/PlaneContext';
 
 const MapEventsHandler = ({ setUserPosition, setPlanes }) => {
   const map = useMapEvents({
+    load: () => {
+      const res = axios.get('http://localhost:3001/api/area/all');
+    },
     click: () => {
       map.locate();
     },
@@ -19,8 +22,8 @@ const MapEventsHandler = ({ setUserPosition, setPlanes }) => {
       const wrapBounds = map.wrapLatLngBounds(bounds);
 
       const res = await axios.get(`http://localhost:3001/api/area/${wrapBounds._southWest.lat}/${wrapBounds._southWest.lng}/${wrapBounds._northEast.lat}/${wrapBounds._northEast.lng}`);
-      if (res.data.states) {
-        setPlanes(res.data.states);
+      if (res.data) {
+        setPlanes(res.data);
       } else { console.log('no planes found');}
     },
   });
@@ -47,6 +50,7 @@ const Home = () => {
   }, [searchLatlng]);
 
   const renderPlanes = () => {
+    console.log(planes);
     if (planes === null) {
       return null;
     }
