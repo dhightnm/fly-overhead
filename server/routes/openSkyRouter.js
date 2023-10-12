@@ -39,13 +39,7 @@ router.get('/area/:latmin/:lonmin/:latmax/:lonmax', async (req, res) => {
     try {
     const states = await getAircraftWithinBounds(latmin, lonmin, latmax, lonmax);
     console.log(states);
-    res.json(states); // The time is added to mimic the OpenSky API structure. Adjust as needed.
-
-    // if (areaRes.data.states !== null) {
-    //     for (const state of areaRes.data.states) {
-    //         await insertOrUpdateAircraftState(state);
-    //     }
-    // }
+    res.json(states);
     }
     catch(err) {
         console.log(err);
