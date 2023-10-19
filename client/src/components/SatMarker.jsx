@@ -1,17 +1,14 @@
 import React from 'react';
 import { Marker, Popup } from 'react-leaflet';
-import L from 'leaflet';
-import customPlaneIcon from '../assets/plane.png';
 
-const SatMarker = ({ plane }) => {
+const SatMarker = ({ sat }) => {
 
     return (
-        <Marker position={[plane.latitude, plane.longitude]}>
+        <Marker position={[sat.satlat, sat.satlng]}>
             <Popup>
-                {plane.callsign} <br />
-                Altitude: {Math.round(plane.baro_altitude * 3.281)}ft <br />
-                Speed: {Math.round(plane.velocity * 1.944)}kts <br />
-                Heading: {Math.round(plane.true_track)}
+            {sat.satname} <br />
+            {sat.satid} <br />
+            {sat.launchDate} <br />
             </Popup>
         </Marker>
     );
