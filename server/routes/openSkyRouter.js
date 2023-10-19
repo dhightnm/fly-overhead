@@ -38,11 +38,23 @@ router.get('/area/:latmin/:lonmin/:latmax/:lonmax', async (req, res) => {
 
     try {
     const states = await getAircraftWithinBounds(latmin, lonmin, latmax, lonmax);
-    console.log(states);
     res.json(states);
     }
     catch(err) {
         console.log(err);
+    }
+});
+
+router.get('/starlink/:observer_lat/:observer_lng/:observer_alt', async (req, res) => {
+    const observer_lat = req.params.observer_lat;
+    const observer_lng = req.params.observer_lng;
+    const observer_alt = req.params.observer_alt;
+
+    try {
+        const starlinkStates = await axios.get(`https://api.n2yo.com/rest/v1/satellite/above/${observer_lat}/${observer_lng}/${observer_alt}/90/52&apiKey=M3FTYY-Q2CLZF-U76MTW-553N`);
+        res.json(starlinkStates.data);
+    } catch (err) {
+        console.log("ERROR Fetching Starlink States", err);
     }
 });
 

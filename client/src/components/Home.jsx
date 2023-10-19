@@ -20,10 +20,14 @@ const MapEventsHandler = ({ setUserPosition, setPlanes }) => {
     moveend: async () => {
       const bounds = map.getBounds();
       const wrapBounds = map.wrapLatLngBounds(bounds);
-
+      const center = map.getCenter();
+      const seaLevel = 5;
+      const satRes = await axios.get(`http://localhost:3001/api/starlink/${center.lat}/${center.lng}/${seaLevel}/`);
+      console.log("SATRES", satRes);
       const res = await axios.get(`http://localhost:3001/api/area/${wrapBounds._southWest.lat}/${wrapBounds._southWest.lng}/${wrapBounds._northEast.lat}/${wrapBounds._northEast.lng}`);
       if (res.data) {
         setPlanes(res.data);
+        console.log('planes found');
       } else { console.log('no planes found');}
     },
   });
