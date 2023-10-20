@@ -22,3 +22,4 @@ CREATE TABLE IF NOT EXISTS aircraft_states (
 );
 
 CREATE UNIQUE INDEX idx_icao24 ON aircraft_states(icao24);
+CREATE UNIQUE INDEX idx_lat_lon ON aircraft_states(latitude, longitude);

@@ -30,6 +30,23 @@ router.get('/area/all', async (req, res) => {
     }
 });
 
+router.get('/planes/:icao24OrCallsign', async (req, res) => {
+    const icao24OrCallsign = req.params.icao24OrCallsign;
+
+    try {
+
+        const planes = await db.any(`SELECT * FROM aircraft_states WHERE icao24 = '${icao24OrCallsign}' OR callsign = '${icao24OrCallsign}'`);
+        if (planes.length) {
+            res.json(planes[0]);
+        } else {
+            res.status(404).json({error: 'Plane not found'});
+        }
+        
+    } catch (err) {
+        console.log(err);
+    }
+});
+
 router.get('/area/:latmin/:lonmin/:latmax/:lonmax', async (req, res) => {
     const latmin = req.params.latmin;
     const lonmin = req.params.lonmin;
