@@ -52,7 +52,6 @@ const Home = () => {
   const searchLatlng = contextValue ? contextValue.searchLatlng : userPosition;
 
   const renderPlanes = () => {
-    console.log(planes);
     if (planes === null) {
       return null;
     }

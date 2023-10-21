@@ -9,15 +9,12 @@ const NavBar = () => {
 
     const handleSearch = async () => {
       try {
-        console.log("SEARCH", search);
         const res = await axios.get(`http://localhost:3001/api/planes/${search}`);
-        console.log("API RESPONSE", res.data);
     
         const planeDetails = res.data;
         
         if (planeDetails && (planeDetails.icao24 === search || planeDetails.callsign === search)) {
           setSearchLatlng([planeDetails.latitude, planeDetails.longitude]);
-          console.log("SEARCHLATLNG", [planeDetails.latitude, planeDetails.longitude]);
         }
       } catch (err) {
         console.log("Error in searching for planes", err);
