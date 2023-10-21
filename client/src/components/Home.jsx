@@ -1,9 +1,9 @@
-import React, { useState, useContext, useEffect, useRef } from 'react';
+import React, { useState, useContext } from 'react';
 import { MapContainer, Marker, Popup, TileLayer, useMapEvents } from 'react-leaflet';
 import axios from 'axios';
 import PlaneMarker from './PlaneMarker';
 import SatMarker from './SatMarker';
-import { PlaneContext, PlaneProvider } from '../contexts/PlaneContext';
+import { PlaneContext } from '../contexts/PlaneContext';
 import MapFlyToHandler from './MapFlyToHandler';
 
 
