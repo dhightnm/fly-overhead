@@ -7,18 +7,19 @@ const NavBar = () => {
     const [search, setSearch] = useState('');
     const { setSearchLatlng } = useContext(PlaneContext);
 
-    const handleSearch = async (search) => {
+    const handleSearch = async () => {
+      try {
         const res = await axios.get(`http://localhost:3001/api/planes/${search}`);
-        const allPlanes = res.data.states;
     
-        const foundPlane = allPlanes.find(plane => {
-          return plane[0] === search;
-        });
-    
-        if (foundPlane) {
-          setSearchLatlng([foundPlane[6], foundPlane[5]]);
+        const planeDetails = res.data;
+        
+        if (planeDetails && (planeDetails.icao24 === search || planeDetails.callsign === search)) {
+          setSearchLatlng([planeDetails.latitude, planeDetails.longitude]);
         }
-      };
+      } catch (err) {
+        console.log("Error in searching for planes", err);
+      }
+    };
     
 
     return <nav className='navbar'>

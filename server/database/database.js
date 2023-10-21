@@ -61,13 +61,26 @@ const createTable = async () => {
     console.log("Table aircraft_states created successfully.");
 }
 
+const tableExists = async () => {
+    try {
+        const result = await db.one(`SELECT EXISTS (
+           SELECT FROM information_schema.tables 
+           WHERE  table_schema = 'public' 
+           AND    table_name   = 'aircraft_states'
+       );`);
+        return result.exists;
+    } catch (err) {
+        console.error('Error checking table existence:', err);
+        return false;
+    }
+};
+
 const populateDatabase = async () => {
     try {
-        await db.query(`DROP TABLE IF EXISTS aircraft_states;`);
-        console.log("Dropped table");
-
-        await createTable();
-        console.log("Created table");
+        const exists = await tableExists();
+        if (!exists) {
+            await createTable();
+        }
 
         const boundingBoxes = [
             { lamin: -90, lomin: -180, lamax: 0, lomax: 0 },
@@ -77,11 +90,10 @@ const populateDatabase = async () => {
         ];
 
         const fetchPromises = boundingBoxes.map(box => fetchDataForBoundingBox(box));
-
         await Promise.all(fetchPromises);
         console.log('Database populated');
     } catch (err) {
-        console.log(err);
+        console.error('Error populating database:', err);
     }
 };
 
