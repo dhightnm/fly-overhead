@@ -3,7 +3,8 @@ import { MapContainer, Marker, Popup, TileLayer, useMapEvents } from 'react-leaf
 import axios from 'axios';
 import PlaneMarker from './PlaneMarker';
 import SatMarker from './SatMarker';
-import { PlaneProvider } from '../contexts/PlaneContext';
+import { PlaneContext, PlaneProvider } from '../contexts/PlaneContext';
+import MapFlyToHandler from './MapFlyToHandler';
 
 
 const MapEventsHandler = ({ setUserPosition, setPlanes, setStarlink }) => {
@@ -47,19 +48,8 @@ const Home = () => {
   const [starlink, setStarlink] = useState([]);
   const [userPosition, setUserPosition] = useState(null);
 
-  const contextValue = useContext(PlaneProvider);
+  const contextValue = useContext(PlaneContext);
   const searchLatlng = contextValue ? contextValue.searchLatlng : userPosition;
-
-  
-  const mapRef = useRef();
-
-
-  useEffect(() => {
-    if (mapRef.current && searchLatlng) {
-      mapRef.current.flyTo(searchLatlng, 12);
-    }
-
-  }, [searchLatlng]);
 
   const renderPlanes = () => {
     console.log(planes);
@@ -103,6 +93,7 @@ const Home = () => {
     <>
       <MapContainer center={position} zoom={12} scrollWheelZoom={true} style={{ height: 500 }}>
         <MapEventsHandler setUserPosition={setUserPosition} setPlanes={setPlanes} setStarlink={setStarlink} />
+        <MapFlyToHandler searchLatlng={searchLatlng} />
         <TileLayer
           attribution='&copy; <a href="http://osm.org/copyright">OpenStreetMap</a> contributors'
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
