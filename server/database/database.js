@@ -75,6 +75,28 @@ const tableExists = async () => {
     }
 };
 
+const updateDatabaseFromAPI = async () => {
+    try {
+        const areaRes = await axios.get(`https://${process.env.OPENSKY_USER}:${process.env.OPENSKY_PASS}@opensky-network.org/api/states/all`);
+        for (const state of areaRes.data.states) {
+            await insertOrUpdateAircraftState(state);
+        }
+        console.log('Database updated successfully.');
+    } catch (err) {
+        console.error('Error updating database from API:', err);
+    }
+};
+
+const deleteStaleRecords = async () => {
+    try {
+        const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000);
+        await db.query('DELETE FROM aircraft_states WHERE created_at < $1', [twoHoursAgo]);
+        console.log('Stale records deleted successfully.');
+    } catch (err) {
+        console.error('Error deleting stale records:', err);
+    }
+};
+
 const populateDatabase = async () => {
     try {
         const exists = await tableExists();
@@ -120,4 +142,10 @@ const getAircraftWithinBounds = async (latmin, lonmin, latmax, lonmax) => {
 
 
 
-module.exports = { db, populateDatabase, insertOrUpdateAircraftState, getAircraftWithinBounds };
+module.exports = { 
+     db,
+     populateDatabase,
+     insertOrUpdateAircraftState, 
+     getAircraftWithinBounds,
+     updateDatabaseFromAPI,
+     deleteStaleRecords };
