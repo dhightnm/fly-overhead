@@ -1,4 +1,4 @@
-import React, { useState, useContext } from 'react';
+import React, { useState, useContext, useEffect } from 'react';
 import { MapContainer, Marker, Popup, TileLayer, useMapEvents } from 'react-leaflet';
 import axios from 'axios';
 import PlaneMarker from './PlaneMarker';
@@ -8,6 +8,40 @@ import MapFlyToHandler from './MapFlyToHandler';
 
 
 const MapEventsHandler = ({ setUserPosition, setPlanes, setStarlink }) => {
+
+  const fetchData = async () => {
+    const bounds = map.getBounds();
+    const wrapBounds = map.wrapLatLngBounds(bounds);
+    const center = map.getCenter();
+    const seaLevel = 5;
+
+    // Fetch starlink data
+    const satRes = await axios.get(`http://localhost:3001/api/starlink/${center.lat}/${center.lng}/${seaLevel}/`);
+    if (satRes.data) {
+      setStarlink(satRes.data.above);
+    } else {
+      console.log('no starlink found');
+    }
+
+    // Fetch plane data
+    const res = await axios.get(`http://localhost:3001/api/area/${wrapBounds._southWest.lat}/${wrapBounds._southWest.lng}/${wrapBounds._northEast.lat}/${wrapBounds._northEast.lng}`);
+    if (res.data) {
+      setPlanes(res.data);
+    } else {
+      console.log('no planes found');
+    }
+}
+
+  // Inside MapEventsHandler component
+  useEffect(() => {
+    const interval = setInterval(() => {
+        fetchData();
+    }, 10000); // Fetch data every 10 seconds
+
+    return () => clearInterval(interval); // Cleanup when the component is unmounted
+  });
+
+
   const map = useMapEvents({
     load: () => {
       const loadCenter = map.locate().getCenter();
@@ -23,21 +57,7 @@ const MapEventsHandler = ({ setUserPosition, setPlanes, setStarlink }) => {
       setUserPosition(location.latlng);
       map.flyTo(location.latlng, map.getZoom());
     },
-    moveend: async () => {
-      const bounds = map.getBounds();
-      const wrapBounds = map.wrapLatLngBounds(bounds);
-      const center = map.getCenter();
-      const seaLevel = 5;
-      const satRes = await axios.get(`http://localhost:3001/api/starlink/${center.lat}/${center.lng}/${seaLevel}/`);
-      console.log("SATRES", satRes);
-      if (satRes.data) {
-        setStarlink(satRes.data.above);
-      } else { console.log('no starlink found');}
-      const res = await axios.get(`http://localhost:3001/api/area/${wrapBounds._southWest.lat}/${wrapBounds._southWest.lng}/${wrapBounds._northEast.lat}/${wrapBounds._northEast.lng}`);
-      if (res.data) {
-        setPlanes(res.data);
-      } else { console.log('no planes found');}
-    },
+    moveend: fetchData
   });
 
   return null;
