@@ -57,7 +57,7 @@ const MapEventsHandler = ({ setUserPosition, setPlanes, setStarlink }) => {
       setUserPosition(location.latlng);
       map.flyTo(location.latlng, map.getZoom());
     },
-    moveend: fetchData()
+    moveend: fetchData
   });
 
   return null;

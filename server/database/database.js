@@ -78,14 +78,17 @@ const tableExists = async () => {
 const updateDatabaseFromAPI = async () => {
     try {
         const areaRes = await axios.get(`https://${process.env.OPENSKY_USER}:${process.env.OPENSKY_PASS}@opensky-network.org/api/states/all`);
+        
         for (const state of areaRes.data.states) {
-            await insertOrUpdateAircraftState(state);
+            const currentStateWithDate = [...state, new Date()];
+            await insertOrUpdateAircraftState(currentStateWithDate);
         }
         console.log('Database updated successfully.');
     } catch (err) {
         console.error('Error updating database from API:', err);
     }
 };
+
 
 const deleteStaleRecords = async () => {
     try {
