@@ -32,13 +32,13 @@ const MapEventsHandler = ({ setUserPosition, setPlanes, setStarlink }) => {
     }
 }
 
-  // Inside MapEventsHandler component
   useEffect(() => {
     const interval = setInterval(() => {
         fetchData();
-    }, 10000); // Fetch data every 10 seconds
+        console.log("FIRED");
+    }, 5000);
 
-    return () => clearInterval(interval); // Cleanup when the component is unmounted
+    return () => clearInterval(interval);
   });
 
 

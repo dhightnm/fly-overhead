@@ -2,6 +2,7 @@ import React from 'react';
 import { Marker, Popup } from 'react-leaflet';
 import L from 'leaflet';
 import customPlaneIcon from '../assets/plane.png';
+import 'leaflet-rotatedmarker';
 
 const PlaneMarker = ({ plane }) => {
 
