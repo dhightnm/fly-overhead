@@ -1,5 +1,6 @@
 {
   "dependencies": {
+    "aws-sdk": "^2.1479.0",
     "leaflet-rotatedmarker": "^0.2.0",
     "pg": "^8.11.3",
     "pg-promise": "^11.5.4"

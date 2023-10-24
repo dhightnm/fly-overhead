@@ -30,7 +30,7 @@ const insertOrUpdateAircraftState = async (state) => {
         spi = EXCLUDED.spi,
         position_source = EXCLUDED.position_source;`;
 await db.query(queryString, state);
-console.log("STATE", state.length, state)
+// console.log("STATE", state.length, state)
 
 };
 

@@ -38,6 +38,7 @@ router.get('/planes/:icao24OrCallsign', async (req, res) => {
         const planes = await db.any(`SELECT * FROM aircraft_states WHERE LOWER(icao24) = LOWER($1) OR LOWER(callsign) = LOWER($1)`, [icao24OrCallsign]);
         if (planes.length) {
             res.json(planes[0]);
+            console.log(planes[0]);
         } else {
             res.status(404).json({error: 'Plane not found'});
         }
