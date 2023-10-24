@@ -11,9 +11,9 @@ const insertOrUpdateAircraftState = async (state) => {
         true_track, vertical_rate, sensors, geo_altitude, squawk,
         spi, position_source, created_at
     )
-    VALUES($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+    VALUES($1, TRIM($2), $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
     ON CONFLICT(icao24) DO UPDATE SET
-        callsign = EXCLUDED.callsign,
+        callsign = TRIM(EXCLUDED.callsign),
         origin_country = EXCLUDED.origin_country,
         time_position = EXCLUDED.time_position,
         last_contact = EXCLUDED.last_contact,
@@ -29,8 +29,9 @@ const insertOrUpdateAircraftState = async (state) => {
         squawk = EXCLUDED.squawk,
         spi = EXCLUDED.spi,
         position_source = EXCLUDED.position_source;`;
-console.log("STATE", state.length, state)
 await db.query(queryString, state);
+console.log("STATE", state.length, state)
+
 };
 
 const createTable = async () => {
@@ -80,6 +81,7 @@ const updateDatabaseFromAPI = async () => {
         const areaRes = await axios.get(`https://${process.env.OPENSKY_USER}:${process.env.OPENSKY_PASS}@opensky-network.org/api/states/all`);
         
         for (const state of areaRes.data.states) {
+            console.log("CALLSIGN", state[1])
             const currentStateWithDate = [...state, new Date()];
             await insertOrUpdateAircraftState(currentStateWithDate);
         }

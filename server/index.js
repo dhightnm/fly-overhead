@@ -21,7 +21,7 @@ app.use('/api', require('./routes/openSkyRouter'));
 
 
 populateDatabase();
-setInterval(updateDatabaseFromAPI, 60000);
+setInterval(updateDatabaseFromAPI, 300000);
 setInterval(deleteStaleRecords, 2 * 60 * 60 * 1000);
 
 app.listen(PORT, () => console.log(`Listening on port: ${PORT}`));

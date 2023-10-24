@@ -31,11 +31,11 @@ router.get('/area/all', async (req, res) => {
 });
 
 router.get('/planes/:icao24OrCallsign', async (req, res) => {
-    const icao24OrCallsign = req.params.icao24OrCallsign;
+    const icao24OrCallsign = req.params.icao24OrCallsign.trim();
 
     try {
 
-        const planes = await db.any(`SELECT * FROM aircraft_states WHERE icao24 = '${icao24OrCallsign}' OR callsign = '${icao24OrCallsign}'`);
+        const planes = await db.any(`SELECT * FROM aircraft_states WHERE LOWER(icao24) = LOWER($1) OR LOWER(callsign) = LOWER($1)`, [icao24OrCallsign]);
         if (planes.length) {
             res.json(planes[0]);
         } else {
