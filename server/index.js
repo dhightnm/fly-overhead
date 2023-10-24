@@ -1,30 +1,26 @@
 const express = require('express');
 const cors = require('cors');
 const morgan = require('morgan');
-const path = require('path');
+const {
+  updateDatabaseFromAPIDynamo,
+  deleteStaleRecordsDynamo,
+} = require('./database/dynamoDB');
+
 const PORT = process.env.PORT || 3001;
-const { insertOrUpdateAircraftStateDynamo, populateDatabaseDynamo, updateDatabaseFromAPIDynamo } = require('./database/dynamoDB');
-const { 
-    db,
-    populateDatabase, 
-    updateDatabaseFromAPI,
-    deleteStaleRecords
-}  = require('./database/database');
 
 const app = express();
 app.use(cors());
 app.use(express.json());
-app.use(morgan("short"));
-
-    
+app.use(morgan('short'));
 
 app.use('/api', require('./routes/openSkyRouter'));
 
-
 // populateDatabase();
-populateDatabaseDynamo();
-setInterval(updateDatabaseFromAPIDynamo, 300000);
+// populateDatabaseDynamo();
+updateDatabaseFromAPIDynamo();
+setInterval(updateDatabaseFromAPIDynamo, 60000);
 // setInterval(updateDatabaseFromAPI, 300000);
-// setInterval(deleteStaleRecords, 2 * 60 * 60 * 1000);
+// deleteStaleRecordsDynamo();
+setInterval(deleteStaleRecordsDynamo, 2 * 60 * 60 * 1000);
 
 app.listen(PORT, () => console.log(`Listening on port: ${PORT}`));
