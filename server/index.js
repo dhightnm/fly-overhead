@@ -6,6 +6,12 @@ const {
   deleteStaleRecordsDynamo,
 } = require('./database/dynamoDB');
 
+const {
+  populateDatabase,
+  deleteStaleRecords,
+  updateDatabaseFromAPI,
+} = require('./database/database');
+
 const PORT = process.env.PORT || 3001;
 
 const app = express();
@@ -15,12 +21,14 @@ app.use(morgan('short'));
 
 app.use('/api', require('./routes/openSkyRouter'));
 
-// populateDatabase();
+populateDatabase();
 // populateDatabaseDynamo();
 // updateDatabaseFromAPIDynamo();
 // setInterval(updateDatabaseFromAPIDynamo, 60000);
 // setInterval(updateDatabaseFromAPI, 300000);
 // deleteStaleRecordsDynamo();
+// setInterval(updateDatabaseFromAPI, 10000);
+deleteStaleRecords();
 // setInterval(deleteStaleRecordsDynamo, 2 * 60 * 60 * 1000);
 
 app.listen(PORT, () => console.log(`Listening on port: ${PORT}`));

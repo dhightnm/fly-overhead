@@ -80,8 +80,11 @@ const updateDatabaseFromAPI = async () => {
   try {
     const areaRes = await axios.get(`https://${process.env.OPENSKY_USER}:${process.env.OPENSKY_PASS}@opensky-network.org/api/states/all`);
 
-    const promises = areaRes.data.states.map(async (state) => {
-      console.log('CALLSIGN', state[1]);
+    const promises = areaRes.data.states.map(async (originalState) => {
+      const state = [...originalState];
+      if (typeof state[1] === 'string') {
+        state[1] = state[1].trim();
+      }
       const currentStateWithDate = [...state, new Date()];
       return insertOrUpdateAircraftState(currentStateWithDate);
     });
