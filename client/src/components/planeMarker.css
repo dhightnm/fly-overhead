@@ -1,0 +1,16 @@
+.plane-popup {
+    font-size: 0.9rem;
+}
+
+.plane-popup div {
+    margin: 4px 0;
+}
+
+.plane-popup strong {
+    font-weight: bold;
+    margin-right: 5px;
+}
+
+.plane-popup span {
+    font-weight: normal;
+}
