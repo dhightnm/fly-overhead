@@ -62,6 +62,9 @@ export const mergePlaneRecords = (
     };
     merged.category = preferred.category ?? secondary.category ?? null;
     merged.source = preferred.source ?? secondary.source;
+    merged.position_source = preferred.position_source ?? preferred.source ?? secondary.position_source ?? secondary.source;
+    merged.data_age_seconds = preferred.data_age_seconds ?? secondary.data_age_seconds;
+    merged.last_update_age_seconds = preferred.last_update_age_seconds ?? secondary.last_update_age_seconds;
     merged.predicted = preferred.predicted ?? secondary.predicted ?? false;
     merged.prediction_confidence = preferred.prediction_confidence ?? secondary.prediction_confidence;
     return merged;

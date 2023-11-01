@@ -55,10 +55,18 @@ class AircraftService {
 
       logger.info(`Database updated successfully with all ${processed} aircraft`);
 
-      webSocketService.getIO()?.emit('aircraft:global_update', {
-        timestamp: new Date().toISOString(),
-        message: 'Aircraft data updated',
-      });
+      // Broadcast update signal to all connected clients
+      // Frontend will refresh their bounds query to get updated positions
+      const io = webSocketService.getIO();
+      if (io && io.sockets.sockets.size > 0) {
+        logger.info(`Broadcasting global refresh signal to ${io.sockets.sockets.size} WebSocket clients`);
+        io.emit('aircraft:update', {
+          type: 'refresh_required',
+          timestamp: new Date().toISOString(),
+          message: 'Aircraft positions updated - refresh your view',
+          count: processed,
+        });
+      }
 
       return data.states;
     } catch (error) {

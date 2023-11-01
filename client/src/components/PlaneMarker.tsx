@@ -91,11 +91,13 @@ function getCategoryLabel(plane: Aircraft) {
 function getAircraftDisplayType(plane: Aircraft, route?: Route) {
   // If we have model from route, show it (preferred)
   if (route?.aircraft?.model) {
-    // If type is not "Plane" (generic), show "Model - Type"
-    if (route?.aircraft?.type && route.aircraft.type !== 'Plane') {
+    // If type is not "Plane" (generic) and different from model, show "Model - Type"
+    if (route?.aircraft?.type && 
+        route.aircraft.type !== 'Plane' && 
+        route.aircraft.type !== route.aircraft.model) {
       return `${route.aircraft.model} - ${route.aircraft.type}`;
     }
-    // Otherwise just show model
+    // Otherwise just show model (don't show redundant "EA50 - EA50")
     return route.aircraft.model;
   }
   // If we only have type (ICAO code), show it (but skip if it's just "Plane")
@@ -125,13 +127,20 @@ const PlaneMarker: React.FC<PlaneMarkerProps> = ({
     return null;
   }
 
-  const { latitude, longitude, callsign, icao24, baro_altitude, velocity, true_track, isStale, ageMinutes } = plane;
+  const { latitude, longitude, callsign, icao24, baro_altitude, velocity, true_track, isStale, ageMinutes, data_age_seconds, position_source } = plane;
   const zIndexOffset = isSelected ? 1000 : isHighlighted ? 800 : 0;
   
-  // Reduce opacity for stale aircraft in dev mode
+  // Calculate staleness
+  const dataAgeMinutes = data_age_seconds ? Math.floor(data_age_seconds / 60) : 0;
+  const isDataStale = data_age_seconds ? data_age_seconds > 5 * 60 : false; // >5 minutes is stale
+  const isDataVeryStale = data_age_seconds ? data_age_seconds > 10 * 60 : false; // >10 minutes is very stale
+  
+  // Reduce opacity for stale aircraft
   let opacity = isSelected || isHighlighted ? 1 : 0.95;
-  if (isStale) {
+  if (isStale || isDataVeryStale) {
     opacity = isSelected || isHighlighted ? 0.7 : 0.5;
+  } else if (isDataStale) {
+    opacity = isSelected || isHighlighted ? 0.85 : 0.75;
   }
 
   return (
@@ -160,17 +169,35 @@ const PlaneMarker: React.FC<PlaneMarkerProps> = ({
     >
       <Popup>
         <div className="plane-popup">
-          {isStale && (
+          {(isStale || isDataStale) && (
             <div style={{ 
-              backgroundColor: '#fff3cd', 
-              color: '#856404', 
+              backgroundColor: isDataVeryStale ? '#f8d7da' : '#fff3cd', 
+              color: isDataVeryStale ? '#721c24' : '#856404', 
               padding: '4px 8px', 
               marginBottom: '8px', 
               borderRadius: '4px',
               fontSize: '11px',
               fontWeight: 'bold'
             }}>
-              ⚠️ STALE DATA ({ageMinutes}min old) - Rate Limited
+              {isDataVeryStale ? '⛔' : '⚠️'} {isDataVeryStale ? 'VERY OLD' : 'STALE'} DATA ({dataAgeMinutes || ageMinutes}min old)
+              {position_source && position_source !== 'websocket' && (
+                <span style={{ marginLeft: '4px', fontSize: '10px', opacity: 0.8 }}>
+                  • {position_source}
+                </span>
+              )}
+            </div>
+          )}
+          {isLoading && (
+            <div style={{ 
+              backgroundColor: '#e3f2fd', 
+              color: '#1976d2', 
+              padding: '4px 8px', 
+              marginBottom: '8px', 
+              borderRadius: '4px',
+              fontSize: '11px',
+              fontWeight: 'bold'
+            }}>
+              ⏳ Fetching latest flight data...
             </div>
           )}
           <div>

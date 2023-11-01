@@ -17,6 +17,7 @@ class AircraftService {
     return response.data.map((plane) => ({
       ...plane,
       source: plane.source ?? 'database',
+      position_source: 'database',
     }));
   }
 

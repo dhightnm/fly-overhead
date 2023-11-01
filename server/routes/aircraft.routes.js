@@ -12,9 +12,9 @@ const { requireApiKeyAuth } = require('../middlewares/apiKeyAuth');
 
 const cache = new NodeCache({ stdTTL: 60, maxKeys: 100 });
 
-// Enhanced cache for bounding box queries (shorter TTL for freshness)
+// Enhanced cache for bounding box queries (balanced TTL for stability and freshness)
 const boundsCache = new NodeCache({ 
-  stdTTL: 5, // 5 second cache for faster updates on zoom/pan
+  stdTTL: 15, // 15 second cache - reduces flickering while keeping data relatively fresh
   maxKeys: 1000, // Cache up to 1000 different bounding boxes
   checkperiod: 60, // Check for expired keys every minute
 });
@@ -98,6 +98,11 @@ router.get('/planes/:identifier', async (req, res, next) => {
       logger.warn('Could not fetch route data', { error: routeError.message });
     }
 
+    // Add data age calculation
+    const now = Math.floor(Date.now() / 1000);
+    aircraft.data_age_seconds = aircraft.last_contact ? now - aircraft.last_contact : null;
+    aircraft.last_update_age_seconds = aircraft.last_contact ? now - aircraft.last_contact : null;
+
     return res.json(aircraft);
   } catch (err) {
     return next(err);
@@ -137,16 +142,33 @@ router.get('/route/:identifier', async (req, res, next) => {
       hasAircraftData: !!aircraft,
     });
 
+    const routeStartTime = Date.now();
     const route = await flightRouteService.getFlightRoute(
       aircraftIcao24,
       aircraftCallsign,
       isCurrentFlight,
       true, // allowExpensiveApis=true (user-initiated request via /api/route)
     );
+    const routeDuration = Date.now() - routeStartTime;
 
     if (!route) {
+      logger.warn('Flight route not found after API call', {
+        icao24: aircraftIcao24,
+        callsign: aircraftCallsign,
+        duration: `${routeDuration}ms`,
+      });
       return res.status(404).json({ error: 'Flight route not found' });
     }
+
+    logger.info('✅ Successfully fetched route', {
+      icao24: aircraftIcao24,
+      callsign: aircraftCallsign,
+      duration: `${routeDuration}ms`,
+      source: route.source,
+      hasDeparture: !!route.departureAirport?.icao,
+      hasArrival: !!route.arrivalAirport?.icao,
+      hasAircraft: !!route.aircraft?.type,
+    });
 
     // Update aircraft category if we got type/model from route and aircraft exists
     let updatedCategory = currentAircraft?.category;
@@ -184,11 +206,12 @@ router.get('/area/:latmin/:lonmin/:latmax/:lonmax', async (req, res, next) => {
   } = req.params;
 
   // Create cache key from bounding box (rounded to reduce cache fragmentation)
-  // Round to 2 decimal places (~1.1km precision) to improve cache hits
-  const roundedLatMin = Math.floor(parseFloat(latmin) * 100) / 100;
-  const roundedLonMin = Math.floor(parseFloat(lonmin) * 100) / 100;
-  const roundedLatMax = Math.ceil(parseFloat(latmax) * 100) / 100;
-  const roundedLonMax = Math.ceil(parseFloat(lonmax) * 100) / 100;
+  // Round to 1 decimal place (~11km precision) to improve cache hits and reduce flickering
+  // Larger rounding = fewer unique cache keys = more stable results during small map movements
+  const roundedLatMin = Math.floor(parseFloat(latmin) * 10) / 10;
+  const roundedLonMin = Math.floor(parseFloat(lonmin) * 10) / 10;
+  const roundedLatMax = Math.ceil(parseFloat(latmax) * 10) / 10;
+  const roundedLonMax = Math.ceil(parseFloat(lonmax) * 10) / 10;
   
   const cacheKey = `/area/${roundedLatMin}/${roundedLonMin}/${roundedLatMax}/${roundedLonMax}`;
 
@@ -196,7 +219,15 @@ router.get('/area/:latmin/:lonmin/:latmax/:lonmax', async (req, res, next) => {
     // Check cache first
     if (boundsCache.has(cacheKey)) {
       logger.debug('Serving cached aircraft data for bounding box', { cacheKey });
-      return res.json(boundsCache.get(cacheKey));
+      // Recalculate data age for cached aircraft (cache may be 15 seconds old)
+      const cachedAircraft = boundsCache.get(cacheKey);
+      const now = Math.floor(Date.now() / 1000);
+      const refreshedAircraft = cachedAircraft.map(plane => ({
+        ...plane,
+        data_age_seconds: plane.last_contact ? now - plane.last_contact : null,
+        last_update_age_seconds: plane.last_contact ? now - plane.last_contact : null,
+      }));
+      return res.json(refreshedAircraft);
     }
 
     // Cache miss - fetch from database only
@@ -208,14 +239,22 @@ router.get('/area/:latmin/:lonmin/:latmax/:lonmax', async (req, res, next) => {
       parseFloat(lonmax),
     );
 
+    // Add data age calculation to each aircraft
+    const now = Math.floor(Date.now() / 1000);
+    const enrichedAircraft = aircraft.map(plane => ({
+      ...plane,
+      data_age_seconds: plane.last_contact ? now - plane.last_contact : null,
+      last_update_age_seconds: plane.last_contact ? now - plane.last_contact : null, // alias for clarity
+    }));
+
     // Store in cache
-    boundsCache.set(cacheKey, aircraft);
+    boundsCache.set(cacheKey, enrichedAircraft);
     logger.debug('Cached aircraft data for bounding box', { 
       cacheKey, 
-      aircraftCount: aircraft.length 
+      aircraftCount: enrichedAircraft.length 
     });
 
-    return res.json(aircraft);
+    return res.json(enrichedAircraft);
   } catch (err) {
     return next(err);
   }

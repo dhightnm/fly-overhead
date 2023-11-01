@@ -115,9 +115,14 @@ class FlightRouteService {
   async getFlightRoute(icao24, callsign, isCurrentFlight = false, allowExpensiveApis = false) {
     const cacheKey = `${callsign || icao24}`;
     
-    // 1. Check in-memory cache (skip for user-initiated requests to get fresh aircraft data)
-    if (!allowExpensiveApis && this.cache.has(cacheKey)) {
-      logger.info('Route cache HIT (in-memory) - skipping API call', { cacheKey, icao24, callsign });
+    // 1. Check in-memory cache (even for user-initiated requests - it's fast!)
+    if (this.cache.has(cacheKey)) {
+      logger.info('Route cache HIT (in-memory) - skipping API call', { 
+        cacheKey, 
+        icao24, 
+        callsign,
+        allowExpensiveApis,
+      });
       const cachedRoute = this.cache.get(cacheKey);
       // Enrich with model/type if we have aircraft_type
       if (cachedRoute.aircraft?.type) {
@@ -132,10 +137,28 @@ class FlightRouteService {
       return cachedRoute;
     }
 
-    // 2. Check database cache (skip for user-initiated requests to get fresh data)
-    if (!allowExpensiveApis) {
-      const cachedRoute = await postgresRepository.getCachedRoute(cacheKey);
-      if (cachedRoute) {
+    // 2. Check database cache (even for user requests - it's much faster than API calls)
+    // The frontend forceRefresh logic ensures we only hit this for subsequent clicks
+    const cachedRoute = await postgresRepository.getCachedRoute(cacheKey);
+    if (cachedRoute) {
+      // Check if cached route is complete
+      const hasArrival = !!(cachedRoute.arrivalAirport?.icao || cachedRoute.arrivalAirport?.iata);
+      const hasAircraftType = !!cachedRoute.aircraft?.type;
+      const isComplete = hasArrival && hasAircraftType;
+
+      // For user-initiated requests (allowExpensiveApis=true), skip incomplete cache
+      // This ensures users get fresh data when clicking, even if cache is incomplete
+      if (allowExpensiveApis && !isComplete) {
+        logger.info('Route cache HIT but incomplete - fetching fresh data for user request', {
+          cacheKey,
+          icao24,
+          callsign,
+          hasArrival,
+          hasAircraftType,
+          source: cachedRoute.source,
+        });
+        // Fall through to API fetch below
+      } else {
         // Enrich with model/type if we have aircraft_type from cache
         if (cachedRoute.aircraft?.type) {
           const aircraftInfo = mapAircraftType(cachedRoute.aircraft.type);
@@ -146,45 +169,56 @@ class FlightRouteService {
             category: aircraftInfo.category,
           };
         }
-        
-        logger.info('Route cache HIT (database) - skipping API call', {
+
+        logger.info('Route cache HIT (database) - using cached route', {
           cacheKey,
           icao24,
           callsign,
           source: cachedRoute.source || 'unknown',
           hasAircraft: !!cachedRoute.aircraft,
+          hasArrival,
+          isComplete,
           allowExpensiveApis,
         });
         this.cache.set(cacheKey, cachedRoute);
         return cachedRoute;
       }
-    } else {
-      logger.info('Skipping database cache for user-initiated request (allowExpensiveApis=true)', {
-        cacheKey,
-        icao24,
-        callsign,
-      });
     }
 
     logger.info('Route cache MISS - fetching from API', {
-      cacheKey, icao24, callsign, isCurrentFlight,
+      cacheKey, icao24, callsign, isCurrentFlight, allowExpensiveApis,
     });
 
-    // 2.5. If we don't have a callsign but have icao24, try to get it from flight_routes_history
+    // 2.5. If we don't have a callsign but have icao24, try to get it from multiple sources
     // This allows us to query FlightAware even when aircraft_states doesn't have the callsign
-    // Prioritize most recent active flights to get the current callsign
+    // Priority: 1) Active flights in history, 2) Recent flights in history, 3) FlightAware search by icao24
     let finalCallsign = callsign;
-    if (!finalCallsign && icao24 && allowExpensiveApis) {
+    if (!finalCallsign && icao24) {
+      logger.info('No callsign provided, checking flight_routes_history for recent callsign...', { icao24 });
+      
+      // First, try to get callsign from recent active flights (within last 24 hours)
       const callsignFromHistory = await postgresRepository.getDb().oneOrNone(
-        `SELECT callsign 
+        `SELECT callsign, actual_flight_start, actual_flight_end, created_at
          FROM flight_routes_history
          WHERE icao24 = $1
            AND callsign IS NOT NULL
            AND callsign != ''
+           AND (
+             -- Active flights (no end time) from last 24 hours
+             (actual_flight_end IS NULL AND actual_flight_start > NOW() - INTERVAL '24 hours')
+             OR
+             -- Recent completed flights (within last 6 hours)
+             (actual_flight_end > NOW() - INTERVAL '6 hours')
+             OR
+             -- Very recent entries (within last 2 hours)
+             (created_at > NOW() - INTERVAL '2 hours')
+           )
          ORDER BY 
            -- Prioritize active flights (no end time)
            CASE WHEN actual_flight_end IS NULL THEN 0 ELSE 1 END ASC,
-           -- Most recent creation time first (this ensures we get the latest callsign)
+           -- Most recent start time first
+           actual_flight_start DESC NULLS LAST,
+           -- Then by creation time
            created_at DESC
          LIMIT 1`,
         [icao24.toLowerCase()]
@@ -195,7 +229,11 @@ class FlightRouteService {
         logger.info('Retrieved callsign from flight_routes_history for FlightAware query', {
           icao24,
           callsign: finalCallsign,
+          isActive: !callsignFromHistory.actual_flight_end,
+          flightStart: callsignFromHistory.actual_flight_start,
         });
+      } else {
+        logger.info('No recent callsign found in flight_routes_history, will try FlightAware search by icao24', { icao24 });
       }
     }
 
@@ -366,86 +404,117 @@ class FlightRouteService {
         }
         
         // If FlightAware returned no data by callsign, try querying by icao24/registration
-        logger.info('FlightAware returned no route data by callsign, trying by icao24', {
-          icao24,
-          callsign: finalCallsign,
-        });
-        
-        // Try FlightAware search endpoint with icao24/registration
-        try {
-          const searchResponse = await axios.get(`${this.flightAwareBaseUrl}/flights/search`, {
-            params: {
-              query: `-ident ${icao24}`,
-              max_pages: 1,
-            },
-            headers: {
-              Accept: 'application/json; charset=UTF-8',
-              'x-apikey': this.flightAwareApiKey,
-            },
-            timeout: 8000,
+        // This is especially important when ADS-B doesn't provide callsign
+        if (!finalCallsign || !routeResult) {
+          logger.info('FlightAware returned no route data by callsign, trying search by icao24', {
+            icao24,
+            callsign: finalCallsign || 'none',
           });
           
-          if (searchResponse.data?.results && searchResponse.data.results.length > 0) {
-            const flights = searchResponse.data.results;
-            // Filter for active flights and map to route format
-            const activeFlights = flights.filter((f) => {
-              const status = f.status?.toLowerCase() || '';
-              return (status.includes('en route') || status.includes('in flight')
-                || status === 'scheduled' || status === 'departed')
-                && !f.cancelled && !f.diverted
-                && f.origin && f.destination;
-            });
+          // Try FlightAware search endpoint with multiple query formats
+          // FlightAware search supports: -ident (registration), -hex (icao24), -airline (airline code)
+          try {
+            // Try multiple search strategies
+            const searchQueries = [
+              `-hex ${icao24}`, // Direct icao24 hex search
+              `-ident ${icao24}`, // Try as registration (might work for some formats)
+            ];
             
-            if (activeFlights.length > 0) {
-              const flight = activeFlights[0];
-              const mappedRoute = {
-                departureAirport: {
-                  iata: flight.origin?.code_iata || null,
-                  icao: flight.origin?.code_icao || flight.origin?.code || null,
-                  name: flight.origin?.name || null,
-                },
-                arrivalAirport: {
-                  iata: flight.destination?.code_iata || null,
-                  icao: flight.destination?.code_icao || flight.destination?.code || null,
-                  name: flight.destination?.name || null,
-                },
-                aircraft: flight.aircraft_type ? {
-                  type: flight.aircraft_type || null,
-                  model: flight.aircraft_type || null,
-                } : undefined,
-                flightStatus: flight.status || null,
-              };
-              
-              logger.info('Found route from FlightAware by icao24', {
-                icao24,
-                callsign: flight.ident || finalCallsign,
-                departure: mappedRoute.departureAirport?.icao,
-                arrival: mappedRoute.arrivalAirport?.icao,
-              });
-              
-              const foundCallsign = flight.ident || finalCallsign;
-              
-              // Cache and return
-              await this.cacheRoute(cacheKey, {
-                ...mappedRoute,
-                callsign: foundCallsign,
-                icao24,
-                source: 'flightaware',
-              });
-              
-              return {
-                ...mappedRoute,
-                callsign: foundCallsign,
-                icao24,
-                source: 'flightaware',
-              };
+            let searchSuccess = false;
+            for (const query of searchQueries) {
+              try {
+                logger.debug('Trying FlightAware search query', { query, icao24 });
+                const searchResponse = await axios.get(`${this.flightAwareBaseUrl}/flights/search`, {
+                  params: {
+                    query,
+                    max_pages: 1,
+                  },
+                  headers: {
+                    Accept: 'application/json; charset=UTF-8',
+                    'x-apikey': this.flightAwareApiKey,
+                  },
+                  timeout: 8000,
+                });
+                
+                // FlightAware search can return 'flights' or 'results' array
+                const flights = searchResponse.data?.flights || searchResponse.data?.results || [];
+                
+                if (flights.length > 0) {
+                  // Filter for active flights and map to route format
+                  const activeFlights = flights.filter((f) => {
+                    const status = (f.status || f.flight_status || '').toLowerCase();
+                    return (status.includes('en route') || status.includes('in flight')
+                      || status === 'scheduled' || status === 'departed')
+                      && !f.cancelled && !f.diverted
+                      && f.origin && f.destination;
+                  });
+                  
+                  if (activeFlights.length > 0) {
+                    const flight = activeFlights[0];
+                    const foundCallsign = flight.ident || flight.callsign || finalCallsign;
+                    
+                    const mappedRoute = {
+                      departureAirport: {
+                        iata: flight.origin?.code_iata || null,
+                        icao: flight.origin?.code_icao || flight.origin?.code || null,
+                        name: flight.origin?.name || null,
+                      },
+                      arrivalAirport: {
+                        iata: flight.destination?.code_iata || null,
+                        icao: flight.destination?.code_icao || flight.destination?.code || null,
+                        name: flight.destination?.name || null,
+                      },
+                      aircraft: flight.aircraft_type ? {
+                        type: flight.aircraft_type || null,
+                        model: flight.aircraft_type || null,
+                      } : undefined,
+                      flightStatus: flight.status || flight.flight_status || null,
+                    };
+                    
+                    logger.info('✅ Found route from FlightAware search by icao24', {
+                      icao24,
+                      callsign: foundCallsign,
+                      departure: mappedRoute.departureAirport?.icao,
+                      arrival: mappedRoute.arrivalAirport?.icao,
+                      query,
+                    });
+                    
+                    // Cache and return
+                    await this.cacheRoute(cacheKey, {
+                      ...mappedRoute,
+                      callsign: foundCallsign,
+                      icao24,
+                      source: 'flightaware',
+                    });
+                    
+                    searchSuccess = true;
+                    return {
+                      ...mappedRoute,
+                      callsign: foundCallsign,
+                      icao24,
+                      source: 'flightaware',
+                    };
+                  }
+                }
+              } catch (queryError) {
+                logger.debug('FlightAware search query failed', {
+                  query,
+                  icao24,
+                  error: queryError.message,
+                });
+                // Continue to next query
+              }
             }
+            
+            if (!searchSuccess) {
+              logger.debug('All FlightAware search queries failed for icao24', { icao24 });
+            }
+          } catch (searchError) {
+            logger.debug('FlightAware search by icao24 failed', {
+              icao24,
+              error: searchError.message,
+            });
           }
-        } catch (searchError) {
-          logger.debug('FlightAware search by icao24 also failed', {
-            icao24,
-            error: searchError.message,
-          });
         }
         
         logger.info('FlightAware returned no route data', { icao24, callsign: finalCallsign });
@@ -478,7 +547,9 @@ class FlightRouteService {
     // 5. Check flight_routes_history for existing route data (callsign, departure, arrival)
     // This is often more reliable than inference since it comes from actual flight data
     // Priority: Active flights (no end time) > Recent flights > By creation time
-    if (icao24) {
+    // OPTIMIZATION: Skip this for user-initiated requests (allowExpensiveApis) since we want fresh API data, not historical
+    if (icao24 && !allowExpensiveApis) {
+      logger.info('Checking flight_routes_history for existing route data (background request)', { icao24 });
       const existingRoute = await postgresRepository.getDb().oneOrNone(
         `SELECT callsign, departure_icao, departure_iata, departure_name,
                 arrival_icao, arrival_iata, arrival_name, source,
@@ -555,6 +626,8 @@ class FlightRouteService {
 
         return { ...routeData, callsign: finalCallsign, icao24 };
       }
+    } else if (allowExpensiveApis) {
+      logger.info('Skipping flight_routes_history check for user-initiated request (want fresh data)', { icao24 });
     }
 
     // 6. Last resort: Position-based inference
@@ -562,13 +635,33 @@ class FlightRouteService {
     if (inferredRoute) {
       // Cache inferred routes, but with shorter TTL if arrival is missing
       const hasArrival = inferredRoute.arrivalAirport?.icao || inferredRoute.arrivalAirport?.iata;
-      
+      const hasAircraftType = !!inferredRoute.aircraft?.type;
+      const isComplete = hasArrival && hasAircraftType;
+
+      // For user-initiated requests, don't cache incomplete inference routes
+      // This prevents users from getting stuck with incomplete data
+      // Background jobs can still cache incomplete routes (they'll be enriched later)
+      if (allowExpensiveApis && !isComplete) {
+        logger.warn('Incomplete inference route for user request - not caching, returning null', {
+          icao24,
+          callsign,
+          hasArrival,
+          hasAircraftType,
+        });
+        // Don't cache incomplete routes for user requests
+        // Return null so frontend can show "Route not available" instead of incomplete data
+        return null;
+      }
+
       logger.info('Caching inferred route', {
         icao24,
         callsign,
         hasDeparture: !!(inferredRoute.departureAirport?.icao || inferredRoute.departureAirport?.iata),
         hasArrival,
+        hasAircraftType,
+        isComplete,
         cacheTTL: hasArrival ? '24h' : '30min',
+        allowExpensiveApis,
       });
 
       // Store in cache (will expire based on created_at in database)

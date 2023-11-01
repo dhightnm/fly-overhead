@@ -518,11 +518,23 @@ class PostgresRepository {
         c.source as route_source,
         c.created_at as route_created_at
       FROM aircraft_states a
-      LEFT JOIN flight_routes_cache c ON (
-        (c.cache_key = a.callsign AND a.callsign IS NOT NULL AND a.callsign != '')
-        OR c.cache_key = a.icao24
-        OR (c.cache_key = a.icao24 AND a.callsign IS NULL)
-      )
+      LEFT JOIN LATERAL (
+        SELECT *
+        FROM flight_routes_cache
+        WHERE (
+          -- Prefer callsign match (most specific)
+          (cache_key = a.callsign AND a.callsign IS NOT NULL AND a.callsign != '')
+          OR 
+          -- Fallback to icao24
+          cache_key = a.icao24
+        )
+        -- Get the most recent cache entry with complete data
+        ORDER BY 
+          CASE WHEN cache_key = a.callsign THEN 0 ELSE 1 END, -- Prefer callsign
+          CASE WHEN arrival_icao IS NOT NULL THEN 0 ELSE 1 END, -- Prefer complete routes
+          created_at DESC -- Most recent first
+        LIMIT 1
+      ) c ON true
       WHERE a.last_contact >= $1
         AND (
           -- Use PostGIS spatial query when geom is available (preferred, uses spatial index)
@@ -1969,7 +1981,13 @@ class PostgresRepository {
     `;
     await this.db.query(insertHistoryQuery, historyState);
 
-    // Main table upsert with priority check
+    // Main table upsert with priority check and smart merge for incomplete data
+    // Strategy:
+    // 1. Higher priority sources (lower number) can overwrite position data
+    // 2. BUT: If higher priority data is incomplete (missing callsign, etc.), preserve complete data from lower priority
+    // 3. Once we have complete data, prevent incomplete data from overwriting it
+    // 4. STALENESS CHECK: If existing data is >10 minutes old, allow fresher data from ANY source (regardless of priority)
+    //    This ensures we don't get stuck with stale high-priority data when fresh low-priority data is available
     const upsertQuery = `
       INSERT INTO aircraft_states(
         icao24, callsign, origin_country, time_position, last_contact,
@@ -1979,28 +1997,111 @@ class PostgresRepository {
       )
       VALUES($1, TRIM($2), $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23)
       ON CONFLICT(icao24) DO UPDATE SET
-        -- Always accept non-null/non-empty callsign, otherwise keep existing
-        callsign = COALESCE(NULLIF(TRIM(EXCLUDED.callsign), ''), aircraft_states.callsign),
-        origin_country = CASE WHEN EXCLUDED.source_priority <= COALESCE(aircraft_states.source_priority, 99) THEN EXCLUDED.origin_country ELSE aircraft_states.origin_country END,
-        time_position = CASE WHEN EXCLUDED.source_priority <= COALESCE(aircraft_states.source_priority, 99) THEN EXCLUDED.time_position ELSE aircraft_states.time_position END,
-        last_contact = CASE WHEN EXCLUDED.source_priority <= COALESCE(aircraft_states.source_priority, 99) THEN EXCLUDED.last_contact ELSE aircraft_states.last_contact END,
-        longitude = CASE WHEN EXCLUDED.source_priority <= COALESCE(aircraft_states.source_priority, 99) THEN EXCLUDED.longitude ELSE aircraft_states.longitude END,
-        latitude = CASE WHEN EXCLUDED.source_priority <= COALESCE(aircraft_states.source_priority, 99) THEN EXCLUDED.latitude ELSE aircraft_states.latitude END,
-        baro_altitude = CASE WHEN EXCLUDED.source_priority <= COALESCE(aircraft_states.source_priority, 99) THEN EXCLUDED.baro_altitude ELSE aircraft_states.baro_altitude END,
-        on_ground = CASE WHEN EXCLUDED.source_priority <= COALESCE(aircraft_states.source_priority, 99) THEN EXCLUDED.on_ground ELSE aircraft_states.on_ground END,
-        velocity = CASE WHEN EXCLUDED.source_priority <= COALESCE(aircraft_states.source_priority, 99) THEN EXCLUDED.velocity ELSE aircraft_states.velocity END,
-        true_track = CASE WHEN EXCLUDED.source_priority <= COALESCE(aircraft_states.source_priority, 99) THEN EXCLUDED.true_track ELSE aircraft_states.true_track END,
-        vertical_rate = CASE WHEN EXCLUDED.source_priority <= COALESCE(aircraft_states.source_priority, 99) THEN EXCLUDED.vertical_rate ELSE aircraft_states.vertical_rate END,
-        sensors = CASE WHEN EXCLUDED.source_priority <= COALESCE(aircraft_states.source_priority, 99) THEN EXCLUDED.sensors ELSE aircraft_states.sensors END,
-        geo_altitude = CASE WHEN EXCLUDED.source_priority <= COALESCE(aircraft_states.source_priority, 99) THEN EXCLUDED.geo_altitude ELSE aircraft_states.geo_altitude END,
-        squawk = CASE WHEN EXCLUDED.source_priority <= COALESCE(aircraft_states.source_priority, 99) THEN EXCLUDED.squawk ELSE aircraft_states.squawk END,
+        -- Smart merge for callsign: Always use non-empty callsign regardless of priority
+        -- This ensures OpenSky's callsign can fill in gaps from incomplete feeder data
+        -- Priority doesn't matter for callsign - complete data always wins
+        callsign = CASE
+          WHEN NULLIF(TRIM(EXCLUDED.callsign), '') IS NOT NULL THEN TRIM(EXCLUDED.callsign)
+          WHEN aircraft_states.callsign IS NOT NULL AND NULLIF(TRIM(aircraft_states.callsign), '') IS NOT NULL THEN aircraft_states.callsign
+          ELSE NULL
+        END,
+        -- Position data: Update if higher priority OR if existing data is stale (>10 minutes)
+        -- This ensures we get fresh data even from lower-priority sources when high-priority sources go silent
+        origin_country = CASE 
+          WHEN EXCLUDED.source_priority <= COALESCE(aircraft_states.source_priority, 99) THEN EXCLUDED.origin_country
+          WHEN (EXTRACT(EPOCH FROM NOW())::bigint - COALESCE(aircraft_states.last_contact, 0)) > 600 THEN EXCLUDED.origin_country
+          ELSE aircraft_states.origin_country 
+        END,
+        time_position = CASE
+          WHEN (EXCLUDED.source_priority <= COALESCE(aircraft_states.source_priority, 99) OR (EXTRACT(EPOCH FROM NOW())::bigint - COALESCE(aircraft_states.last_contact, 0)) > 600) AND EXCLUDED.time_position IS NOT NULL THEN EXCLUDED.time_position
+          WHEN (EXCLUDED.source_priority <= COALESCE(aircraft_states.source_priority, 99) OR (EXTRACT(EPOCH FROM NOW())::bigint - COALESCE(aircraft_states.last_contact, 0)) > 600) AND EXCLUDED.time_position IS NULL THEN aircraft_states.time_position
+          ELSE aircraft_states.time_position
+        END,
+        last_contact = CASE
+          WHEN (EXCLUDED.source_priority <= COALESCE(aircraft_states.source_priority, 99) OR (EXTRACT(EPOCH FROM NOW())::bigint - COALESCE(aircraft_states.last_contact, 0)) > 600) AND EXCLUDED.last_contact IS NOT NULL THEN EXCLUDED.last_contact
+          WHEN (EXCLUDED.source_priority <= COALESCE(aircraft_states.source_priority, 99) OR (EXTRACT(EPOCH FROM NOW())::bigint - COALESCE(aircraft_states.last_contact, 0)) > 600) AND EXCLUDED.last_contact IS NULL THEN aircraft_states.last_contact
+          ELSE aircraft_states.last_contact
+        END,
+        longitude = CASE
+          WHEN (EXCLUDED.source_priority <= COALESCE(aircraft_states.source_priority, 99) OR (EXTRACT(EPOCH FROM NOW())::bigint - COALESCE(aircraft_states.last_contact, 0)) > 600) AND EXCLUDED.longitude IS NOT NULL THEN EXCLUDED.longitude
+          WHEN (EXCLUDED.source_priority <= COALESCE(aircraft_states.source_priority, 99) OR (EXTRACT(EPOCH FROM NOW())::bigint - COALESCE(aircraft_states.last_contact, 0)) > 600) AND EXCLUDED.longitude IS NULL THEN aircraft_states.longitude
+          ELSE aircraft_states.longitude
+        END,
+        latitude = CASE
+          WHEN (EXCLUDED.source_priority <= COALESCE(aircraft_states.source_priority, 99) OR (EXTRACT(EPOCH FROM NOW())::bigint - COALESCE(aircraft_states.last_contact, 0)) > 600) AND EXCLUDED.latitude IS NOT NULL THEN EXCLUDED.latitude
+          WHEN (EXCLUDED.source_priority <= COALESCE(aircraft_states.source_priority, 99) OR (EXTRACT(EPOCH FROM NOW())::bigint - COALESCE(aircraft_states.last_contact, 0)) > 600) AND EXCLUDED.latitude IS NULL THEN aircraft_states.latitude
+          ELSE aircraft_states.latitude
+        END,
+        baro_altitude = CASE
+          WHEN (EXCLUDED.source_priority <= COALESCE(aircraft_states.source_priority, 99) OR (EXTRACT(EPOCH FROM NOW())::bigint - COALESCE(aircraft_states.last_contact, 0)) > 600) AND EXCLUDED.baro_altitude IS NOT NULL THEN EXCLUDED.baro_altitude
+          WHEN (EXCLUDED.source_priority <= COALESCE(aircraft_states.source_priority, 99) OR (EXTRACT(EPOCH FROM NOW())::bigint - COALESCE(aircraft_states.last_contact, 0)) > 600) AND EXCLUDED.baro_altitude IS NULL THEN aircraft_states.baro_altitude
+          ELSE aircraft_states.baro_altitude
+        END,
+        on_ground = CASE 
+          WHEN EXCLUDED.source_priority <= COALESCE(aircraft_states.source_priority, 99) THEN EXCLUDED.on_ground
+          WHEN (EXTRACT(EPOCH FROM NOW())::bigint - COALESCE(aircraft_states.last_contact, 0)) > 600 THEN EXCLUDED.on_ground
+          ELSE aircraft_states.on_ground 
+        END,
+        velocity = CASE
+          WHEN (EXCLUDED.source_priority <= COALESCE(aircraft_states.source_priority, 99) OR (EXTRACT(EPOCH FROM NOW())::bigint - COALESCE(aircraft_states.last_contact, 0)) > 600) AND EXCLUDED.velocity IS NOT NULL THEN EXCLUDED.velocity
+          WHEN (EXCLUDED.source_priority <= COALESCE(aircraft_states.source_priority, 99) OR (EXTRACT(EPOCH FROM NOW())::bigint - COALESCE(aircraft_states.last_contact, 0)) > 600) AND EXCLUDED.velocity IS NULL THEN aircraft_states.velocity
+          ELSE aircraft_states.velocity
+        END,
+        true_track = CASE
+          WHEN (EXCLUDED.source_priority <= COALESCE(aircraft_states.source_priority, 99) OR (EXTRACT(EPOCH FROM NOW())::bigint - COALESCE(aircraft_states.last_contact, 0)) > 600) AND EXCLUDED.true_track IS NOT NULL THEN EXCLUDED.true_track
+          WHEN (EXCLUDED.source_priority <= COALESCE(aircraft_states.source_priority, 99) OR (EXTRACT(EPOCH FROM NOW())::bigint - COALESCE(aircraft_states.last_contact, 0)) > 600) AND EXCLUDED.true_track IS NULL THEN aircraft_states.true_track
+          ELSE aircraft_states.true_track
+        END,
+        vertical_rate = CASE
+          WHEN (EXCLUDED.source_priority <= COALESCE(aircraft_states.source_priority, 99) OR (EXTRACT(EPOCH FROM NOW())::bigint - COALESCE(aircraft_states.last_contact, 0)) > 600) AND EXCLUDED.vertical_rate IS NOT NULL THEN EXCLUDED.vertical_rate
+          WHEN (EXCLUDED.source_priority <= COALESCE(aircraft_states.source_priority, 99) OR (EXTRACT(EPOCH FROM NOW())::bigint - COALESCE(aircraft_states.last_contact, 0)) > 600) AND EXCLUDED.vertical_rate IS NULL THEN aircraft_states.vertical_rate
+          ELSE aircraft_states.vertical_rate
+        END,
+        sensors = CASE 
+          WHEN EXCLUDED.source_priority <= COALESCE(aircraft_states.source_priority, 99) THEN EXCLUDED.sensors
+          WHEN (EXTRACT(EPOCH FROM NOW())::bigint - COALESCE(aircraft_states.last_contact, 0)) > 600 THEN EXCLUDED.sensors
+          ELSE aircraft_states.sensors 
+        END,
+        geo_altitude = CASE
+          WHEN (EXCLUDED.source_priority <= COALESCE(aircraft_states.source_priority, 99) OR (EXTRACT(EPOCH FROM NOW())::bigint - COALESCE(aircraft_states.last_contact, 0)) > 600) AND EXCLUDED.geo_altitude IS NOT NULL THEN EXCLUDED.geo_altitude
+          WHEN (EXCLUDED.source_priority <= COALESCE(aircraft_states.source_priority, 99) OR (EXTRACT(EPOCH FROM NOW())::bigint - COALESCE(aircraft_states.last_contact, 0)) > 600) AND EXCLUDED.geo_altitude IS NULL THEN aircraft_states.geo_altitude
+          ELSE aircraft_states.geo_altitude
+        END,
+        -- Smart merge for squawk: Preserve complete data even from lower priority
+        squawk = CASE
+          WHEN NULLIF(EXCLUDED.squawk, '') IS NOT NULL THEN EXCLUDED.squawk
+          WHEN aircraft_states.squawk IS NOT NULL AND NULLIF(aircraft_states.squawk, '') IS NOT NULL THEN aircraft_states.squawk
+          ELSE NULL
+        END,
         spi = CASE WHEN EXCLUDED.source_priority <= COALESCE(aircraft_states.source_priority, 99) THEN EXCLUDED.spi ELSE aircraft_states.spi END,
         position_source = CASE WHEN EXCLUDED.source_priority <= COALESCE(aircraft_states.source_priority, 99) THEN EXCLUDED.position_source ELSE aircraft_states.position_source END,
-        category = CASE WHEN EXCLUDED.source_priority <= COALESCE(aircraft_states.source_priority, 99) THEN EXCLUDED.category ELSE aircraft_states.category END,
-        data_source = CASE WHEN EXCLUDED.source_priority <= COALESCE(aircraft_states.source_priority, 99) THEN EXCLUDED.data_source ELSE aircraft_states.data_source END,
-        feeder_id = CASE WHEN EXCLUDED.source_priority <= COALESCE(aircraft_states.source_priority, 99) THEN EXCLUDED.feeder_id ELSE aircraft_states.feeder_id END,
-        source_priority = CASE WHEN EXCLUDED.source_priority <= COALESCE(aircraft_states.source_priority, 99) THEN EXCLUDED.source_priority ELSE aircraft_states.source_priority END,
-        ingestion_timestamp = CASE WHEN EXCLUDED.source_priority <= COALESCE(aircraft_states.source_priority, 99) THEN EXCLUDED.ingestion_timestamp ELSE aircraft_states.ingestion_timestamp END;
+        -- Smart merge for category: Preserve complete data
+        category = CASE
+          WHEN EXCLUDED.category IS NOT NULL AND EXCLUDED.source_priority <= COALESCE(aircraft_states.source_priority, 99) THEN EXCLUDED.category
+          WHEN aircraft_states.category IS NOT NULL THEN aircraft_states.category
+          ELSE EXCLUDED.category
+        END,
+        -- Metadata: Update if higher priority OR existing data is stale
+        data_source = CASE 
+          WHEN EXCLUDED.source_priority <= COALESCE(aircraft_states.source_priority, 99) THEN EXCLUDED.data_source
+          WHEN (EXTRACT(EPOCH FROM NOW())::bigint - COALESCE(aircraft_states.last_contact, 0)) > 600 THEN EXCLUDED.data_source
+          ELSE aircraft_states.data_source 
+        END,
+        feeder_id = CASE 
+          WHEN EXCLUDED.source_priority <= COALESCE(aircraft_states.source_priority, 99) THEN EXCLUDED.feeder_id
+          WHEN (EXTRACT(EPOCH FROM NOW())::bigint - COALESCE(aircraft_states.last_contact, 0)) > 600 THEN EXCLUDED.feeder_id
+          ELSE aircraft_states.feeder_id 
+        END,
+        source_priority = CASE 
+          WHEN EXCLUDED.source_priority <= COALESCE(aircraft_states.source_priority, 99) THEN EXCLUDED.source_priority
+          WHEN (EXTRACT(EPOCH FROM NOW())::bigint - COALESCE(aircraft_states.last_contact, 0)) > 600 THEN EXCLUDED.source_priority
+          ELSE aircraft_states.source_priority 
+        END,
+        ingestion_timestamp = CASE 
+          WHEN EXCLUDED.source_priority <= COALESCE(aircraft_states.source_priority, 99) THEN EXCLUDED.ingestion_timestamp
+          WHEN (EXTRACT(EPOCH FROM NOW())::bigint - COALESCE(aircraft_states.last_contact, 0)) > 600 THEN EXCLUDED.ingestion_timestamp
+          ELSE aircraft_states.ingestion_timestamp 
+        END;
     `;
 
     const stateArray = [

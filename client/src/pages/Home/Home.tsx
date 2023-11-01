@@ -103,7 +103,8 @@ const Home: React.FC = () => {
 
     const planeMap = new Map<string, Aircraft>();
     const currentTime = Math.floor(Date.now() / 1000);
-    const maxAge = 5 * 60; // 5 minutes for cleanup
+    // 15 minute cleanup threshold to match display filter
+    const maxAge = 15 * 60;
 
     // Add live planes
     planes.forEach((plane) => {
@@ -136,7 +137,9 @@ const Home: React.FC = () => {
     }
 
     const currentTime = Math.floor(Date.now() / 1000);
-    const maxAge = 10 * 60;
+    // 15 minute filter provides 5 minute buffer beyond backend 10-minute poll interval
+    // This prevents planes from disappearing right before the next update
+    const maxAge = 15 * 60;
 
     const entries: Array<{ plane: Aircraft; route?: Route; derivedCategory?: number }> = [];
 
@@ -145,8 +148,10 @@ const Home: React.FC = () => {
         return;
       }
 
-      // Use route from aircraft response (preloaded) if available, otherwise use routes state
-      const route = plane.route || routes[plane.icao24];
+      // PRIORITY FIX: Prefer fresh user-fetched routes (routes state) over stale preloaded routes (plane.route)
+      // This ensures clicking to fetch fresh data actually shows the fresh data
+      // Only fall back to plane.route if no fresh route data has been fetched
+      const route = routes[plane.icao24] || plane.route;
       const derivedCategory = inferAircraftCategory(plane, route);
       const isRotorcraft = derivedCategory === 7 || plane.category === 7;
 
@@ -218,6 +223,7 @@ const Home: React.FC = () => {
           predicted: false,
           prediction_confidence: undefined,
           source: 'manual',
+          position_source: 'search',
         };
 
         upsertPlane(manualPlane);
@@ -236,7 +242,7 @@ const Home: React.FC = () => {
           });
           
           // Immediately fetch route data to get category and route info
-          fetchRouteForAircraftWithCategoryUpdate(manualPlane).then((routeData) => {
+          fetchRouteForAircraftWithCategoryUpdate(manualPlane).then(async (routeData) => {
             if (routeData && routeData.aircraftCategory !== undefined && routeData.aircraftCategory !== null) {
               const updatedCategory = routeData.aircraftCategory;
               
@@ -264,13 +270,10 @@ const Home: React.FC = () => {
                 };
               });
             }
+            
+            // Flight plan will be fetched by useEffect if toggle is on
           }).catch((err) => {
             console.error('Error fetching route for searched aircraft:', err);
-          });
-          
-          // Also prefetch flight plan route
-          fetchFlightPlanRoute(manualPlane).catch((err) => {
-            console.error('Error fetching flight plan for searched aircraft:', err);
           });
         }
         setSearchStatus('found');
@@ -302,9 +305,11 @@ const Home: React.FC = () => {
 
   // Fetch route wrapper to update aircraft category when route is fetched
   const fetchRouteForAircraftWithCategoryUpdate = useCallback(async (plane: Aircraft, isPrefetch = false) => {
-    // Always force refresh on actual clicks (not prefetch/hover) to get latest route data
-    // This ensures we get updated callsign, aircraft type, and route info on every click
-    const forceRefresh = !isPrefetch;
+    // Force refresh ONLY if we have stale preloaded data but no fresh fetched data
+    // This ensures the first click gets fresh API data, but subsequent clicks use the cache
+    const hasPreloadedData = !!plane.route;
+    const hasFreshFetchedData = !!routes[plane.icao24];
+    const forceRefresh = !isPrefetch && hasPreloadedData && !hasFreshFetchedData;
     
     const route = await fetchRouteForAircraft(plane, isPrefetch, forceRefresh);
     
@@ -313,7 +318,7 @@ const Home: React.FC = () => {
     }
     
     return route;
-  }, [fetchRouteForAircraft, updateAircraftCategory]);
+  }, [fetchRouteForAircraft, updateAircraftCategory, routes]);
 
   const handleViewHistory = async (plane: Aircraft) => {
     // Immediately set selection and highlight
@@ -324,11 +329,8 @@ const Home: React.FC = () => {
     setHighlightedAircraftIcao24(plane.icao24);
     setHistoryModalOpen(true);
 
-    // Fetch route data in parallel
-    const [routeData] = await Promise.all([
-      fetchRouteForAircraftWithCategoryUpdate(plane),
-      fetchFlightPlanRoute(plane),
-    ]);
+    // Fetch route data (flight plan will be fetched by useEffect if toggle is on)
+    const routeData = await fetchRouteForAircraftWithCategoryUpdate(plane);
 
     // Update category in both planes state and manualPlanes if we got route data
     if (routeData && routeData.aircraftCategory !== undefined && routeData.aircraftCategory !== null) {
@@ -460,11 +462,9 @@ const Home: React.FC = () => {
             setHighlightedAircraftIcao24(plane.icao24);
           }
 
-          // Fetch route (will use cache if already fetched, otherwise fetch from API)
-          await Promise.all([
-            fetchRouteForAircraftWithCategoryUpdate(plane, isPrefetch),
-            fetchFlightPlanRoute(plane),
-          ]);
+          // Fetch route data (airport info, aircraft type)
+          // Flight plan waypoints will be fetched lazily when user toggles the route display
+          await fetchRouteForAircraftWithCategoryUpdate(plane, isPrefetch);
         }}
       />
       );
@@ -862,6 +862,7 @@ const Home: React.FC = () => {
                     const normalizedUpdate = update.data.map((plane: Aircraft) => ({
                       ...plane,
                       source: plane.source ?? (update.type === 'full' ? 'websocket' : 'database'),
+                      position_source: update.type === 'full' ? 'websocket' : 'database',
                       predicted: plane.predicted === true,
                     }));
 

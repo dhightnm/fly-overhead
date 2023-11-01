@@ -29,6 +29,9 @@ export interface Aircraft {
   data_source?: 'opensky' | 'feeder' | 'flightaware' | string; // Data source from backend (opensky, feeder, etc.)
   feeder_id?: string | null; // Feeder ID if data is from a feeder
   source_priority?: number | null; // Priority of the data source (lower = higher priority)
+  position_source?: 'websocket' | 'database' | 'manual' | 'search' | string; // Where this specific position came from
+  data_age_seconds?: number | null; // How old the position data is in seconds
+  last_update_age_seconds?: number | null; // Alias for data_age_seconds
   predicted?: boolean;
   prediction_confidence?: number;
   route?: Route | null; // Route data included from backend (if cached)

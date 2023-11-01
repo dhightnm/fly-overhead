@@ -59,7 +59,7 @@ module.exports = {
     // At 10 min intervals = 144 calls/day (well within limits)
     // Previous 2 min interval = 720 calls/day (too aggressive)
     staleRecordThreshold: 2 * 60 * 60 * 1000, // 2 hours
-    recentContactThreshold: 30 * 60, // 30 minutes in seconds (increased to show more aircraft during rate limiting)
+    recentContactThreshold: 45 * 60, // 45 minutes in seconds (increased from 30 to reduce flickering at threshold)
     devModeStaleThreshold: 24 * 60 * 60, // 24 hours in seconds - for development when rate limited
   },
 };

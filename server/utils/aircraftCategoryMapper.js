@@ -66,6 +66,8 @@ const ICAO_MODEL_LOOKUP = {
   'CRJ9': 'CRJ-900',
   'CRJ7': 'CRJ-700',
   'CRJ2': 'CRJ-200',
+  // Very Light Jets
+  'EA50': 'Eclipse 500',
   // Cessna
   'C172': 'C172',
   'C152': 'C152',
@@ -129,6 +131,8 @@ const CATEGORY_PATTERNS = {
     /^BE9[0-9]$/, // Beechcraft jet series (BE90, BE99)
     /^PC12$/, // Pilatus PC12
     /^TBM[0-9]{3}$/, // TBM turboprops
+    /^EA50$/, // Eclipse 500 (very light jet)
+    /^ECLIPSE/i, // Eclipse aircraft
   ],
 
   // Category 3: Large aircraft (most commercial narrowbody)

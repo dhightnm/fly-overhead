@@ -70,7 +70,10 @@ export const useMapDataFetcher = ({
         // Smart merge: only preserve recent planes, avoid accumulation
         setPlanes((prevPlanes) => {
           const currentTime = Math.floor(Date.now() / 1000);
-          const maxAge = 5 * 60; // 5 minutes
+          // Backend polls every 10 minutes, preserve planes for 12 minutes (20% buffer)
+          // This prevents flickering when planes are at exactly 10min age
+          const MERGE_AGE_THRESHOLD = 12 * 60; // 12 minutes (backend poll interval + buffer)
+          const maxAge = MERGE_AGE_THRESHOLD;
           
           const normalizedAircraft = aircraft.map((plane) => ({
             ...plane,

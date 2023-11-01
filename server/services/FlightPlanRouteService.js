@@ -423,9 +423,64 @@ class FlightPlanRouteService {
         }
       }
 
-      // Step 4: If all fallbacks failed, return null
+      // Step 4: If no route in database, try fetching fresh data from FlightAware
+      // This ensures we get the route string even if the route API hasn't been called yet
+      if ((!waypoints || waypoints.length === 0) && callsign) {
+        logger.info('No route in database, fetching fresh data from FlightAware', {
+          icao24,
+          callsign,
+        });
+        
+        // Import FlightRouteService to fetch fresh data
+        const flightRouteService = require('./FlightRouteService');
+        
+        try {
+          // Fetch fresh route data (which includes the route string)
+          const freshRoute = await flightRouteService.getFlightRoute(
+            icao24,
+            callsign,
+            true, // isCurrentFlight
+            true  // allowExpensiveApis (user-initiated request for flight plan)
+          );
+          
+          if (freshRoute && freshRoute.route) {
+            logger.info('Fetched fresh route with route string from FlightAware', {
+              icao24,
+              callsign,
+              routeString: freshRoute.route.substring(0, 50),
+            });
+            
+            // Parse the fresh route string
+            waypoints = await this.parseRouteToWaypoints(freshRoute.route);
+            
+            if (waypoints && waypoints.length > 0) {
+              routeSource = 'fresh_flightaware';
+              routeData = {
+                route: freshRoute.route,
+                departure_icao: freshRoute.departureAirport?.icao,
+                arrival_icao: freshRoute.arrivalAirport?.icao,
+                callsign,
+                icao24,
+              };
+              logger.info('Successfully parsed fresh route string', {
+                icao24,
+                callsign,
+                waypointCount: waypoints.length,
+              });
+            }
+          }
+        } catch (error) {
+          logger.warn('Failed to fetch fresh route from FlightAware', {
+            icao24,
+            callsign,
+            error: error.message,
+          });
+        }
+      }
+      
+      // Step 5: If all attempts failed, return unavailable
       if (!waypoints || waypoints.length === 0) {
-        logger.debug('No route available after all fallbacks', {
+        logger.debug('No route available after all attempts', {
           icao24,
           callsign,
         });
