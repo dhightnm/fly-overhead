@@ -82,7 +82,7 @@ const Home = () => {
 
     return planes.map((plane, i) => {
       if (plane[6] !== null) {
-        return <PlaneMarker key={i} plane={plane} />;
+        return <PlaneMarker key={plane.id} plane={plane} />;
       }
       return null;
     });
