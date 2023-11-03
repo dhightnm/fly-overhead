@@ -21,14 +21,9 @@ app.use(morgan('short'));
 
 app.use('/api', require('./routes/openSkyRouter'));
 
+updateDatabaseFromAPI();
 populateDatabase();
-// populateDatabaseDynamo();
-// updateDatabaseFromAPIDynamo();
-// setInterval(updateDatabaseFromAPIDynamo, 60000);
-// setInterval(updateDatabaseFromAPI, 300000);
-// deleteStaleRecordsDynamo();
 // setInterval(updateDatabaseFromAPI, 10000);
 deleteStaleRecords();
-// setInterval(deleteStaleRecordsDynamo, 2 * 60 * 60 * 1000);
-
+setInterval(deleteStaleRecords, 600000);
 app.listen(PORT, () => console.log(`Listening on port: ${PORT}`));
