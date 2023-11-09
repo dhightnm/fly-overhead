@@ -36,7 +36,7 @@ const MapEventsHandler = ({ setUserPosition, setPlanes, setStarlink }) => {
     const interval = setInterval(() => {
         fetchData();
         console.log("FIRED");
-    }, 5000);
+    }, 2 * 60 * 1000);
 
     return () => clearInterval(interval);
   });
