@@ -80,8 +80,14 @@ const Home = () => {
       return <p>No planes to display.</p>;
     }
 
+    const moreThanTenMinutesAgo = (lastContactEpoch) => {
+      const currentTimeEpoch = Math.floor(Date.now() / 1000);
+      const tenMinutesAgoEpoch = currentTimeEpoch - (10 * 60);
+      return lastContactEpoch < tenMinutesAgoEpoch;
+    };
+
     return planes.map((plane, i) => {
-      if (plane[6] !== null) {
+      if (!moreThanTenMinutesAgo(plane.last_contact) && plane.velocity > 2) {
         return <PlaneMarker key={plane.id} plane={plane} />;
       }
       return null;
