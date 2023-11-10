@@ -38,10 +38,11 @@ jobs:
             cd program/fly-overhead
             git pull origin master
             cd client
+            pm2 start npm --name "client" -- run start
             npm install
-            npm run build
             pm2 restart all
             cd ../server
+            pm2 start npm --name "server" -- run dev
             npm install
             pm2 restart all
           ENDSSH
