@@ -13,6 +13,11 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v2
 
+        - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '16.20.2' 
+
       - name: Set up SSH
         run: |
           mkdir -p ~/.ssh
