@@ -16,7 +16,7 @@ const MapEventsHandler = ({ setUserPosition, setPlanes, setStarlink }) => {
     const seaLevel = 5;
 
     // Fetch starlink data
-    const satRes = await axios.get(`http://localhost:3001/api/starlink/${center.lat}/${center.lng}/${seaLevel}/`);
+    const satRes = await axios.get(`http://54.183.195.77:3001/api/starlink/${center.lat}/${center.lng}/${seaLevel}/`);
     if (satRes.data) {
       setStarlink(satRes.data.above);
     } else {
@@ -24,7 +24,7 @@ const MapEventsHandler = ({ setUserPosition, setPlanes, setStarlink }) => {
     }
 
     // Fetch plane data
-    const res = await axios.get(`http://localhost:3001/api/area/${wrapBounds._southWest.lat}/${wrapBounds._southWest.lng}/${wrapBounds._northEast.lat}/${wrapBounds._northEast.lng}`);
+    const res = await axios.get(`http://54.183.195.77:3001/api/area/${wrapBounds._southWest.lat}/${wrapBounds._southWest.lng}/${wrapBounds._northEast.lat}/${wrapBounds._northEast.lng}`);
     if (res.data) {
       setPlanes(res.data);
     } else {
@@ -46,7 +46,7 @@ const MapEventsHandler = ({ setUserPosition, setPlanes, setStarlink }) => {
     load: () => {
       const loadCenter = map.locate().getCenter();
       loadCenter();
-      const res = axios.get('http://localhost:3001/api/area/all');
+      const res = axios.get('http://54.183.195.77:3001/api/area/all');
       if (res.data) {
         setPlanes(res.data);
       } else { console.log('no planes found');}
