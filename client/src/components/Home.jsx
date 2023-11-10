@@ -9,6 +9,8 @@ import MapFlyToHandler from './MapFlyToHandler';
 
 const MapEventsHandler = ({ setUserPosition, setPlanes, setStarlink }) => {
 
+  const REACT_APP_FLY_OVERHEAD_API_URL= "http://13.52.100.197:3001";
+
   const fetchData = async () => {
     const bounds = map.getBounds();
     const wrapBounds = map.wrapLatLngBounds(bounds);
@@ -16,7 +18,7 @@ const MapEventsHandler = ({ setUserPosition, setPlanes, setStarlink }) => {
     const seaLevel = 5;
 
     // Fetch starlink data
-    const satRes = await axios.get(`http://13.52.100.197:3001/api/starlink/${center.lat}/${center.lng}/${seaLevel}/`);
+    const satRes = await axios.get(`${REACT_APP_FLY_OVERHEAD_API_URL}/api/starlink/${center.lat}/${center.lng}/${seaLevel}/`);
     if (satRes.data) {
       setStarlink(satRes.data.above);
     } else {
@@ -24,7 +26,7 @@ const MapEventsHandler = ({ setUserPosition, setPlanes, setStarlink }) => {
     }
 
     // Fetch plane data
-    const res = await axios.get(`http://13.52.100.197:3001/api/area/${wrapBounds._southWest.lat}/${wrapBounds._southWest.lng}/${wrapBounds._northEast.lat}/${wrapBounds._northEast.lng}`);
+    const res = await axios.get(`${REACT_APP_FLY_OVERHEAD_API_URL}/api/area/${wrapBounds._southWest.lat}/${wrapBounds._southWest.lng}/${wrapBounds._northEast.lat}/${wrapBounds._northEast.lng}`);
     if (res.data) {
       setPlanes(res.data);
     } else {
@@ -46,7 +48,7 @@ const MapEventsHandler = ({ setUserPosition, setPlanes, setStarlink }) => {
     load: () => {
       const loadCenter = map.locate().getCenter();
       loadCenter();
-      const res = axios.get('http://13.52.100.197:3001/api/area/all');
+      const res = axios.get(`${REACT_APP_FLY_OVERHEAD_API_URL}/api/area/all`);
       if (res.data) {
         setPlanes(res.data);
       } else { console.log('no planes found');}
