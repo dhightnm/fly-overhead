@@ -9,7 +9,7 @@ const NavBar = () => {
 
     const handleSearch = async () => {
       try {
-        const res = await axios.get(`http://54.183.195.77:3001/api/planes/${search}`);
+        const res = await axios.get(`http://13.52.100.197:3001/api/planes/${search}`);
     
         const planeDetails = res.data;
         
