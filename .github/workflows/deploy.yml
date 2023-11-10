@@ -30,10 +30,10 @@ jobs:
             cd program/fly-overhead
             git pull origin master
             cd client
-            npm install
-            npm run build
-            pm2 restart all
+            /home/ubuntu/.nvm/versions/node/v16.20.2/bin/npm install
+            /home/ubuntu/.nvm/versions/node/v16.20.2/bin/npm run build
+            /home/ubuntu/.nvm/versions/node/v16.20.2/bin/pm2 restart all
             cd ../server
-            npm install
-            pm2 restart all
+            /home/ubuntu/.nvm/versions/node/v16.20.2/bin/npm install
+            /home/ubuntu/.nvm/versions/node/v16.20.2/bin/pm2 restart all
           ENDSSH
