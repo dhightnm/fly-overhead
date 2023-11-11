@@ -4,7 +4,7 @@ import axios from 'axios';
 import './navbar.css';
 
 const NavBar = () => {
-  const REACT_APP_FLY_OVERHEAD_API_URL= "http://13.57.183.124:3001";
+  const REACT_APP_FLY_OVERHEAD_API_URL= "http://54.176.12.181:3001";
 
     const [search, setSearch] = useState('');
     const { setSearchLatlng } = useContext(PlaneContext);
