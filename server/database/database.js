@@ -160,8 +160,8 @@ const getAircraftWithinBounds = async (latmin, lonmin, latmax, lonmax) => {
 const getAirportsWithinBounds = async (latmin, lonmin, latmax, lonmax) => {
   const queryString = `
     SELECT * FROM airports
-    WHERE lat_decimal BETWEEN ${latmin} AND ${latmax}
-    AND lon_decimal BETWEEN ${lonmin} AND ${lonmax};`;
+    WHERE latitude BETWEEN ${latmin} AND ${latmax}
+    AND longitude BETWEEN ${lonmin} AND ${lonmax};`;
   const airports = await db.query(queryString);
   return airports;
 };

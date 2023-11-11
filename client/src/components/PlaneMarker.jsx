@@ -14,7 +14,6 @@ const CUSTOM_ICON = L.icon({
 });
 
 const PlaneMarker = ({ plane: { latitude, longitude, callsign, icao24, baro_altitude, velocity, true_track } }) => {
-    console.log('TRUETRACKS', true_track);
     return (
         <Marker position={[latitude, longitude]} icon={CUSTOM_ICON} rotationAngle={true_track}>
             <Popup>
