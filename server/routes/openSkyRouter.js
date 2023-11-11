@@ -2,7 +2,9 @@ const router = require('express').Router();
 const axios = require('axios');
 const NodeCache = require('node-cache');
 require('dotenv').config();
-const { db, insertOrUpdateAircraftState, getAircraftWithinBounds } = require('../database/database');
+const {
+  db, insertOrUpdateAircraftState, getAircraftWithinBounds, getAirportsWithinBounds,
+} = require('../database/database');
 
 const cache = new NodeCache({ maxKeys: 100 });
 
@@ -66,6 +68,20 @@ router.get('/starlink/:observer_lat/:observer_lng/:observer_alt', async (req, re
     res.json(starlinkStates.data);
   } catch (err) {
     console.log('ERROR Fetching Starlink States', err);
+  }
+});
+
+router.get('/airports/:latmin/:lonmin/:latmax/:lonmax', async (req, res) => {
+  const { latmin } = req.params;
+  const { lonmin } = req.params;
+  const { latmax } = req.params;
+  const { lonmax } = req.params;
+
+  try {
+    const airports = await getAirportsWithinBounds(latmin, lonmin, latmax, lonmax);
+    res.json(airports);
+  } catch (err) {
+    console.log(err);
   }
 });
 
