@@ -9,7 +9,7 @@ import MapFlyToHandler from './MapFlyToHandler';
 
 const MapEventsHandler = ({ setUserPosition, setPlanes, setStarlink }) => {
 
-  const REACT_APP_FLY_OVERHEAD_API_URL= "http://13.57.183.124:3001";
+  const REACT_APP_FLY_OVERHEAD_API_URL= "http://54.176.12.181:3001";
   // const REACT_APP_FLY_OVERHEAD_API_URL= "http://localhost:3001";
 
 
