@@ -37,6 +37,7 @@ jobs:
             [ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"  # This loads nvm bash_completion
             cd program/fly-overhead
             git pull origin master
+            pm2 delete all
             cd client
             pm2 start npm --name "client" -- run start
             npm install
