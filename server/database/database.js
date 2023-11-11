@@ -157,6 +157,15 @@ const getAircraftWithinBounds = async (latmin, lonmin, latmax, lonmax) => {
   return aircraftStates;
 };
 
+const getAirportsWithinBounds = async (latmin, lonmin, latmax, lonmax) => {
+  const queryString = `
+    SELECT * FROM airports
+    WHERE lat_decimal BETWEEN ${latmin} AND ${latmax}
+    AND lon_decimal BETWEEN ${lonmin} AND ${lonmax};`;
+  const airports = await db.query(queryString);
+  return airports;
+};
+
 module.exports = {
   db,
   populateDatabase,
@@ -164,4 +173,5 @@ module.exports = {
   getAircraftWithinBounds,
   updateDatabaseFromAPI,
   deleteStaleRecords,
+  getAirportsWithinBounds,
 };
