@@ -21,5 +21,5 @@ updateDatabaseFromAPI();
 populateDatabase();
 setInterval(updateDatabaseFromAPI, 360000);
 deleteStaleRecords();
-setInterval(deleteStaleRecords, 600000);
+// setInterval(deleteStaleRecords, 600000);
 app.listen(PORT, () => console.log(`Listening on port: ${PORT}`));
