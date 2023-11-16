@@ -59,15 +59,15 @@ router.get('/area/:latmin/:lonmin/:latmax/:lonmax', async (req, res) => {
 });
 
 router.get('/starlink/:observer_lat/:observer_lng/:observer_alt', async (req, res) => {
-  const { observerLat } = req.params;
-  const { observerLng } = req.params;
-  const { observerAlt } = req.params;
+  const observerLat = req.params.observer_lat;
+  const observerLng = req.params.observer_lng;
+  const observerAlt = req.params.observer_alt;
 
   try {
-    const starlinkStates = await axios.get(`https://api.n2yo.com/rest/v1/satellite/above/${observerLat}/${observerLng}/${observerAlt}/90/52&apiKey=M3FTYY-Q2CLZF-U76MTW-553N`);
-    res.json(starlinkStates.data);
+    const starlinkStates = await axios.get(`https://api.n2yo.com/rest/v1/satellite/above/${observerLat}/${observerLng}/${observerAlt}/45/52&apiKey=M3FTYY-Q2CLZF-U76MTW-553N`);
+    res.status(200).json(starlinkStates.data);
   } catch (err) {
-    console.log('ERROR Fetching Starlink States', err);
+    res.status(500).json({ error: 'ERROR Fetching Starlink States' });
   }
 });
 
