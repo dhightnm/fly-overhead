@@ -17,14 +17,15 @@ const MapEventsHandler = ({ setUserPosition, setPlanes, setStarlink }) => {
     const bounds = map.getBounds();
     const wrapBounds = map.wrapLatLngBounds(bounds);
     const center = map.getCenter();
-    const seaLevel = 5;
+    const seaLevel = 0;
 
     // Fetch starlink data
     const satRes = await axios.get(`${REACT_APP_FLY_OVERHEAD_API_URL}/api/starlink/${center.lat}/${center.lng}/${seaLevel}/`);
-    if (satRes.data) {
+    if (satRes.data && satRes.data.above) {
       setStarlink(satRes.data.above);
     } else {
       console.log('no starlink found');
+      setStarlink([]);
     }
 
     // Fetch plane data
@@ -40,7 +41,7 @@ const MapEventsHandler = ({ setUserPosition, setPlanes, setStarlink }) => {
     const interval = setInterval(() => {
         fetchData();
         console.log("FIRED");
-    }, 2 * 60 * 1000);
+    }, 15 * 1000);
 
     return () => clearInterval(interval);
   });
@@ -98,7 +99,7 @@ const Home = () => {
     });
   };
 
-  const position = searchLatlng || [35.1858, -106.8107];
+  const position = searchLatlng || [35.104795500039565, -106.62620902061464];
 
   const renderStarlink = () => {
     if (starlink === null) {
@@ -111,7 +112,7 @@ const Home = () => {
 
     return starlink.map((sat, i) => {
       if (sat[6] !== null) {
-        return <SatMarker key={i} sat={sat} />;
+        return <SatMarker key={sat.satid} sat={sat} />;
       }
       return null;
     });
