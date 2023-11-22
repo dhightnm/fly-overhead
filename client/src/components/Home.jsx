@@ -92,7 +92,7 @@ const Home = () => {
     };
 
     return planes.map((plane, i) => {
-      if (!moreThanTenMinutesAgo(plane.last_contact) && plane.velocity > 2) {
+      if (plane.on_ground === false && plane.velocity > 2) {
         return <PlaneMarker key={plane.id} plane={plane} />;
       }
       return null;
