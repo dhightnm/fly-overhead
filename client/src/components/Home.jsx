@@ -111,7 +111,7 @@ const Home = () => {
 
     return starlink.map((sat, i) => {
       if (sat[6] !== null) {
-        return <SatMarker key={i} sat={sat} />;
+        return <SatMarker key={sat.id} sat={sat} />;
       }
       return null;
     });
