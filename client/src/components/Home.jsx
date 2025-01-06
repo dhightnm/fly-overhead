@@ -9,7 +9,7 @@ import MapFlyToHandler from './MapFlyToHandler';
 
 const MapEventsHandler = ({ setUserPosition, setPlanes, setStarlink }) => {
 
-  const REACT_APP_FLY_OVERHEAD_API_URL= "http://54.176.12.181:3001";
+  const REACT_APP_FLY_OVERHEAD_API_URL= "https://flyoverhead.com";
   // const REACT_APP_FLY_OVERHEAD_API_URL= "http://localhost:3001";
 
 
@@ -17,14 +17,15 @@ const MapEventsHandler = ({ setUserPosition, setPlanes, setStarlink }) => {
     const bounds = map.getBounds();
     const wrapBounds = map.wrapLatLngBounds(bounds);
     const center = map.getCenter();
-    const seaLevel = 5;
+    const seaLevel = 0;
 
     // Fetch starlink data
     const satRes = await axios.get(`${REACT_APP_FLY_OVERHEAD_API_URL}/api/starlink/${center.lat}/${center.lng}/${seaLevel}/`);
-    if (satRes.data) {
+    if (satRes.data && satRes.data.above) {
       setStarlink(satRes.data.above);
     } else {
       console.log('no starlink found');
+      setStarlink([]);
     }
 
     // Fetch plane data
@@ -40,7 +41,7 @@ const MapEventsHandler = ({ setUserPosition, setPlanes, setStarlink }) => {
     const interval = setInterval(() => {
         fetchData();
         console.log("FIRED");
-    }, 2 * 60 * 1000);
+    }, 15 * 1000);
 
     return () => clearInterval(interval);
   });
@@ -91,14 +92,14 @@ const Home = () => {
     };
 
     return planes.map((plane, i) => {
-      if (!moreThanTenMinutesAgo(plane.last_contact) && plane.velocity > 2) {
+      if (plane.on_ground === false && plane.velocity > 2) {
         return <PlaneMarker key={plane.id} plane={plane} />;
       }
       return null;
     });
   };
 
-  const position = searchLatlng || [35.1858, -106.8107];
+  const position = searchLatlng || [35.104795500039565, -106.62620902061464];
 
   const renderStarlink = () => {
     if (starlink === null) {
@@ -111,6 +112,7 @@ const Home = () => {
 
     return starlink.map((sat, i) => {
       if (sat[6] !== null) {
+        return <SatMarker key={sat.satid} sat={sat} />;
         return <SatMarker key={sat.id} sat={sat} />;
       }
       return null;
