@@ -1,50 +1,73 @@
+/* Reset and base styling */
 * {
     box-sizing: border-box;
-}
-
-body {
+  }
+  
+  body {
     margin: 0;
-    font-family: Arial, Helvetica, sans-serif;
-}
-
-.site-title {
-    font-size: 1.5rem;
-    font-weight: bold;
-    margin: 0 0 0 3rem;
-}
-
-.navbar {
-    background-color: gray;
-    color: white;
+    /* A slightly more modern font stack */
+    font-family: "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background-color: #f8f9fa; /* Light gray background */
+  }
+  
+  /* Navbar container */
+  .navbar {
+    background-color: #343a40; /* Dark gray/charcoal background */
     display: flex;
     justify-content: space-between;
     align-items: center;
-    gap: 2rem;
-    padding: 0 2 rem;
-}
-
-.navbar a {
-    color: inherit;
-    text-decoration: none;
-    height: 100%;
-    display: flex;
-    align-items: center;
-    padding: .25rem;
-}
-
-.navbar li.active {
-    color: #555;
-}
-
-.navbar li:hover {
-    text-decoration: underline;
-    background-color: #777;
-}
-
-.navbar ul {
-    padding: 0;
-    margin-right: 5rem ;
+    padding: 0.75rem 2rem; /* Spacing around the navbar */
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1); /* Subtle shadow */
+    border-radius: 0 0 6px 6px; /* Slight rounding at bottom corners */
+  }
+  
+  /* Site title/logo area */
+  .site-title {
+    font-size: 1.5rem;
+    font-weight: 600;
+    color: #fff;
+    margin: 0;
+  }
+  
+  /* Nav list */
+  .navbar ul {
     list-style: none;
     display: flex;
-    gap: 1rem;
-}
+    gap: 1rem; /* Space between nav items */
+    margin: 0;
+    padding: 0;
+  }
+  
+  /* Nav items */
+  .navbar li {
+    position: relative;
+  }
+  
+  /* Links */
+  .navbar a {
+    color: #fff;
+    text-decoration: none;
+    display: flex;
+    align-items: center;
+    padding: 0.5rem;
+    transition: background-color 0.2s ease, color 0.2s ease;
+  }
+  
+  /* Hover effect on nav items */
+  .navbar a:hover {
+    background-color: #495057; /* Slightly lighter shade of gray */
+    color: #f8f9fa;
+    border-radius: 4px; /* Rounded hover highlight */
+  }
+  
+  /* Active link state */
+  .navbar li.active a {
+    color: #adb5bd; /* Lighter gray to indicate active page */
+  }
+  
+  /* Optional: Focus outline for keyboard accessibility */
+  .navbar a:focus {
+    outline: 2px dashed #ced4da;
+    outline-offset: 2px;
+  }
+  

@@ -9,8 +9,8 @@ import MapFlyToHandler from './MapFlyToHandler';
 
 const MapEventsHandler = ({ setUserPosition, setPlanes, setStarlink }) => {
 
-  const REACT_APP_FLY_OVERHEAD_API_URL= "https://flyoverhead.com";
-  // const REACT_APP_FLY_OVERHEAD_API_URL= "http://localhost:3001";
+  // const REACT_APP_FLY_OVERHEAD_API_URL= "https://flyoverhead.com";
+  const REACT_APP_FLY_OVERHEAD_API_URL= "http://localhost:3001";
 
 
   const fetchData = async () => {
