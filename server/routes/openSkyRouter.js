@@ -45,16 +45,23 @@ router.get('/planes/:icao24OrCallsign', async (req, res) => {
 });
 
 router.get('/area/:latmin/:lonmin/:latmax/:lonmax', async (req, res) => {
-  const { latmin } = req.params;
-  const { lonmin } = req.params;
-  const { latmax } = req.params;
-  const { lonmax } = req.params;
+  const { latmin, lonmin, latmax, lonmax } = req.params;
 
   try {
-    const states = await getAircraftWithinBounds(latmin, lonmin, latmax, lonmax);
+    const tenMinutesAgo = Math.floor(Date.now() / 1000) - (10 * 60);
+    // Return only flights that have a last_contact more recent than 10 minutes
+    const states = await db.manyOrNone(`
+      SELECT * 
+      FROM aircraft_states
+      WHERE last_contact >= $1
+        AND latitude BETWEEN $2 AND $3
+        AND longitude BETWEEN $4 AND $5
+    `, [tenMinutesAgo, latmin, latmax, lonmin, lonmax]);
+    
     res.json(states);
   } catch (err) {
     console.log(err);
+    res.status(500).send('Error retrieving states');
   }
 });
 

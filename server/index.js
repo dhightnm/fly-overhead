@@ -2,7 +2,11 @@
 const express = require('express');
 const cors = require('cors');
 const morgan = require('morgan');
+require('dotenv').config();
+
 const {
+  createMainTable,
+  createHistoryTable,
   populateDatabase,
   deleteStaleRecords,
   updateDatabaseFromAPI,
@@ -10,28 +14,62 @@ const {
 
 const PORT = process.env.PORT || 3001;
 
-const allowedOrigins = ['http://flyoverhead.com', 'http://www.flyoverhead.com', 'http://localhost:3000'];
+const allowedOrigins = [
+  'http://flyoverhead.com',
+  'http://www.flyoverhead.com',
+  'http://localhost:3000'
+];
 
 const app = express();
+
+// Configure CORS
 app.use(cors({
   origin(origin, callback) {
     if (!origin) return callback(null, true);
-    if (allowedOrigins.indexOf(origin) === -1) {
-      const msg = 'The CORS policy for this site does not '
-                + 'allow access from the specified Origin.';
+    if (!allowedOrigins.includes(origin)) {
+      const msg = 'The CORS policy for this site does not allow access from the specified Origin.';
       return callback(new Error(msg), false);
     }
     return callback(null, true);
   },
 }));
+
+// Middleware
 app.use(express.json());
 app.use(morgan('short'));
 
+// Routes
 app.use('/api', require('./routes/openSkyRouter'));
 
-updateDatabaseFromAPI();
-populateDatabase();
-// setInterval(updateDatabaseFromAPI, 360000);
-// deleteStaleRecords();
-setInterval(deleteStaleRecords, 600000);
-app.listen(PORT, () => console.log(`Listening on port: ${PORT}`));
+/**
+ * Initialize the database tables, then start polling 
+ * and set up intervals for updates/deletes.
+ */
+async function startServer() {
+  try {
+    // 1) Create tables if they don't exist
+    await createMainTable();
+    await createHistoryTable();
+
+    // 2) Initially update the database & populate bounding boxes
+    updateDatabaseFromAPI();
+    populateDatabase();
+
+    // 3) Schedule periodic updates if desired
+    // e.g., every 6 minutes:
+    setInterval(updateDatabaseFromAPI, 120000);
+
+    // 4) Schedule stale record cleanup (here: every 10 minutes)
+    // setInterval(deleteStaleRecords, 600000);
+
+    // 5) Start the server
+    app.listen(PORT, () => {
+      console.log(`Listening on port: ${PORT}`);
+    });
+  } catch (err) {
+    console.error('Error starting server:', err);
+  }
+}
+
+// Call our async init function
+startServer();
