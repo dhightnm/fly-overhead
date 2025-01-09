@@ -1,6 +1,8 @@
 import React from 'react';
 import { Marker, Popup } from 'react-leaflet';
 import customSatIcon from '../assets/sat.png';
+import L from 'leaflet';
+
 
 const CUSTOM_ICON = L.icon({
     iconUrl: customSatIcon,
