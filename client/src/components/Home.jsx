@@ -97,6 +97,9 @@ const Home = () => {
       if (plane.on_ground === false && plane.velocity > 2) {
         return <PlaneMarker key={plane.id} plane={plane} />;
       }
+
+      if (plane.on_ground ===  true && plane.velocity > 2)
+        return <PlaneMarker key={plane.id} plane={plane} />;
       return null;
     });
   };
