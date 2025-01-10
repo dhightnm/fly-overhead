@@ -94,12 +94,9 @@ const Home = () => {
 
     return planes.map((plane) => {
       // Show only planes that are flying
-      if (plane.on_ground === false && plane.velocity > 2) {
+      if (plane.velocity > 2) {
         return <PlaneMarker key={plane.id} plane={plane} />;
       }
-
-      if (plane.on_ground ===  true && plane.velocity > 2)
-        return <PlaneMarker key={plane.id} plane={plane} />;
       return null;
     });
   };

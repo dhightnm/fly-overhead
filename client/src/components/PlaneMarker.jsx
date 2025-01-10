@@ -15,7 +15,7 @@ const CUSTOM_ICON = L.icon({
 });
 
 const CUSTOM_ICON_GROUND = L.icon({
-    iconUrl: customPlaneIcon,
+    iconUrl: customPlaneIconGround,
     iconSize: [32, 32],
     iconAnchor: [16, 16],
     popupAnchor: [0, 0],
