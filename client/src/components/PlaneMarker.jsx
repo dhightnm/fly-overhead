@@ -2,6 +2,7 @@ import React from 'react';
 import { Marker, Popup } from 'react-leaflet';
 import L from 'leaflet';
 import customPlaneIcon from '../assets/plane.png';
+import customPlaneIconGround from '../assets/plane-ground.png';
 import 'leaflet-rotatedmarker';
 
 import './planeMarker.css'; // Import a stylesheet for your component
@@ -13,9 +14,16 @@ const CUSTOM_ICON = L.icon({
     popupAnchor: [0, 0],
 });
 
-const PlaneMarker = ({ plane: { latitude, longitude, callsign, icao24, baro_altitude, velocity, true_track } }) => {
+const CUSTOM_ICON_GROUND = L.icon({
+    iconUrl: customPlaneIcon,
+    iconSize: [32, 32],
+    iconAnchor: [16, 16],
+    popupAnchor: [0, 0],
+});
+
+const PlaneMarker = ({ plane: { latitude, longitude, on_ground, callsign, icao24, baro_altitude, velocity, true_track } }) => {
     return (
-        <Marker position={[latitude, longitude]} icon={CUSTOM_ICON} rotationAngle={true_track}>
+        <Marker position={[latitude, longitude]} icon={on_ground === true ? CUSTOM_ICON_GROUND : CUSTOM_ICON} rotationAngle={true_track}>
             <Popup>
                 <div className="plane-popup">
                     <div><strong>Callsign:</strong> <span>{callsign}</span></div>
