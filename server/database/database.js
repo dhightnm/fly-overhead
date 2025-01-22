@@ -1,12 +1,14 @@
 const pgp = require('pg-promise')();
 const axios = require('axios');
+require('dotenv').config();
 
-/** 
- * Use your actual credentials here. 
+/**
+ * Use your actual credentials here.
  * If you prefer, store them in .env and read via process.env.
  * e.g.: const connectionString = process.env.DATABASE_URL
  */
-const connectionString = 'postgresql://example:example@localhost:5432/fly_overhead';
+const connectionString = process.env.POSTGRES_URL
+|| 'postgresql://example:example@localhost:5432/fly_overhead';
 const db = pgp(connectionString);
 
 /**
@@ -154,7 +156,7 @@ const insertOrUpdateAircraftState = async (state) => {
 };
 
 /**
- * 5) Create the main table if it doesn't exist, 
+ * 5) Create the main table if it doesn't exist,
  *    create the history table if it doesn't exist,
  *    then run the bounding-box queries to populate data.
  */
@@ -169,10 +171,18 @@ const populateDatabase = async () => {
 
     // Example bounding boxes
     const boundingBoxes = [
-      { lamin: -90, lomin: -180, lamax: 0,   lomax: 0   },
-      { lamin: 0,   lomin: -180, lamax: 90,  lomax: 0   },
-      { lamin: -90, lomin: 0,    lamax: 0,   lomax: 180 },
-      { lamin: 0,   lomin: 0,    lamax: 90,  lomax: 180 },
+      {
+        lamin: -90, lomin: -180, lamax: 0, lomax: 0,
+      },
+      {
+        lamin: 0, lomin: -180, lamax: 90, lomax: 0,
+      },
+      {
+        lamin: -90, lomin: 0, lamax: 0, lomax: 180,
+      },
+      {
+        lamin: 0, lomin: 0, lamax: 90, lomax: 180,
+      },
     ];
 
     // Fetch data for each bounding box
@@ -195,8 +205,8 @@ const fetchDataForBoundingBox = async (box) => {
         lamin: box.lamin,
         lomin: box.lomin,
         lamax: box.lamax,
-        lomax: box.lomax
-      }
+        lomax: box.lomax,
+      },
     });
 
     const promises = areaRes.data.states.map((state) => {

@@ -1,0 +1,30 @@
+version: '3.9'
+services:
+  db:
+    image: postgres:15
+    container_name: my-postgres
+    environment:
+      - POSTGRES_USER=example
+      - POSTGRES_PASSWORD=example
+      - POSTGRES_DB=fly_overhead
+    ports:
+      - "5432:5432"
+    volumes:
+      - db-data:/var/lib/postgresql/data
+
+  server:
+    build:
+      context: .
+      dockerfile: Dockerfile   # The Dockerfile you already created
+    container_name: my-node
+    ports:
+      - "3001:3005"           # Host port 3001 -> Container port 3005
+    env_file:
+      - ./server/.env
+    environment:
+      - DATABASE_URL=postgresql://example:example@db:5432/fly_overhead
+    depends_on:
+      - db
+
+volumes:
+  db-data:
