@@ -1,5 +1,6 @@
 /* eslint-disable linebreak-style */
 const express = require('express');
+const path = require('path');
 const cors = require('cors');
 const morgan = require('morgan');
 require('dotenv').config();
@@ -13,11 +14,12 @@ const {
 } = require('./database/database');
 
 const PORT = process.env.PORT || 3001;
+console.log('PORT SERVER:', PORT);
 
 const allowedOrigins = [
   'http://flyoverhead.com',
   'http://www.flyoverhead.com',
-  'http://localhost:3000'
+  `http://localhost:${PORT}`,
 ];
 
 const app = express();
@@ -37,6 +39,8 @@ app.use(cors({
 // Middleware
 app.use(express.json());
 app.use(morgan('short'));
+
+app.use(express.static(path.join(__dirname, 'client/build')));
 
 // Routes
 app.use('/api', require('./routes/openSkyRouter'));

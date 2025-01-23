@@ -8,7 +8,6 @@ WORKDIR /app/client
 
 # Copy only the files needed to install + build
 COPY client/package.json client/package-lock.json* ./
-
 # Install front-end dependencies
 RUN npm install
 
