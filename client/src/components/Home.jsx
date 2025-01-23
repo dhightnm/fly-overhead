@@ -7,9 +7,16 @@ import { PlaneContext } from '../contexts/PlaneContext';
 import MapFlyToHandler from './MapFlyToHandler';
 // Import your CSS
 import './home.css';
+import dotenv from 'dotenv';
+
+dotenv.config();
+
+const PORT = process.env.REACT_APP_PORT || 3001;
+console.log('PORT CLIENT:', process.env.REACT_APP_PORT);
 
 const MapEventsHandler = ({ setUserPosition, setPlanes, setStarlink }) => {
-  const REACT_APP_FLY_OVERHEAD_API_URL= "http://localhost:3001";
+  const REACT_APP_FLY_OVERHEAD_API_URL= `http://localhost:${PORT}`;
+  console.log(PORT);
   const map = useMapEvents({
     load: () => {
       const loadCenter = map.locate().getCenter();
