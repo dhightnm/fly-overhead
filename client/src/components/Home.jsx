@@ -14,7 +14,7 @@ dotenv.config();
 const PORT = process.env.REACT_APP_PORT || 3001;
 
 const MapEventsHandler = ({ setUserPosition, setPlanes, setStarlink }) => {
-  const REACT_APP_FLY_OVERHEAD_API_URL= `http://localhost:${PORT}`;
+  const REACT_APP_FLY_OVERHEAD_API_URL= process.env.REACT_APP_API_URL || `http://localhost:${PORT}`;
   const map = useMapEvents({
     load: () => {
       const loadCenter = map.locate().getCenter();
