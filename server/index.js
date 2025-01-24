@@ -18,21 +18,20 @@ console.log('PORT SERVER:', PORT);
 
 const allowedOrigins = [
   'http://flyoverhead.com',
+  'https://flyoverhead.com',
   'http://www.flyoverhead.com',
+  'https://www.flyoverhead.com',
   `http://localhost:${PORT}`,
 ];
-
 const app = express();
 
 // Configure CORS
 app.use(cors({
-  origin(origin, callback) {
-    if (!origin) return callback(null, true);
-    if (!allowedOrigins.includes(origin)) {
-      const msg = 'The CORS policy for this site does not allow access from the specified Origin.';
-      return callback(new Error(msg), false);
+  origin: (origin, callback) => {
+    if (!origin || allowedOrigins.some(o => origin.startsWith(o))) {
+      return callback(null, true);
     }
-    return callback(null, true);
+    return callback(new Error('CORS policy violation'), false);
   },
 }));
 

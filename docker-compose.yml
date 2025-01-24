@@ -10,20 +10,26 @@ services:
       - "5432:5432"
     volumes:
       - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U example"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   server:
     build:
       context: .
-      dockerfile: Dockerfile   # The Dockerfile you already created
+      dockerfile: Dockerfile
     container_name: my-node
     ports:
-      - "3005:3005"           # Host port 3001 -> Container port 3005
+      - "3005:3005"
     env_file:
       - ./.env
     environment:
       - DATABASE_URL=postgresql://example:example@db:5432/fly_overhead
     depends_on:
-      - db
+      db:
+        condition: service_healthy
 
 volumes:
   db-data:
