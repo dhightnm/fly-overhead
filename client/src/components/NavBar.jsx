@@ -4,14 +4,14 @@ import axios from 'axios';
 import './navbar.css';
 
 const NavBar = () => {
-  const REACT_APP_FLY_OVERHEAD_API_URL= "https://flyoverhead.com";
+  const API_URL = "http://localhost:3005";
 
     const [search, setSearch] = useState('');
     const { setSearchLatlng } = useContext(PlaneContext);
 
     const handleSearch = async () => {
       try {
-        const res = await axios.get(`${REACT_APP_FLY_OVERHEAD_API_URL}/api/planes/${search}`);
+        const res = await axios.get(`${API_URL}/api/planes/${search}`);
     
         const planeDetails = res.data;
         

@@ -1,4 +1,4 @@
-import React, { useState, useContext, useEffect } from 'react';
+import React, { useState, useContext, useEffect, useCallback } from 'react';
 import { MapContainer, Marker, Popup, TileLayer, useMapEvents } from 'react-leaflet';
 import axios from 'axios';
 import PlaneMarker from './PlaneMarker';
@@ -7,23 +7,63 @@ import { PlaneContext } from '../contexts/PlaneContext';
 import MapFlyToHandler from './MapFlyToHandler';
 // Import your CSS
 import './home.css';
-import dotenv from 'dotenv';
-
-dotenv.config();
-
-const PORT = process.env.REACT_APP_PORT || 3001;
 
 const MapEventsHandler = ({ setUserPosition, setPlanes, setStarlink }) => {
-  const REACT_APP_FLY_OVERHEAD_API_URL= process.env.REACT_APP_API_URL || `http://localhost:${PORT}`;
-  const map = useMapEvents({
-    load: () => {
-      const loadCenter = map.locate().getCenter();
-      loadCenter();
-      const res = axios.get(`${REACT_APP_FLY_OVERHEAD_API_URL}/api/area/all`);
+  const API_URL = "http://localhost:3005";
+  
+  const fetchData = useCallback(async () => {
+    const map = mapRef.current;
+    if (!map) return;
+    
+    const bounds = map.getBounds();
+    const wrapBounds = map.wrapLatLngBounds(bounds);
+    const center = map.getCenter();
+    const seaLevel = 0;
+
+    // Fetch starlink data
+    try {
+      const satRes = await axios.get(
+        `${API_URL}/api/starlink/${center.lat}/${center.lng}/${seaLevel}/`
+      );
+      if (satRes.data && satRes.data.above) {
+        setStarlink(satRes.data.above);
+      } else {
+        console.log('no starlink found');
+        setStarlink([]);
+      }
+    } catch (error) {
+      console.error('Error fetching starlink data:', error);
+    }
+
+    // Fetch plane data
+    try {
+      const res = await axios.get(
+        `${API_URL}/api/area/${wrapBounds._southWest.lat}/${wrapBounds._southWest.lng}/${wrapBounds._northEast.lat}/${wrapBounds._northEast.lng}`
+      );
       if (res.data) {
         setPlanes(res.data);
-      } else { 
+      } else {
         console.log('no planes found');
+      }
+    } catch (error) {
+      console.error('Error fetching plane data:', error);
+    }
+  }, [API_URL, setPlanes, setStarlink]);
+
+  const mapRef = React.useRef(null);
+  const map = useMapEvents({
+    load: async () => {
+      const loadCenter = map.locate().getCenter();
+      loadCenter();
+      try {
+        const res = await axios.get(`${API_URL}/api/area/all`);
+        if (res.data) {
+          setPlanes(res.data);
+        } else { 
+          console.log('no planes found');
+        }
+      } catch (error) {
+        console.error('Error fetching initial plane data:', error);
       }
     },
     click: () => {},
@@ -37,33 +77,7 @@ const MapEventsHandler = ({ setUserPosition, setPlanes, setStarlink }) => {
     }
   });
 
-  const fetchData = async () => {
-    const bounds = map.getBounds();
-    const wrapBounds = map.wrapLatLngBounds(bounds);
-    const center = map.getCenter();
-    const seaLevel = 0;
-
-    // Fetch starlink data
-    const satRes = await axios.get(
-      `${REACT_APP_FLY_OVERHEAD_API_URL}/api/starlink/${center.lat}/${center.lng}/${seaLevel}/`
-    );
-    if (satRes.data && satRes.data.above) {
-      setStarlink(satRes.data.above);
-    } else {
-      console.log('no starlink found');
-      setStarlink([]);
-    }
-
-    // Fetch plane data
-    const res = await axios.get(
-      `${REACT_APP_FLY_OVERHEAD_API_URL}/api/area/${wrapBounds._southWest.lat}/${wrapBounds._southWest.lng}/${wrapBounds._northEast.lat}/${wrapBounds._northEast.lng}`
-    );
-    if (res.data) {
-      setPlanes(res.data);
-    } else {
-      console.log('no planes found');
-    }
-  };
+  mapRef.current = map;
 
   useEffect(() => {
     // Fire the fetchData on an interval to keep the data fresh
@@ -73,7 +87,7 @@ const MapEventsHandler = ({ setUserPosition, setPlanes, setStarlink }) => {
     }, 15 * 1000);
 
     return () => clearInterval(interval);
-  }, []); // run once on mount
+  }, [fetchData]);
 
   return null;
 };

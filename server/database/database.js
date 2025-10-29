@@ -1,4 +1,4 @@
-const pgp = require('pg-promise')();
+﻿const pgp = require('pg-promise')();
 const axios = require('axios');
 require('dotenv').config();
 
@@ -8,8 +8,19 @@ require('dotenv').config();
  * e.g.: const connectionString = process.env.DATABASE_URL
  */
 const connectionString = process.env.POSTGRES_URL
-|| 'postgresql://example:example@localhost:5432/fly_overhead';
+  || 'postgresql://example:example@localhost:5432/fly_overhead';
 const db = pgp(connectionString);
+
+// Add error handler for database connection
+db.connect()
+  .then((obj) => {
+    console.log('Database connection established');
+    obj.done();
+  })
+  .catch((error) => {
+    console.error('Database connection error:', error);
+    process.exit(1);
+  });
 
 /**
  * 1) Create main aircraft_states table (stores only the latest data for each icao24)
@@ -100,24 +111,34 @@ const tableExists = async () => {
  *    and also insert a snapshot into the history table.
  */
 const insertOrUpdateAircraftState = async (state) => {
+  // state array: [0-16 from API, 17=category, 18=created_at Date]
+  // History table doesn't need created_at (has DEFAULT)
+  // Manually extract the 18 fields (excluding the Date at position 18)
+  const historyState = [
+    state[0], state[1], state[2], state[3], state[4],
+    state[5], state[6], state[7], state[8], state[9],
+    state[10], state[11], state[12], state[13], state[14],
+    state[15], state[16], state[17],
+  ];
+
   // 1) Insert a snapshot into the history table (a new row every time we get data)
   const insertHistoryQuery = `
     INSERT INTO aircraft_states_history (
       icao24, callsign, origin_country, time_position, last_contact,
       longitude, latitude, baro_altitude, on_ground, velocity,
       true_track, vertical_rate, sensors, geo_altitude, squawk,
-      spi, position_source
+      spi, position_source, category
       -- Note: created_at defaults to CURRENT_TIMESTAMP automatically
     )
     VALUES(
       $1, TRIM($2), $3, $4, $5,
       $6, $7, $8, $9, $10,
       $11, $12, $13, $14, $15,
-      $16, $17
+      $16, $17, $18
     );
   `;
   // Execute insert for the history snapshot
-  await db.query(insertHistoryQuery, state);
+  await db.query(insertHistoryQuery, historyState);
 
   // 2) Upsert into aircraft_states (so we always have the latest position)
   const upsertMainQuery = `
@@ -125,13 +146,13 @@ const insertOrUpdateAircraftState = async (state) => {
       icao24, callsign, origin_country, time_position, last_contact,
       longitude, latitude, baro_altitude, on_ground, velocity,
       true_track, vertical_rate, sensors, geo_altitude, squawk,
-      spi, position_source, created_at
+      spi, position_source, category, created_at
     )
     VALUES(
       $1, TRIM($2), $3, $4, $5,
       $6, $7, $8, $9, $10,
       $11, $12, $13, $14, $15,
-      $16, $17, $18
+      $16, $17, $18, $19
     )
     ON CONFLICT(icao24) DO UPDATE SET
       callsign = TRIM(EXCLUDED.callsign),
@@ -149,10 +170,40 @@ const insertOrUpdateAircraftState = async (state) => {
       geo_altitude = EXCLUDED.geo_altitude,
       squawk = EXCLUDED.squawk,
       spi = EXCLUDED.spi,
-      position_source = EXCLUDED.position_source
+      position_source = EXCLUDED.position_source,
+      category = EXCLUDED.category
   `;
   // Execute the upsert on the main table
   await db.query(upsertMainQuery, state);
+};
+
+/**
+ * 6) Retrieve data from OpenSky for a bounding box, upsert each aircraft,
+ *    and also store a history snapshot (handled by insertOrUpdateAircraftState).
+ */
+const fetchDataForBoundingBox = async (box) => {
+  try {
+    const areaRes = await axios.get(`https://${process.env.OPENSKY_USER}:${process.env.OPENSKY_PASS}@opensky-network.org/api/states/all`, {
+      params: {
+        lamin: box.lamin,
+        lomin: box.lomin,
+        lamax: box.lamax,
+        lomax: box.lomax,
+      },
+    });
+
+    const promises = areaRes.data.states.map((state) => {
+      // OpenSky API returns 17 items (no category field)
+      // Add null for category at position 17, then Date at position 18
+      const stateWithCategory = [...state, null];
+      const currentStateWithDate = [...stateWithCategory, new Date()];
+      return insertOrUpdateAircraftState(currentStateWithDate);
+    });
+
+    await Promise.all(promises);
+  } catch (err) {
+    console.error('Error fetching bounding box data from API:', err);
+  }
 };
 
 /**
@@ -195,34 +246,6 @@ const populateDatabase = async () => {
 };
 
 /**
- * 6) Retrieve data from OpenSky for a bounding box, upsert each aircraft,
- *    and also store a history snapshot (handled by insertOrUpdateAircraftState).
- */
-const fetchDataForBoundingBox = async (box) => {
-  try {
-    const areaRes = await axios.get(`https://${process.env.OPENSKY_USER}:${process.env.OPENSKY_PASS}@opensky-network.org/api/states/all`, {
-      params: {
-        lamin: box.lamin,
-        lomin: box.lomin,
-        lamax: box.lamax,
-        lomax: box.lomax,
-      },
-    });
-
-    const promises = areaRes.data.states.map((state) => {
-      // Build the array that matches our queries
-      // e.g. [icao24, callsign, origin_country, time_position, last_contact, longitude, latitude, ... created_at]
-      const currentStateWithDate = [...state, new Date()];
-      return insertOrUpdateAircraftState(currentStateWithDate);
-    });
-
-    await Promise.all(promises);
-  } catch (err) {
-    console.error('Error fetching bounding box data from API:', err);
-  }
-};
-
-/**
  * 7) Example function to update database with "all" states (no bounding box).
  *    Called periodically or at server start to keep data fresh.
  */
@@ -230,7 +253,10 @@ const updateDatabaseFromAPI = async () => {
   try {
     const areaRes = await axios.get(`https://${process.env.OPENSKY_USER}:${process.env.OPENSKY_PASS}@opensky-network.org/api/states/all`);
     const promises = areaRes.data.states.map((originalState) => {
-      const currentStateWithDate = [...originalState, new Date()];
+      // OpenSky API returns 17 items (no category field)
+      // Add null for category at position 17, then Date at position 18
+      const stateWithCategory = [...originalState, null];
+      const currentStateWithDate = [...stateWithCategory, new Date()];
       return insertOrUpdateAircraftState(currentStateWithDate);
     });
     await Promise.all(promises);

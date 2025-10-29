@@ -1,35 +1,47 @@
 services:
   db:
     image: postgres:15
-    container_name: my-postgres
+    container_name: fly-overhead-postgres
     environment:
-      - POSTGRES_USER=example
-      - POSTGRES_PASSWORD=example
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
       - POSTGRES_DB=fly_overhead
     ports:
       - "5432:5432"
     volumes:
       - db-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U example"]
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 10s
       timeout: 5s
       retries: 5
+    networks:
+      - fly-overhead-network
+    restart: unless-stopped
 
   server:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: my-node
+    container_name: fly-overhead-server
     ports:
       - "3005:3005"
     env_file:
       - ./.env
     environment:
-      - DATABASE_URL=postgresql://example:example@db:5432/fly_overhead
+      - POSTGRES_URL=postgresql://postgres:postgres@db:5432/fly_overhead
+      - PORT=3005
     depends_on:
       db:
         condition: service_healthy
+    networks:
+      - fly-overhead-network
+    restart: unless-stopped
 
 volumes:
   db-data:
+    driver: local
+
+networks:
+  fly-overhead-network:
+    driver: bridge
