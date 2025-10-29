@@ -1,4 +1,4 @@
-﻿const pgp = require('pg-promise')();
+const pgp = require('pg-promise')();
 const axios = require('axios');
 require('dotenv').config();
 

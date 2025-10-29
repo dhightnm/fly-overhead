@@ -1,4 +1,4 @@
-﻿{
+{
   "name": "fly-overhead-server",
   "version": "1.0.0",
   "description": "Fly Overhead Backend Server",
@@ -23,7 +23,8 @@
     "node-cache": "^5.1.2",
     "nodemon": "^2.0.9",
     "path": "^0.12.7",
-    "pg-promise": "^11.5.4"
+    "pg-promise": "^11.5.4",
+    "winston": "^3.18.3"
   },
   "devDependencies": {
     "eslint-config-airbnb-base": "^15.0.0",

@@ -21,7 +21,7 @@ const CUSTOM_ICON_GROUND = L.icon({
     popupAnchor: [0, 0],
 });
 
-const PlaneMarker = ({ plane }) => {
+const PlaneMarker = ({ plane, route }) => {
     // Add null/undefined checks
     if (!plane || plane.latitude === null || plane.latitude === undefined || 
         plane.longitude === null || plane.longitude === undefined) {
@@ -40,6 +40,25 @@ const PlaneMarker = ({ plane }) => {
                 <div className="plane-popup">
                     <div><strong>Callsign:</strong> <span>{callsign || 'N/A'}</span></div>
                     <div><strong>ICAO24:</strong> <span>{icao24 || 'N/A'}</span></div>
+                    {route && (() => {
+                      const departureCode = route.departureAirport?.icao || route.departureAirport?.iata || route.departureAirport?.name;
+                      const arrivalCode = route.arrivalAirport?.icao || route.arrivalAirport?.iata || route.arrivalAirport?.name;
+                      
+                      // Show route if we have any airport codes OR if both locations exist (inferred route)
+                      if (departureCode || arrivalCode || (route.departureAirport?.location && route.arrivalAirport?.location)) {
+                        return (
+                          <div className="popup-route">
+                            <div><strong>From:</strong> <span>
+                              {departureCode || (route.departureAirport?.inferred ? 'Unknown' : 'N/A')}
+                            </span></div>
+                            <div><strong>To:</strong> <span>
+                              {arrivalCode || (route.arrivalAirport?.inferred ? 'Unknown' : 'N/A')}
+                            </span></div>
+                          </div>
+                        );
+                      }
+                      return null;
+                    })()}
                     <div><strong>Altitude:</strong> <span>{baro_altitude ? Math.round(baro_altitude * 3.281) + 'ft' : 'N/A'}</span></div>
                     <div><strong>Speed:</strong> <span>{velocity ? Math.round(velocity * 1.944) + 'kts' : 'N/A'}</span></div>
                     <div><strong>Heading:</strong> <span>{true_track ? Math.round(true_track) : 'N/A'}</span></div>

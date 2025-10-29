@@ -1,34 +1,18 @@
-﻿/* eslint-disable linebreak-style */
 const express = require('express');
 const path = require('path');
 const cors = require('cors');
-const morgan = require('morgan');
-require('dotenv').config();
+const config = require('./config');
+const aircraftService = require('./services/AircraftService');
+const errorHandler = require('./middlewares/errorHandler');
+const requestLogger = require('./middlewares/requestLogger');
+const logger = require('./utils/logger');
 
-const {
-  createMainTable,
-  createHistoryTable,
-  populateDatabase,
-  deleteStaleRecords,
-  updateDatabaseFromAPI,
-} = require('./database/database');
-
-const PORT = process.env.PORT || 3001;
-console.log('PORT SERVER:', PORT);
-
-const allowedOrigins = [
-  'http://flyoverhead.com',
-  'https://flyoverhead.com',
-  'http://www.flyoverhead.com',
-  'https://www.flyoverhead.com',
-  `http://localhost:${PORT}`,
-];
 const app = express();
 
 // Configure CORS
 app.use(cors({
   origin: (origin, callback) => {
-    if (!origin || allowedOrigins.includes(origin)) {
+    if (!origin || config.cors.allowedOrigins.includes(origin)) {
       return callback(null, true);
     }
     return callback(new Error('CORS policy violation'), false);
@@ -37,42 +21,55 @@ app.use(cors({
 
 // Middleware
 app.use(express.json());
-app.use(morgan('short'));
+app.use(requestLogger);
 
+// Serve static files from React build
 app.use(express.static(path.join(__dirname, 'client/build')));
 
-// Routes
-app.use('/api', require('./routes/openSkyRouter'));
+// API Routes
+app.use('/api', require('./routes/aircraft.routes'));
+
+// Error handling (must be last)
+app.use(errorHandler);
 
 /**
- * Initialize the database tables, then start polling
- * and set up intervals for updates/deletes.
+ * Initialize server
  */
 async function startServer() {
   try {
-    // 1) Create tables if they don't exist
-    await createMainTable();
-    await createHistoryTable();
+    // 1) Initialize database tables
+    await aircraftService.initializeDatabase();
 
-    // 2) Initially update the database & populate bounding boxes
-    updateDatabaseFromAPI();
-    populateDatabase();
+    // 2) Initial data population
+    aircraftService.fetchAndUpdateAllAircraft();
+    aircraftService.populateInitialData();
 
-    // 3) Schedule periodic updates if desired
-    // e.g., every 6 minutes:
-    setInterval(updateDatabaseFromAPI, 120000);
+    // 3) Schedule periodic updates
+    setInterval(() => {
+      aircraftService.fetchAndUpdateAllAircraft();
+    }, config.aircraft.updateInterval);
 
-    // 4) Schedule stale record cleanup (here: every 10 minutes)
-    // setInterval(deleteStaleRecords, 600000);
-
-    // 5) Start the server
-    app.listen(PORT, () => {
-      console.log(`Listening on port: ${PORT}`);
+    // 4) Start the server
+    const { port, host } = config.server;
+    app.listen(port, host, () => {
+      logger.info(`Server listening on ${host}:${port}`);
     });
   } catch (err) {
-    console.error('Error starting server:', err);
+    logger.error('Error starting server', { error: err.message });
+    process.exit(1);
   }
 }
 
-// Call our async init function
+// Graceful shutdown
+process.on('SIGTERM', () => {
+  logger.info('SIGTERM received, shutting down gracefully');
+  process.exit(0);
+});
+
+process.on('SIGINT', () => {
+  logger.info('SIGINT received, shutting down gracefully');
+  process.exit(0);
+});
+
+// Start the server
 startServer();
