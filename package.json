@@ -1,4 +1,11 @@
 {
+  "name": "fly-overhead-root",
+  "version": "1.0.0",
+  "description": "Root package for fly-overhead monorepo",
+  "private": true,
+  "scripts": {
+    "start": "node server/index.js"
+  },
   "dependencies": {
     "aws-sdk": "^2.1479.0",
     "leaflet-rotatedmarker": "^0.2.0",

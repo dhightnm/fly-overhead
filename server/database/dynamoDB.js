@@ -1,4 +1,4 @@
-const AWS = require('aws-sdk');
+﻿const AWS = require('aws-sdk');
 const axios = require('axios');
 
 const docClient = new AWS.DynamoDB.DocumentClient({ region: 'us-west-1' });
@@ -160,7 +160,6 @@ const deleteStaleRecordsDynamo = async () => {
         DeleteRequest: {
           Key: {
             icao24: item.icao24,
-            created_at: item.created_at,
           },
         },
       }));

@@ -1,4 +1,4 @@
-/* eslint-disable linebreak-style */
+﻿/* eslint-disable linebreak-style */
 const express = require('express');
 const path = require('path');
 const cors = require('cors');
@@ -28,7 +28,7 @@ const app = express();
 // Configure CORS
 app.use(cors({
   origin: (origin, callback) => {
-    if (!origin || allowedOrigins.some(o => origin.startsWith(o))) {
+    if (!origin || allowedOrigins.includes(origin)) {
       return callback(null, true);
     }
     return callback(new Error('CORS policy violation'), false);
@@ -45,7 +45,7 @@ app.use(express.static(path.join(__dirname, 'client/build')));
 app.use('/api', require('./routes/openSkyRouter'));
 
 /**
- * Initialize the database tables, then start polling 
+ * Initialize the database tables, then start polling
  * and set up intervals for updates/deletes.
  */
 async function startServer() {

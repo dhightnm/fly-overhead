@@ -8,19 +8,18 @@ import { PlaneProvider } from './contexts/PlaneContext';
 
 const App = () => {
   return (
-    <PlaneProvider>
-      <div className="App">
-        <NavBar />
-        <BrowserRouter>
+    <BrowserRouter>
+      <PlaneProvider>
+        <div className="App">
+          <NavBar />
           <Switch>
             <Route exact path="/">
               <Home/>
             </Route>
           </Switch>
-        
-        </BrowserRouter>
-      </div>
-    </PlaneProvider>
+        </div>
+      </PlaneProvider>
+    </BrowserRouter>
   );
 }
 

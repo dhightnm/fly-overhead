@@ -1,10 +1,11 @@
-{
-  "name": "fly-overhead",
+﻿{
+  "name": "fly-overhead-server",
   "version": "1.0.0",
-  "description": "",
+  "description": "Fly Overhead Backend Server",
   "main": "index.js",
   "scripts": {
-    "dev": "nodemon server/index",
+    "start": "node index.js",
+    "dev": "nodemon index.js",
     "lint": "eslint . --ext .js,.jsx",
     "fix": "eslint --fix ."
   },

@@ -1,4 +1,4 @@
-const router = require('express').Router();
+﻿const router = require('express').Router();
 const axios = require('axios');
 const NodeCache = require('node-cache');
 require('dotenv').config();
@@ -18,12 +18,17 @@ router.get('/area/all', async (req, res) => {
       cache.set(cacheKey, areaRes.data);
 
       await Promise.all(areaRes.data.states.map(async (state) => {
-        await insertOrUpdateAircraftState(state);
+        // OpenSky API returns 17 items (no category field)
+        // Add null for category at position 17, then Date at position 18
+        const stateWithCategory = [...state, null];
+        const currentStateWithDate = [...stateWithCategory, new Date()];
+        await insertOrUpdateAircraftState(currentStateWithDate);
       }));
 
       res.json(areaRes.data);
     } catch (err) {
-      console.log(err);
+      console.error('Error fetching aircraft data:', err);
+      res.status(500).json({ error: 'Failed to fetch aircraft data' });
     }
   }
 });
@@ -40,12 +45,15 @@ router.get('/planes/:icao24OrCallsign', async (req, res) => {
       res.status(404).json({ error: 'Plane not found' });
     }
   } catch (err) {
-    console.log(err);
+    console.error('Error fetching plane:', err);
+    res.status(500).json({ error: 'Failed to fetch plane data' });
   }
 });
 
 router.get('/area/:latmin/:lonmin/:latmax/:lonmax', async (req, res) => {
-  const { latmin, lonmin, latmax, lonmax } = req.params;
+  const {
+    latmin, lonmin, latmax, lonmax,
+  } = req.params;
 
   try {
     const tenMinutesAgo = Math.floor(Date.now() / 1000) - (10 * 60);
@@ -57,7 +65,7 @@ router.get('/area/:latmin/:lonmin/:latmax/:lonmax', async (req, res) => {
         AND latitude BETWEEN $2 AND $3
         AND longitude BETWEEN $4 AND $5
     `, [tenMinutesAgo, latmin, latmax, lonmin, lonmax]);
-    
+
     res.json(states);
   } catch (err) {
     console.log(err);
@@ -71,7 +79,8 @@ router.get('/starlink/:observer_lat/:observer_lng/:observer_alt', async (req, re
   const observerAlt = req.params.observer_alt;
 
   try {
-    const starlinkStates = await axios.get(`https://api.n2yo.com/rest/v1/satellite/above/${observerLat}/${observerLng}/${observerAlt}/45/52&apiKey=M3FTYY-Q2CLZF-U76MTW-553N`);
+    const apiKey = process.env.N2YO_API_KEY || 'M3FTYY-Q2CLZF-U76MTW-553N';
+    const starlinkStates = await axios.get(`https://api.n2yo.com/rest/v1/satellite/above/${observerLat}/${observerLng}/${observerAlt}/45/52&apiKey=${apiKey}`);
     res.status(200).json(starlinkStates.data);
   } catch (err) {
     res.status(500).json({ error: 'ERROR Fetching Starlink States' });
@@ -88,7 +97,8 @@ router.get('/airports/:latmin/:lonmin/:latmax/:lonmax', async (req, res) => {
     const airports = await getAirportsWithinBounds(latmin, lonmin, latmax, lonmax);
     res.json(airports);
   } catch (err) {
-    console.log(err);
+    console.error('Error fetching airports:', err);
+    res.status(500).json({ error: 'Failed to fetch airport data' });
   }
 });
 
