@@ -1,4 +1,4 @@
-﻿const AWS = require('aws-sdk');
+const AWS = require('aws-sdk');
 const axios = require('axios');
 
 const docClient = new AWS.DynamoDB.DocumentClient({ region: 'us-west-1' });

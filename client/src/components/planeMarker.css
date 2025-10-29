@@ -14,3 +14,21 @@
 .plane-popup span {
     font-weight: normal;
 }
+
+.popup-route {
+    background: #e3f2fd;
+    border-left: 3px solid #2196f3;
+    padding: 8px;
+    margin: 8px 0;
+    border-radius: 4px;
+    font-size: 12px;
+}
+
+.popup-route > div {
+    margin: 4px 0;
+}
+
+.popup-route strong {
+    color: #1976d2;
+    margin-right: 6px;
+}
