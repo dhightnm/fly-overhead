@@ -891,7 +891,7 @@ class FlightRouteService {
       }
 
       // Map AviationStack /flights response format to our internal format
-      return {
+      const mapped = {
         departureAirport: {
           iata: routeData.departure?.iata || null,
           icao: routeData.departure?.icao || null,
@@ -902,7 +902,20 @@ class FlightRouteService {
           icao: routeData.arrival?.icao || null,
           name: routeData.arrival?.airport || null,
         },
+        flightData: undefined,
       };
+
+      // Capture scheduled times if present (ISO strings)
+      const depSchedIso = routeData.departure?.scheduled || routeData.departure?.scheduled_time;
+      const arrSchedIso = routeData.arrival?.scheduled || routeData.arrival?.scheduled_time;
+      if (depSchedIso || arrSchedIso) {
+        mapped.flightData = {
+          scheduledDeparture: depSchedIso ? Math.floor(new Date(depSchedIso).getTime() / 1000) : null,
+          scheduledArrival:   arrSchedIso ? Math.floor(new Date(arrSchedIso).getTime() / 1000) : null,
+        };
+      }
+
+      return mapped;
     } catch (error) {
       const statusCode = error.response?.status;
       if (statusCode === 429) {
@@ -927,15 +940,16 @@ class FlightRouteService {
    * Fetch route from FlightAware AeroAPI
    * Provides real-time flight tracking with excellent coverage
    */
-  async fetchRouteFromFlightAware(callsign) {
+  async fetchRouteFromFlightAware(callsign, dateString = null) {
     try {
       const today = new Date().toISOString().split('T')[0]; // Format: YYYY-MM-DD
+      const queryDate = dateString || today;
 
-      logger.info('Querying FlightAware AeroAPI', { callsign, date: today });
+      logger.info('Querying FlightAware AeroAPI', { callsign, date: queryDate });
 
       const response = await axios.get(`${this.flightAwareBaseUrl}/flights/${callsign}`, {
         params: {
-          start: today,
+          start: queryDate,
         },
         headers: {
           Accept: 'application/json; charset=UTF-8',
@@ -1203,26 +1217,46 @@ class FlightRouteService {
 
     // Filter out closed airports and heliports, prioritize by:
     // 1. Type (large_airport > medium_airport > small_airport)
-    // 2. Has runways (from JSONB field)
-    // 3. Distance (closer is better)
+    // 2. Runway length (jets need >= 1800m, cargo prefer >= 2500m)
+    // 3. Has runways (from JSONB field)
+    // 4. Distance (closer is better)
     const priorityTypes = {
       large_airport: 3,
       medium_airport: 2,
       small_airport: 1,
     };
 
+    const cargoPrefixes = ['FDX', 'UPS'];
+    const isCargo = (code) => !!code && cargoPrefixes.some((p) => (code || '').toUpperCase().startsWith(p));
+
     const scored = airports
       .filter((apt) => apt.type !== 'closed' && apt.type !== 'heliport')
       .map((apt) => {
         const typeScore = priorityTypes[apt.type] || 0;
         const hasRunways = apt.runways && Array.isArray(apt.runways) && apt.runways.length > 0;
-        const runwayScore = hasRunways ? apt.runways.length : 0;
-        const distanceScore = 1 / (apt.distance_km + 1); // Inverse distance (closer = higher score)
+        let maxRunwayMeters = 0;
+        if (hasRunways) {
+          for (const rw of apt.runways) {
+            const len = Number(rw.length_m) || Number(rw.length_ft ? rw.length_ft * 0.3048 : 0);
+            if (len > maxRunwayMeters) maxRunwayMeters = len;
+          }
+        }
+        const runwayLenScore = Math.min(maxRunwayMeters / 500, 10); // up to +10 points for very long runways
+        const runwayCountScore = hasRunways ? Math.min(apt.runways.length, 5) : 0; // up to +5
+        const distanceScore = 1 / (apt.distance_km + 1); // closer = higher
 
-        return {
-          airport: apt,
-          score: (typeScore * 100) + (runwayScore * 10) + distanceScore,
-        };
+        // Penalize very small strips for jets/cargo
+        let penalties = 0;
+        if (apt.type === 'small_airport') penalties += 2;
+        if (maxRunwayMeters < 1500) penalties += 5; // unsuitable for most jets
+
+        const score = (typeScore * 100)
+          + (runwayLenScore * 10)
+          + (runwayCountScore * 2)
+          + distanceScore
+          - penalties;
+
+        return { airport: apt, score };
       })
       .sort((a, b) => b.score - a.score);
 
@@ -1231,7 +1265,14 @@ class FlightRouteService {
       return null;
     }
 
-    return scored[0].airport;
+    // Extra guard: for known cargo carriers, avoid small/private fields if a better option exists
+    const top = scored[0].airport;
+    const callsign = (airports[0]?.callsign || '').toUpperCase(); // not always present
+    if (isCargo(callsign) && (top.type === 'small_airport' || !top.runways || top.runways.length === 0)) {
+      const alt = scored.find((s) => s.airport.type !== 'small_airport' && s.airport.runways && s.airport.runways.length > 0);
+      if (alt) return alt.airport;
+    }
+    return top;
   }
 
   /**

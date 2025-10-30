@@ -153,6 +153,11 @@ class PostgresRepository {
         id SERIAL PRIMARY KEY,
         callsign TEXT,
         icao24 TEXT,
+        -- Deterministic identifiers
+        flight_key TEXT,
+        route_key TEXT,
+        aircraft_type TEXT,
+        aircraft_model TEXT,
         departure_iata TEXT,
         departure_icao TEXT,
         departure_name TEXT,
@@ -160,8 +165,11 @@ class PostgresRepository {
         arrival_icao TEXT,
         arrival_name TEXT,
         source TEXT,
-        flight_start TIMESTAMPTZ,
-        flight_end TIMESTAMPTZ,
+        scheduled_flight_start TIMESTAMPTZ,
+        scheduled_flight_end TIMESTAMPTZ,
+        actual_flight_start TIMESTAMPTZ,
+        actual_flight_end TIMESTAMPTZ,
+        ete INT,
         first_seen BIGINT,
         last_seen BIGINT,
         created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
@@ -179,9 +187,90 @@ class PostgresRepository {
         END IF;
       END $$;
       
+      -- Add timing/ETE columns if they don't exist (for existing tables)
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='flight_routes_history' AND column_name='scheduled_flight_start'
+        ) THEN
+          ALTER TABLE flight_routes_history ADD COLUMN scheduled_flight_start TIMESTAMPTZ;
+        END IF;
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='flight_routes_history' AND column_name='scheduled_flight_end'
+        ) THEN
+          ALTER TABLE flight_routes_history ADD COLUMN scheduled_flight_end TIMESTAMPTZ;
+        END IF;
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='flight_routes_history' AND column_name='actual_flight_start'
+        ) THEN
+          ALTER TABLE flight_routes_history ADD COLUMN actual_flight_start TIMESTAMPTZ;
+        END IF;
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='flight_routes_history' AND column_name='actual_flight_end'
+        ) THEN
+          ALTER TABLE flight_routes_history ADD COLUMN actual_flight_end TIMESTAMPTZ;
+        END IF;
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='flight_routes_history' AND column_name='ete'
+        ) THEN
+          ALTER TABLE flight_routes_history ADD COLUMN ete INT;
+        END IF;
+      END $$;
+      
+      -- Add key columns if they don't exist
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='flight_routes_history' AND column_name='flight_key'
+        ) THEN
+          ALTER TABLE flight_routes_history ADD COLUMN flight_key TEXT;
+        END IF;
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='flight_routes_history' AND column_name='route_key'
+        ) THEN
+          ALTER TABLE flight_routes_history ADD COLUMN route_key TEXT;
+        END IF;
+      END $$;
+
+      -- Add aircraft fields if they don't exist
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='flight_routes_history' AND column_name='aircraft_type'
+        ) THEN
+          ALTER TABLE flight_routes_history ADD COLUMN aircraft_type TEXT;
+        END IF;
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='flight_routes_history' AND column_name='aircraft_model'
+        ) THEN
+          ALTER TABLE flight_routes_history ADD COLUMN aircraft_model TEXT;
+        END IF;
+      END $$;
+
+      -- Add a unique constraint on flight_key (if present)
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_constraint
+          WHERE conname = 'uniq_flight_routes_history_flight_key'
+        ) THEN
+          ALTER TABLE flight_routes_history
+            ADD CONSTRAINT uniq_flight_routes_history_flight_key UNIQUE (flight_key);
+        END IF;
+      END $$;
+
       CREATE INDEX IF NOT EXISTS idx_routes_history_icao24 ON flight_routes_history(icao24);
       CREATE INDEX IF NOT EXISTS idx_routes_history_callsign ON flight_routes_history(callsign);
-      CREATE INDEX IF NOT EXISTS idx_routes_history_dates ON flight_routes_history(flight_start, flight_end);
+      CREATE INDEX IF NOT EXISTS idx_routes_history_dates ON flight_routes_history(actual_flight_start, actual_flight_end);
     `;
     await this.db.query(historyQuery);
 
@@ -487,25 +576,69 @@ class PostgresRepository {
     const query = `
       INSERT INTO flight_routes_history (
         callsign, icao24,
+        flight_key, route_key,
+        aircraft_type, aircraft_model,
         departure_iata, departure_icao, departure_name,
         arrival_iata, arrival_icao, arrival_name,
         source,
-        flight_start, flight_end, first_seen, last_seen
+        first_seen, last_seen,
+        scheduled_flight_start, scheduled_flight_end,
+        actual_flight_start, actual_flight_end,
+        ete
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-      ON CONFLICT (icao24, callsign, first_seen, last_seen) DO NOTHING;
+      VALUES (
+        $1, $2,
+        $3, $4,
+        $5, $6,
+        $7, $8, $9,
+        $10, $11, $12,
+        $13,
+        $14, $15,
+        $16, $17,
+        $18, $19,
+        $20
+      )
+      ON CONFLICT ON CONSTRAINT uniq_flight_routes_history_flight_key DO NOTHING;
     `;
 
-    const flightStart = routeData.flightData?.firstSeen
-      ? new Date(routeData.flightData.firstSeen * 1000)
+    // legacy mapping replaced: actual_* will carry real times; first/last seen remain raw seconds
+    const scheduledStart = routeData.flightData?.scheduledDeparture
+      ? new Date(routeData.flightData.scheduledDeparture * 1000)
       : null;
-    const flightEnd = routeData.flightData?.lastSeen
-      ? new Date(routeData.flightData.lastSeen * 1000)
+    const scheduledEnd = routeData.flightData?.scheduledArrival
+      ? new Date(routeData.flightData.scheduledArrival * 1000)
       : null;
+    const actualStart = routeData.flightData?.actualDeparture
+      ? new Date(routeData.flightData.actualDeparture * 1000)
+      : null;
+    const actualEnd = routeData.flightData?.actualArrival
+      ? new Date(routeData.flightData.actualArrival * 1000)
+      : null;
+    let eteSeconds = null;
+    if (typeof routeData.flightData?.duration === 'number') {
+      eteSeconds = routeData.flightData.duration;
+    } else if (typeof routeData.flightData?.filedEte === 'number') {
+      eteSeconds = routeData.flightData.filedEte;
+    }
+
+    // Build deterministic keys
+    const callsignNorm = routeData.callsign ? String(routeData.callsign).trim().toUpperCase() : '';
+    const icao24Norm = routeData.icao24 ? String(routeData.icao24).trim().toLowerCase() : '';
+    const startKey = (actualStart || scheduledStart) ? (actualStart || scheduledStart).toISOString() : '';
+    const endKey = (actualEnd || scheduledEnd) ? (actualEnd || scheduledEnd).toISOString() : '';
+    const depIcao = routeData.departureAirport?.icao ? String(routeData.departureAirport.icao).trim().toUpperCase() : '';
+    const arrIcao = routeData.arrivalAirport?.icao ? String(routeData.arrivalAirport.icao).trim().toUpperCase() : '';
+
+    const flightKey = [icao24Norm, callsignNorm, startKey, endKey].join('|');
+    const routeKey = [depIcao, arrIcao].join('>');
 
     await this.db.query(query, [
       routeData.callsign || null,
       routeData.icao24 || null,
+      flightKey || null,
+      routeKey || null,
+      routeData.aircraft?.type || routeData.aircraft_type || null,
+      routeData.aircraft?.model || routeData.aircraft_model || null,
       routeData.departureAirport?.iata || null,
       routeData.departureAirport?.icao || null,
       routeData.departureAirport?.name || null,
@@ -513,11 +646,116 @@ class PostgresRepository {
       routeData.arrivalAirport?.icao || null,
       routeData.arrivalAirport?.name || null,
       routeData.source || null,
-      flightStart,
-      flightEnd,
       routeData.flightData?.firstSeen || null,
       routeData.flightData?.lastSeen || null,
+      scheduledStart,
+      scheduledEnd,
+      actualStart,
+      actualEnd,
+      eteSeconds,
     ]);
+  }
+
+  /**
+   * Find flights needing backfill (older than 24h, missing times or aircraft info)
+   */
+  async findFlightsNeedingBackfill(limit = 20) {
+    const query = `
+      SELECT id, icao24, callsign, created_at,
+             actual_flight_start, actual_flight_end,
+             scheduled_flight_start, scheduled_flight_end,
+             actual_flight_start, actual_flight_end,
+             first_seen, last_seen,
+             aircraft_type, aircraft_model
+      FROM flight_routes_history
+      WHERE created_at < NOW() - INTERVAL '24 hours'
+        AND (
+          (actual_flight_start IS NULL AND first_seen IS NULL AND scheduled_flight_start IS NULL)
+          OR (actual_flight_end IS NULL AND last_seen IS NULL AND scheduled_flight_end IS NULL)
+          OR aircraft_type IS NULL
+        )
+      ORDER BY created_at DESC
+      LIMIT $1;
+    `;
+    return this.db.any(query, [limit]);
+  }
+
+  /**
+   * Find flights needing backfill within a created_at date range [startDate, endDate]
+   * Dates should be strings 'YYYY-MM-DD'
+   */
+  async findFlightsNeedingBackfillInRange(startDate, endDate, limit = 50) {
+    const query = `
+      SELECT id, icao24, callsign, created_at,
+             actual_flight_start, actual_flight_end,
+             scheduled_flight_start, scheduled_flight_end,
+             actual_flight_start, actual_flight_end,
+             first_seen, last_seen,
+             aircraft_type, aircraft_model
+      FROM flight_routes_history
+      WHERE created_at >= $1::date
+        AND created_at < ($2::date + INTERVAL '1 day')
+        AND (
+          (actual_flight_start IS NULL AND first_seen IS NULL AND scheduled_flight_start IS NULL)
+          OR (actual_flight_end IS NULL AND last_seen IS NULL AND scheduled_flight_end IS NULL)
+          OR aircraft_type IS NULL
+        )
+      ORDER BY created_at DESC
+      LIMIT $3;
+    `;
+    return this.db.any(query, [startDate, endDate, limit]);
+  }
+
+  /**
+   * Find flights (last 5 days) with all actual and scheduled fields missing
+   */
+  async findFlightsMissingAllRecent(limit = 50) {
+    const query = `
+      SELECT id, icao24, callsign, created_at
+      FROM flight_routes_history
+      WHERE created_at >= NOW() - INTERVAL '5 days'
+        AND (
+          actual_flight_start IS NULL
+          AND actual_flight_end IS NULL
+          AND scheduled_flight_start IS NULL
+          AND scheduled_flight_end IS NULL
+        )
+      ORDER BY created_at DESC
+      LIMIT $1;
+    `;
+    return this.db.any(query, [limit]);
+  }
+
+  /**
+   * Update specific fields for a flight history row by id (partial update)
+   */
+  async updateFlightHistoryById(id, fields) {
+    const sets = [];
+    const values = [];
+    let idx = 1;
+
+    const push = (col, val) => {
+      sets.push(`${col} = $${idx}`);
+      values.push(val);
+      idx += 1;
+    };
+
+    // legacy fields removed
+    if (fields.first_seen !== undefined) push('first_seen', fields.first_seen);
+    if (fields.last_seen !== undefined) push('last_seen', fields.last_seen);
+    if (fields.scheduled_flight_start !== undefined) push('scheduled_flight_start', fields.scheduled_flight_start);
+    if (fields.scheduled_flight_end !== undefined) push('scheduled_flight_end', fields.scheduled_flight_end);
+    if (fields.actual_flight_start !== undefined) push('actual_flight_start', fields.actual_flight_start);
+    if (fields.actual_flight_end !== undefined) push('actual_flight_end', fields.actual_flight_end);
+    if (fields.ete !== undefined) push('ete', fields.ete);
+    if (fields.aircraft_type !== undefined) push('aircraft_type', fields.aircraft_type);
+    if (fields.aircraft_model !== undefined) push('aircraft_model', fields.aircraft_model);
+
+    if (sets.length === 0) return;
+
+    const query = `UPDATE flight_routes_history SET ${sets.join(', ')} WHERE id = $${idx}`;
+    values.push(id);
+    await this.db.none(query, values);
   }
 
   /**
@@ -530,7 +768,7 @@ class PostgresRepository {
         departure_icao, departure_iata, departure_name,
         arrival_icao, arrival_iata, arrival_name,
         source,
-        flight_start, flight_end, first_seen, last_seen,
+        actual_flight_start, actual_flight_end, first_seen, last_seen,
         created_at
       FROM flight_routes_history
       WHERE icao24 = $1
@@ -539,18 +777,18 @@ class PostgresRepository {
     let paramIndex = 2;
 
     if (startDate) {
-      query += ` AND flight_start >= $${paramIndex}`;
+      query += ` AND actual_flight_start >= $${paramIndex}`;
       params.push(startDate);
       paramIndex++;
     }
 
     if (endDate) {
-      query += ` AND flight_end <= $${paramIndex}`;
+      query += ` AND actual_flight_end <= $${paramIndex}`;
       params.push(endDate);
       paramIndex++;
     }
 
-    query += ` ORDER BY flight_start DESC LIMIT $${paramIndex}`;
+    query += ` ORDER BY actual_flight_start DESC LIMIT $${paramIndex}`;
     params.push(limit);
 
     const results = await this.db.query(query, params);
@@ -570,8 +808,8 @@ class PostgresRepository {
       flightData: {
         firstSeen: row.first_seen,
         lastSeen: row.last_seen,
-        flightStart: row.flight_start,
-        flightEnd: row.flight_end,
+        actualStart: row.actual_flight_start,
+        actualEnd: row.actual_flight_end,
       },
       recordedAt: row.created_at,
     }));
@@ -771,7 +1009,7 @@ class PostgresRepository {
    * Find recent aircraft that don't have cached route data
    * Used by background job to populate route database
    */
-  async findRecentAircraftWithoutRoutes(limit = 10, minLastContact) {
+  async findRecentAircraftWithoutRoutes(minLastContact, limit = 10) {
     const query = `
       SELECT DISTINCT ON (a.icao24) 
         a.icao24, 
