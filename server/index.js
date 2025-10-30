@@ -54,6 +54,16 @@ async function startServer() {
     // Fetches routes slowly (5 flights every 5 min) to build database
     backgroundRouteService.start();
 
+    // 4b) Kick a one-time backfill sample to enrich historical flights (times/type)
+    backgroundRouteService.backfillFlightHistorySample();
+
+    // 4c) One-time backfill for date range 2025-10-27 to today
+    const todayStr = new Date().toISOString().split('T')[0];
+    backgroundRouteService.backfillFlightsInRange('2025-10-27', todayStr, 50);
+
+    // 4d) One-time subset backfill: 50 recent flights missing all fields, FA cap ~100
+    backgroundRouteService.backfillFlightsMissingAll(50, 100);
+
     // 5) Start the server
     const { port, host } = config.server;
     app.listen(port, host, () => {
