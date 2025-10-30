@@ -6,6 +6,7 @@ const historyService = require('../services/HistoryService');
 const flightRouteService = require('../services/FlightRouteService');
 const postgresRepository = require('../repositories/PostgresRepository');
 const logger = require('../utils/logger');
+const { mapAircraftTypeToCategory } = require('../utils/aircraftCategoryMapper');
 
 const cache = new NodeCache({ stdTTL: 60, maxKeys: 100 });
 
@@ -69,6 +70,19 @@ router.get('/planes/:identifier', async (req, res, next) => {
       );
       if (route) {
         aircraft.route = route;
+        
+        // Update aircraft category if we got type/model from route
+        if (aircraft.icao24 && (route.aircraft?.type || route.aircraft?.model)) {
+          const inferredCategory = mapAircraftTypeToCategory(route.aircraft?.type, route.aircraft?.model);
+          if (inferredCategory !== null && (aircraft.category === null || aircraft.category === 0)) {
+            try {
+              await postgresRepository.updateAircraftCategory(aircraft.icao24, inferredCategory);
+              aircraft.category = inferredCategory; // Update in response
+            } catch (err) {
+              logger.warn('Failed to update aircraft category in route fetch', { error: err.message });
+            }
+          }
+        }
       }
     } catch (routeError) {
       logger.warn('Could not fetch route data', { error: routeError.message });
@@ -91,12 +105,14 @@ router.get('/route/:identifier', async (req, res, next) => {
     // Try to get aircraft data first for full identifiers
     let aircraftIcao24 = icao24 || identifier;
     let aircraftCallsign = callsign;
+    let currentAircraft = null;
 
     // Always try to get aircraft data to check if it's a current flight
     const aircraft = await aircraftService.getAircraftByIdentifier(identifier);
     if (aircraft) {
       aircraftIcao24 = aircraft.icao24;
       aircraftCallsign = aircraft.callsign;
+      currentAircraft = aircraft;
     }
 
     // If we're querying route for an aircraft, assume it's CURRENT
@@ -122,7 +138,25 @@ router.get('/route/:identifier', async (req, res, next) => {
       return res.status(404).json({ error: 'Flight route not found' });
     }
 
-    return res.json(route);
+    // Update aircraft category if we got type/model from route and aircraft exists
+    let updatedCategory = currentAircraft?.category;
+    if (aircraftIcao24 && (route.aircraft?.type || route.aircraft?.model)) {
+      const inferredCategory = mapAircraftTypeToCategory(route.aircraft?.type, route.aircraft?.model);
+      if (inferredCategory !== null && (!currentAircraft || currentAircraft.category === null || currentAircraft.category === 0)) {
+        try {
+          await postgresRepository.updateAircraftCategory(aircraftIcao24, inferredCategory);
+          updatedCategory = inferredCategory;
+        } catch (err) {
+          logger.warn('Failed to update aircraft category in route fetch', { error: err.message });
+        }
+      }
+    }
+
+    // Include updated category in response so frontend can update the plane object
+    return res.json({
+      ...route,
+      aircraftCategory: updatedCategory, // Include category so frontend can update
+    });
   } catch (err) {
     return next(err);
   }

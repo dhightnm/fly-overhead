@@ -114,24 +114,55 @@ class FlightRouteService {
    * @param {boolean} allowExpensiveApis - Whether to use FlightAware (only for user-initiated requests, default false)
    */
   async getFlightRoute(icao24, callsign, isCurrentFlight = false, allowExpensiveApis = false) {
-    // 1. Check in-memory cache
     const cacheKey = `${callsign || icao24}`;
-    if (this.cache.has(cacheKey)) {
+    
+    // 1. Check in-memory cache (skip for user-initiated requests to get fresh aircraft data)
+    if (!allowExpensiveApis && this.cache.has(cacheKey)) {
       logger.info('Route cache HIT (in-memory) - skipping API call', { cacheKey, icao24, callsign });
-      return this.cache.get(cacheKey);
+      const cachedRoute = this.cache.get(cacheKey);
+      // Try to get aircraft data from route history if available
+      if (!cachedRoute.aircraft) {
+        const routeHistory = await postgresRepository.getLatestRouteHistory(icao24, callsign);
+        if (routeHistory?.aircraft_type || routeHistory?.aircraft_model) {
+          cachedRoute.aircraft = {
+            type: routeHistory.aircraft_type || null,
+            model: routeHistory.aircraft_model || routeHistory.aircraft_type || null,
+          };
+        }
+      }
+      return cachedRoute;
     }
 
-    // 2. Check database cache
-    const cachedRoute = await postgresRepository.getCachedRoute(cacheKey);
-    if (cachedRoute) {
-      logger.info('Route cache HIT (database) - skipping API call', {
+    // 2. Check database cache (skip for user-initiated requests to get fresh data)
+    if (!allowExpensiveApis) {
+      const cachedRoute = await postgresRepository.getCachedRoute(cacheKey);
+      if (cachedRoute) {
+        // Try to get aircraft data from route history if available
+        const routeHistory = await postgresRepository.getLatestRouteHistory(icao24, callsign);
+        if (routeHistory?.aircraft_type || routeHistory?.aircraft_model) {
+          cachedRoute.aircraft = {
+            type: routeHistory.aircraft_type || null,
+            model: routeHistory.aircraft_model || routeHistory.aircraft_type || null,
+          };
+        }
+        
+        logger.info('Route cache HIT (database) - skipping API call', {
+          cacheKey,
+          icao24,
+          callsign,
+          source: cachedRoute.source || 'unknown',
+          hasAircraft: !!cachedRoute.aircraft,
+          allowExpensiveApis,
+        });
+        this.cache.set(cacheKey, cachedRoute);
+        return cachedRoute;
+      }
+    } else {
+      logger.info('Skipping database cache for user-initiated request (allowExpensiveApis=true)', {
         cacheKey,
         icao24,
         callsign,
-        source: cachedRoute.source || 'unknown',
       });
-      this.cache.set(cacheKey, cachedRoute);
-      return cachedRoute; // Already has source from database
     }
 
     logger.info('Route cache MISS - fetching from API', {
@@ -186,33 +217,66 @@ class FlightRouteService {
     if (this.flightAwareApiKey && callsign && allowExpensiveApis) {
       logger.info('Trying FlightAware AeroAPI for route (user-initiated request)', { icao24, callsign });
       try {
-        const route = await this.fetchRouteFromFlightAware(callsign);
-        if (route) {
-          logger.info('Successfully fetched route from FlightAware', {
-            icao24,
-            callsign,
-            departure: route.departureAirport?.icao || route.departureAirport?.iata,
-            arrival: route.arrivalAirport?.icao || route.arrivalAirport?.iata,
-          });
-          // Store in cache (fast lookup for most recent)
-          await this.cacheRoute(cacheKey, {
-            ...route,
-            callsign,
-            icao24,
-            source: 'flightaware',
-          });
+        const routeResult = await this.fetchRouteFromFlightAware(callsign);
+        if (routeResult) {
+          // Handle array of flights (historical data) or single flight
+          const routes = Array.isArray(routeResult) ? routeResult : [routeResult];
+          
+          // Check if we have any valid routes
+          if (routes.length === 0) {
+            logger.info('FlightAware returned empty route array', { icao24, callsign });
+            // Continue to try other sources
+          } else {
+            const mostRecentRoute = routes[0]; // First is usually most recent/active
 
-          // Also store in history if we have flight timestamps
-          if (route.flightData) {
-            await postgresRepository.storeRouteHistory({
-              ...route,
+            logger.info('Successfully fetched route from FlightAware', {
+              icao24,
+              callsign,
+              numFlights: routes.length,
+              departure: mostRecentRoute.departureAirport?.icao || mostRecentRoute.departureAirport?.iata,
+              arrival: mostRecentRoute.arrivalAirport?.icao || mostRecentRoute.arrivalAirport?.iata,
+            });
+
+            // Store most recent in cache (fast lookup)
+            await this.cacheRoute(cacheKey, {
+              ...mostRecentRoute,
               callsign,
               icao24,
               source: 'flightaware',
             });
-          }
 
-          return { ...route, source: 'flightaware' };
+            // Store ALL flights in history (for historical tracking)
+            for (const route of routes) {
+              try {
+                // Store all flights that have valid origin/destination (already filtered in mapFlight)
+                await postgresRepository.storeRouteHistory({
+                  ...route,
+                  callsign,
+                  icao24,
+                  source: 'flightaware',
+                });
+                logger.debug('Stored FlightAware flight in history', {
+                  callsign,
+                  icao24,
+                  departure: route.departureAirport?.icao || route.departureAirport?.iata,
+                  arrival: route.arrivalAirport?.icao || route.arrivalAirport?.iata,
+                  hasScheduledStart: !!route.flightData?.scheduledDeparture,
+                  hasActualStart: !!route.flightData?.actualDeparture,
+                });
+              } catch (storeErr) {
+                // Ignore duplicate key errors (same flight already stored)
+                if (!storeErr.message?.includes('duplicate key') && !storeErr.message?.includes('uniq_flight_routes_history_flight_key')) {
+                  logger.warn('Failed to store FlightAware flight in history', {
+                    callsign,
+                    icao24,
+                    error: storeErr.message,
+                  });
+                }
+              }
+            }
+
+            return { ...mostRecentRoute, source: 'flightaware' };
+          }
         }
         logger.info('FlightAware returned no route data', { icao24, callsign });
         // Continue to try AviationStack if FlightAware doesn't have the flight
@@ -954,15 +1018,17 @@ class FlightRouteService {
    */
   async fetchRouteFromFlightAware(callsign, dateString = null) {
     try {
-      const today = new Date().toISOString().split('T')[0]; // Format: YYYY-MM-DD
-      const queryDate = dateString || today;
+      // If dateString provided, use it; otherwise don't specify start to get all recent flights
+      const params = {};
+      if (dateString) {
+        params.start = dateString;
+      }
+      // Don't specify start if we want all available flights (more efficient)
 
-      logger.info('Querying FlightAware AeroAPI', { callsign, date: queryDate });
+      logger.info('Querying FlightAware AeroAPI', { callsign, date: dateString || 'all recent' });
 
       const response = await axios.get(`${this.flightAwareBaseUrl}/flights/${callsign}`, {
-        params: {
-          start: queryDate,
-        },
+        params,
         headers: {
           Accept: 'application/json; charset=UTF-8',
           'x-apikey': this.flightAwareApiKey,
@@ -975,52 +1041,86 @@ class FlightRouteService {
         return null;
       }
 
-      // Get the most recent/active flight (first one is usually the current or most recent)
-      const flight = response.data.flights[0];
+      // Return ALL flights from the response (for historical data)
+      // The caller can process multiple flights if needed
+      const flights = response.data.flights;
 
-      if (!flight.origin || !flight.destination) {
-        logger.debug('FlightAware flight missing origin or destination', { callsign });
+      // For single-flight response, return the mapped flight
+      // For multiple flights, return array of mapped flights
+      const mapFlight = (flight) => {
+        if (!flight.origin || !flight.destination) {
+          return null;
+        }
+
+        const mapped = {
+          departureAirport: {
+            iata: flight.origin.code_iata || null,
+            icao: flight.origin.code_icao || flight.origin.code || null,
+            name: flight.origin.name || null,
+          },
+          arrivalAirport: {
+            iata: flight.destination.code_iata || null,
+            icao: flight.destination.code_icao || flight.destination.code || null,
+            name: flight.destination.name || null,
+          },
+          flightData: {
+            // Use scheduled_off/actual_off for departure (runway times)
+            // scheduled_out/actual_out are gate times which may be null for GA flights
+            scheduledDeparture: flight.scheduled_off ? new Date(flight.scheduled_off).getTime() / 1000 : 
+                               (flight.scheduled_out ? new Date(flight.scheduled_out).getTime() / 1000 : null),
+            scheduledArrival: flight.scheduled_on ? new Date(flight.scheduled_on).getTime() / 1000 : 
+                             (flight.scheduled_in ? new Date(flight.scheduled_in).getTime() / 1000 : null),
+            actualDeparture: flight.actual_off ? new Date(flight.actual_off).getTime() / 1000 : 
+                            (flight.actual_out ? new Date(flight.actual_out).getTime() / 1000 : null),
+            actualArrival: flight.actual_on ? new Date(flight.actual_on).getTime() / 1000 : 
+                          (flight.actual_in ? new Date(flight.actual_in).getTime() / 1000 : null),
+            filedEte: flight.filed_ete || null,
+          },
+          aircraft: flight.aircraft_type ? {
+            type: flight.aircraft_type || null,
+            model: flight.aircraft_type || null, // FlightAware's aircraft_type IS the model (e.g., "B738", "A321")
+          } : undefined,
+          // Additional FlightAware fields
+          registration: flight.registration || null,
+          flightStatus: flight.status || null,
+          route: flight.route || null,
+          routeDistance: flight.route_distance || null,
+          baggageClaim: flight.baggage_claim || null,
+          gateOrigin: flight.gate_origin || null,
+          gateDestination: flight.gate_destination || null,
+          terminalOrigin: flight.terminal_origin || null,
+          terminalDestination: flight.terminal_destination || null,
+          actualRunwayOff: flight.actual_runway_off || null,
+          actualRunwayOn: flight.actual_runway_on || null,
+          progressPercent: flight.progress_percent || null,
+          filedAirspeed: flight.filed_airspeed || null,
+          blocked: flight.blocked || false,
+          diverted: flight.diverted || false,
+          cancelled: flight.cancelled || false,
+          departureDelay: flight.departure_delay || null,
+          arrivalDelay: flight.arrival_delay || null,
+        };
+
+        return mapped;
+      };
+
+      // Map all flights and filter out nulls
+      const mappedFlights = flights.map(mapFlight).filter((f) => f !== null);
+
+      // If no valid flights after mapping, return null
+      if (mappedFlights.length === 0) {
+        logger.debug('FlightAware returned no valid flights after mapping', { callsign });
         return null;
       }
 
-      logger.info('Found route from FlightAware', {
-        callsign,
-        departure: flight.origin.code_icao || flight.origin.code,
-        arrival: flight.destination.code_icao || flight.destination.code,
-      });
-
-      // Map FlightAware response format to our internal format
-      const mapped = {
-        departureAirport: {
-          iata: flight.origin.code_iata || null,
-          icao: flight.origin.code_icao || flight.origin.code || null,
-          name: flight.origin.name || null,
-        },
-        arrivalAirport: {
-          iata: flight.destination.code_iata || null,
-          icao: flight.destination.code_icao || flight.destination.code || null,
-          name: flight.destination.name || null,
-        },
-        flightData: {
-          // FlightAware doesn't provide Unix timestamps in the same format
-          // We can extract scheduled/actual times if needed
-          scheduledDeparture: flight.scheduled_out ? new Date(flight.scheduled_out).getTime() / 1000 : null,
-          scheduledArrival: flight.scheduled_in ? new Date(flight.scheduled_in).getTime() / 1000 : null,
-          actualDeparture: flight.actual_out ? new Date(flight.actual_out).getTime() / 1000 : null,
-          actualArrival: flight.actual_in ? new Date(flight.actual_in).getTime() / 1000 : null,
-        },
-        aircraft: undefined,
-      };
-
-      // Try to attach aircraft type/model if present
-      if (flight.aircraft_type || flight.aircraft || flight.aircraft_type_name) {
-        mapped.aircraft = {
-          type: flight.aircraft_type || null,
-          model: flight.aircraft_type_name || null,
-        };
+      // If single flight requested, return single object
+      // Otherwise return array for backfill operations
+      if (mappedFlights.length === 1) {
+        return mappedFlights[0];
       }
 
-      return mapped;
+      // Return array of all flights for historical processing
+      return mappedFlights;
     } catch (error) {
       const statusCode = error.response?.status;
       if (statusCode === 429) {

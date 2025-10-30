@@ -30,6 +30,12 @@ app.use(express.static(path.join(__dirname, 'client/build')));
 // API Routes
 app.use('/api', require('./routes/aircraft.routes'));
 
+// Catch-all handler: send back React's index.html for client-side routing
+// This must be AFTER API routes and BEFORE error handler
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, 'client/build/index.html'));
+});
+
 // Error handling (must be last)
 app.use(errorHandler);
 

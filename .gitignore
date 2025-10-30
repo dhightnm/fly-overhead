@@ -1,41 +1,40 @@
-# Dependencies
+# Node
 node_modules/
-**/node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
 
-# Build outputs (should be built in Docker)
-client/build/
-client/.env
-client/.env.local
-client/.env.production.local
-
-# Server environment
-server/.env
+# Environment variables
 .env
 .env.local
-.env.production.local
+.env.*.local
+
+# Build outputs
+client/build/
+server/client/build/
+dist/
 
 # IDE
-.vscode/
 .idea/
+.vscode/
 *.swp
 *.swo
 *~
-*.code-workspace
 
 # OS
 .DS_Store
 Thumbs.db
 
 # Logs
+logs/
 *.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
 
-# Testing
+# Docker volumes (if any local volumes)
+docker-volumes/
+
+# Test coverage
 coverage/
 .nyc_output/
 
-# Client build artifacts (Docker builds these)
-client/build/
-server/client/build/
+# Misc
+*.md.bak

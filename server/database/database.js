@@ -185,6 +185,7 @@ const fetchDataForBoundingBox = async (box) => {
   try {
     const areaRes = await axios.get(`https://${process.env.OPENSKY_USER}:${process.env.OPENSKY_PASS}@opensky-network.org/api/states/all`, {
       params: {
+        extended: true, // Include category field (index 17)
         lamin: box.lamin,
         lomin: box.lomin,
         lamax: box.lamax,
@@ -193,10 +194,21 @@ const fetchDataForBoundingBox = async (box) => {
     });
 
     const promises = areaRes.data.states.map((state) => {
-      // OpenSky API returns 17 items (no category field)
-      // Add null for category at position 17, then Date at position 18
-      const stateWithCategory = [...state, null];
-      const currentStateWithDate = [...stateWithCategory, new Date()];
+      // OpenSky API with extended=true returns 18 items (0-17)
+      // Index 17 is category (may be null if not broadcast by aircraft)
+      // Append created_at as index 18
+      let category = state[17] !== undefined ? state[17] : null;
+      
+      // Validate category: must be between 0 and 19 (OpenSky valid range)
+      if (category !== null && (typeof category !== 'number' || category < 0 || category > 19)) {
+        console.warn('Invalid category value, setting to null', {
+          icao24: state[0],
+          invalidCategory: category,
+        });
+        category = null;
+      }
+      
+      const currentStateWithDate = [...state.slice(0, 17), category, new Date()];
       return insertOrUpdateAircraftState(currentStateWithDate);
     });
 
@@ -251,12 +263,17 @@ const populateDatabase = async () => {
  */
 const updateDatabaseFromAPI = async () => {
   try {
-    const areaRes = await axios.get(`https://${process.env.OPENSKY_USER}:${process.env.OPENSKY_PASS}@opensky-network.org/api/states/all`);
+    const areaRes = await axios.get(`https://${process.env.OPENSKY_USER}:${process.env.OPENSKY_PASS}@opensky-network.org/api/states/all`, {
+      params: {
+        extended: true, // Include category field (index 17)
+      },
+    });
     const promises = areaRes.data.states.map((originalState) => {
-      // OpenSky API returns 17 items (no category field)
-      // Add null for category at position 17, then Date at position 18
-      const stateWithCategory = [...originalState, null];
-      const currentStateWithDate = [...stateWithCategory, new Date()];
+      // OpenSky API with extended=true returns 18 items (0-17)
+      // Index 17 is category (may be null if not broadcast by aircraft)
+      // Append created_at as index 18
+      const category = originalState[17] !== undefined ? originalState[17] : null;
+      const currentStateWithDate = [...originalState.slice(0, 17), category, new Date()];
       return insertOrUpdateAircraftState(currentStateWithDate);
     });
     await Promise.all(promises);

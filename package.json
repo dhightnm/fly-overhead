@@ -1,15 +1,16 @@
 {
-  "name": "fly-overhead-root",
+  "name": "fly-overhead",
   "version": "1.0.0",
-  "description": "Root package for fly-overhead monorepo",
-  "private": true,
+  "description": "Fly Overhead - Aircraft tracking application",
   "scripts": {
-    "start": "node server/index.js"
-  },
-  "dependencies": {
-    "aws-sdk": "^2.1479.0",
-    "leaflet-rotatedmarker": "^0.2.0",
-    "pg": "^8.11.3",
-    "pg-promise": "^11.5.4"
+    "docker:dev": "docker compose -f docker-compose.dev.yml up -d",
+    "docker:dev:build": "docker compose -f docker-compose.dev.yml build --no-cache server && docker compose -f docker-compose.dev.yml up -d",
+    "docker:dev:down": "docker compose -f docker-compose.dev.yml down",
+    "docker:dev:restart": "docker compose -f docker-compose.dev.yml restart server",
+    "docker:prod": "docker compose up -d",
+    "docker:prod:build": "docker compose build --no-cache server && docker compose up -d",
+    "docker:prod:down": "docker compose down",
+    "docker:prod:restart": "docker compose restart server",
+    "docker:rebuild": "docker compose down && docker compose build --no-cache --pull && docker compose up -d"
   }
 }

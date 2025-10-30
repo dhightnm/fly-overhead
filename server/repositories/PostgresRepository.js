@@ -173,6 +173,25 @@ class PostgresRepository {
         actual_ete INT,
         first_seen BIGINT,
         last_seen BIGINT,
+        -- FlightAware additional fields
+        registration TEXT,
+        flight_status TEXT,
+        route TEXT,
+        route_distance INT,
+        baggage_claim TEXT,
+        gate_origin TEXT,
+        gate_destination TEXT,
+        terminal_origin TEXT,
+        terminal_destination TEXT,
+        actual_runway_off TEXT,
+        actual_runway_on TEXT,
+        progress_percent INT,
+        filed_airspeed INT,
+        blocked BOOLEAN,
+        diverted BOOLEAN,
+        cancelled BOOLEAN,
+        departure_delay INT,
+        arrival_delay INT,
         created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
         UNIQUE(icao24, callsign, first_seen, last_seen)
       );
@@ -260,6 +279,119 @@ class PostgresRepository {
           WHERE table_name='flight_routes_history' AND column_name='aircraft_model'
         ) THEN
           ALTER TABLE flight_routes_history ADD COLUMN aircraft_model TEXT;
+        END IF;
+      END $$;
+
+      -- Add FlightAware additional fields if they don't exist
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='flight_routes_history' AND column_name='registration'
+        ) THEN
+          ALTER TABLE flight_routes_history ADD COLUMN registration TEXT;
+        END IF;
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='flight_routes_history' AND column_name='flight_status'
+        ) THEN
+          ALTER TABLE flight_routes_history ADD COLUMN flight_status TEXT;
+        END IF;
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='flight_routes_history' AND column_name='route'
+        ) THEN
+          ALTER TABLE flight_routes_history ADD COLUMN route TEXT;
+        END IF;
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='flight_routes_history' AND column_name='route_distance'
+        ) THEN
+          ALTER TABLE flight_routes_history ADD COLUMN route_distance INT;
+        END IF;
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='flight_routes_history' AND column_name='baggage_claim'
+        ) THEN
+          ALTER TABLE flight_routes_history ADD COLUMN baggage_claim TEXT;
+        END IF;
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='flight_routes_history' AND column_name='gate_origin'
+        ) THEN
+          ALTER TABLE flight_routes_history ADD COLUMN gate_origin TEXT;
+        END IF;
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='flight_routes_history' AND column_name='gate_destination'
+        ) THEN
+          ALTER TABLE flight_routes_history ADD COLUMN gate_destination TEXT;
+        END IF;
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='flight_routes_history' AND column_name='terminal_origin'
+        ) THEN
+          ALTER TABLE flight_routes_history ADD COLUMN terminal_origin TEXT;
+        END IF;
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='flight_routes_history' AND column_name='terminal_destination'
+        ) THEN
+          ALTER TABLE flight_routes_history ADD COLUMN terminal_destination TEXT;
+        END IF;
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='flight_routes_history' AND column_name='actual_runway_off'
+        ) THEN
+          ALTER TABLE flight_routes_history ADD COLUMN actual_runway_off TEXT;
+        END IF;
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='flight_routes_history' AND column_name='actual_runway_on'
+        ) THEN
+          ALTER TABLE flight_routes_history ADD COLUMN actual_runway_on TEXT;
+        END IF;
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='flight_routes_history' AND column_name='progress_percent'
+        ) THEN
+          ALTER TABLE flight_routes_history ADD COLUMN progress_percent INT;
+        END IF;
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='flight_routes_history' AND column_name='filed_airspeed'
+        ) THEN
+          ALTER TABLE flight_routes_history ADD COLUMN filed_airspeed INT;
+        END IF;
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='flight_routes_history' AND column_name='blocked'
+        ) THEN
+          ALTER TABLE flight_routes_history ADD COLUMN blocked BOOLEAN;
+        END IF;
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='flight_routes_history' AND column_name='diverted'
+        ) THEN
+          ALTER TABLE flight_routes_history ADD COLUMN diverted BOOLEAN;
+        END IF;
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='flight_routes_history' AND column_name='cancelled'
+        ) THEN
+          ALTER TABLE flight_routes_history ADD COLUMN cancelled BOOLEAN;
+        END IF;
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='flight_routes_history' AND column_name='departure_delay'
+        ) THEN
+          ALTER TABLE flight_routes_history ADD COLUMN departure_delay INT;
+        END IF;
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='flight_routes_history' AND column_name='arrival_delay'
+        ) THEN
+          ALTER TABLE flight_routes_history ADD COLUMN arrival_delay INT;
         END IF;
       END $$;
 
@@ -365,6 +497,23 @@ class PostgresRepository {
         AND longitude BETWEEN $4 AND $5
     `;
     return this.db.manyOrNone(query, [recentContactThreshold, latmin, latmax, lonmin, lonmax]);
+  }
+
+  /**
+   * Update aircraft category based on aircraft type/model
+   * Called when we get aircraft type information from APIs
+   */
+  async updateAircraftCategory(icao24, category) {
+    if (!icao24 || category === null || category === undefined) {
+      return;
+    }
+    const query = `
+      UPDATE aircraft_states
+      SET category = $1
+      WHERE icao24 = $2
+        AND (category IS NULL OR category = 0)
+    `;
+    await this.db.query(query, [category, icao24]);
   }
 
   /**
@@ -580,34 +729,11 @@ class PostgresRepository {
    * Store route in history table (stores ALL routes for historical tracking)
    */
   async storeRouteHistory(routeData) {
-    const query = `
-      INSERT INTO flight_routes_history (
-        callsign, icao24,
-        flight_key, route_key,
-        aircraft_type, aircraft_model,
-        departure_iata, departure_icao, departure_name,
-        arrival_iata, arrival_icao, arrival_name,
-        source,
-        first_seen, last_seen,
-        scheduled_flight_start, scheduled_flight_end,
-        actual_flight_start, actual_flight_end,
-        scheduled_ete, actual_ete
-      )
-      VALUES (
-        $1, $2,
-        $3, $4,
-        $5, $6,
-        $7, $8, $9,
-        $10, $11, $12,
-        $13,
-        $14, $15,
-        $16, $17,
-        $18, $19,
-        $20, $21
-      )
-      ON CONFLICT ON CONSTRAINT uniq_flight_routes_history_flight_key DO NOTHING;
-    `;
-
+    // First, check if this is a recent flight that might need updating
+    // (e.g., a flight that was "En Route" and is now "Arrived")
+    const callsignNorm = routeData.callsign ? String(routeData.callsign).trim().toUpperCase() : '';
+    const icao24Norm = routeData.icao24 ? String(routeData.icao24).trim().toLowerCase() : '';
+    
     // legacy mapping replaced: actual_* will carry real times; first/last seen remain raw seconds
     const scheduledStart = routeData.flightData?.scheduledDeparture
       ? new Date(routeData.flightData.scheduledDeparture * 1000)
@@ -621,6 +747,100 @@ class PostgresRepository {
     const actualEnd = routeData.flightData?.actualArrival
       ? new Date(routeData.flightData.actualArrival * 1000)
       : null;
+
+    // Check for existing recent flight with same departure time (within 48 hours)
+    // This handles cases where a flight was "En Route" and is now "Arrived"
+    const departureTime = actualStart || scheduledStart;
+    let existingFlightId = null;
+    
+    if (icao24Norm && callsignNorm && departureTime) {
+      // Match flights by departure time (within 5 minutes tolerance) and same callsign/icao24
+      const recentFlightQuery = `
+        SELECT id, actual_flight_end, flight_status, actual_flight_start, scheduled_flight_start
+        FROM flight_routes_history
+        WHERE icao24 = $1
+          AND callsign = $2
+          AND (
+            ($3 IS NOT NULL AND actual_flight_start IS NOT NULL 
+             AND ABS(EXTRACT(EPOCH FROM (actual_flight_start - $3::timestamp))) < 300)
+            OR ($4 IS NOT NULL AND scheduled_flight_start IS NOT NULL AND actual_flight_start IS NULL
+             AND ABS(EXTRACT(EPOCH FROM (scheduled_flight_start - $4::timestamp))) < 300)
+          )
+          AND created_at > NOW() - INTERVAL '48 hours'
+        ORDER BY created_at DESC
+        LIMIT 1
+      `;
+      
+      const existingFlight = await this.db.oneOrNone(recentFlightQuery, [
+        icao24Norm,
+        callsignNorm,
+        actualStart,
+        scheduledStart,
+      ]);
+      
+      if (existingFlight) {
+        existingFlightId = existingFlight.id;
+        
+        // Always update if:
+        // 1. Existing flight doesn't have arrival time but new data does
+        // 2. Status changed (e.g., "En Route" -> "Arrived")
+        // 3. New data has more complete information
+        const hasMoreCompleteData = actualEnd && !existingFlight.actual_flight_end;
+        const statusChanged = existingFlight.flight_status !== routeData.flightStatus && routeData.flightStatus;
+        const needsUpdate = hasMoreCompleteData || statusChanged;
+        
+        if (needsUpdate && existingFlightId) {
+          logger.info('Updating existing recent flight with completed data', {
+            flightId: existingFlightId,
+            callsign: callsignNorm,
+            icao24: icao24Norm,
+            oldStatus: existingFlight.flight_status,
+            newStatus: routeData.flightStatus,
+            hasNewArrival: !!actualEnd,
+            hadArrival: !!existingFlight.actual_flight_end,
+          });
+          
+          // Update the existing record instead of creating a new one
+          const updateFields = {};
+          if (actualEnd) updateFields.actual_flight_end = actualEnd;
+          if (scheduledEnd) updateFields.scheduled_flight_end = scheduledEnd;
+          if (routeData.flightStatus) updateFields.flight_status = routeData.flightStatus;
+          if (routeData.registration) updateFields.registration = routeData.registration;
+          if (routeData.route) updateFields.route = routeData.route;
+          if (routeData.routeDistance !== undefined) updateFields.route_distance = routeData.routeDistance;
+          if (routeData.baggageClaim) updateFields.baggage_claim = routeData.baggageClaim;
+          if (routeData.gateOrigin) updateFields.gate_origin = routeData.gateOrigin;
+          if (routeData.gateDestination) updateFields.gate_destination = routeData.gateDestination;
+          if (routeData.terminalOrigin) updateFields.terminal_origin = routeData.terminalOrigin;
+          if (routeData.terminalDestination) updateFields.terminal_destination = routeData.terminalDestination;
+          if (routeData.actualRunwayOff) updateFields.actual_runway_off = routeData.actualRunwayOff;
+          if (routeData.actualRunwayOn) updateFields.actual_runway_on = routeData.actualRunwayOn;
+          if (routeData.progressPercent !== undefined) updateFields.progress_percent = routeData.progressPercent;
+          if (routeData.filedAirspeed !== undefined) updateFields.filed_airspeed = routeData.filedAirspeed;
+          if (routeData.blocked !== undefined) updateFields.blocked = routeData.blocked;
+          if (routeData.diverted !== undefined) updateFields.diverted = routeData.diverted;
+          if (routeData.cancelled !== undefined) updateFields.cancelled = routeData.cancelled;
+          if (routeData.departureDelay !== undefined) updateFields.departure_delay = routeData.departureDelay;
+          if (routeData.arrivalDelay !== undefined) updateFields.arrival_delay = routeData.arrivalDelay;
+          if (actualStart && actualEnd) {
+            updateFields.actual_ete = Math.max(0, Math.floor((actualEnd.getTime() - actualStart.getTime()) / 1000));
+          }
+          
+          return await this.updateFlightHistoryById(existingFlightId, updateFields);
+        }
+      }
+    }
+
+    // Build deterministic keys for new flights
+    const startKey = departureTime ? departureTime.toISOString() : '';
+    const endKey = (actualEnd || scheduledEnd) ? (actualEnd || scheduledEnd).toISOString() : '';
+    const depIcao = routeData.departureAirport?.icao ? String(routeData.departureAirport.icao).trim().toUpperCase() : '';
+    const arrIcao = routeData.arrivalAirport?.icao ? String(routeData.arrivalAirport.icao).trim().toUpperCase() : '';
+
+    const flightKey = [icao24Norm, callsignNorm, startKey, endKey].join('|');
+    const routeKey = [depIcao, arrIcao].join('>');
+
+    // Calculate ETEs
     let eteSeconds = null;
     if (typeof routeData.flightData?.duration === 'number') {
       eteSeconds = routeData.flightData.duration;
@@ -636,40 +856,103 @@ class PostgresRepository {
       ? Math.max(0, Math.floor((actualEnd.getTime() - actualStart.getTime()) / 1000))
       : null;
 
-    // Build deterministic keys
-    const callsignNorm = routeData.callsign ? String(routeData.callsign).trim().toUpperCase() : '';
-    const icao24Norm = routeData.icao24 ? String(routeData.icao24).trim().toLowerCase() : '';
-    const startKey = (actualStart || scheduledStart) ? (actualStart || scheduledStart).toISOString() : '';
-    const endKey = (actualEnd || scheduledEnd) ? (actualEnd || scheduledEnd).toISOString() : '';
-    const depIcao = routeData.departureAirport?.icao ? String(routeData.departureAirport.icao).trim().toUpperCase() : '';
-    const arrIcao = routeData.arrivalAirport?.icao ? String(routeData.arrivalAirport.icao).trim().toUpperCase() : '';
+    const query = `
+      INSERT INTO flight_routes_history (
+        callsign, icao24,
+        flight_key, route_key,
+        aircraft_type, aircraft_model,
+        departure_iata, departure_icao, departure_name,
+        arrival_iata, arrival_icao, arrival_name,
+        source,
+        first_seen, last_seen,
+        scheduled_flight_start, scheduled_flight_end,
+        actual_flight_start, actual_flight_end,
+        scheduled_ete, actual_ete,
+        registration, flight_status, route, route_distance,
+        baggage_claim, gate_origin, gate_destination,
+        terminal_origin, terminal_destination,
+        actual_runway_off, actual_runway_on,
+        progress_percent, filed_airspeed,
+        blocked, diverted, cancelled,
+        departure_delay, arrival_delay
+      )
+      VALUES (
+        $1, $2,
+        $3, $4,
+        $5, $6,
+        $7, $8, $9,
+        $10, $11, $12,
+        $13,
+        $14, $15,
+        $16, $17,
+        $18, $19,
+        $20, $21,
+        $22, $23, $24, $25,
+        $26, $27, $28,
+        $29, $30,
+        $31, $32,
+        $33, $34,
+        $35, $36, $37,
+        $38, $39
+      )
+      ON CONFLICT ON CONSTRAINT uniq_flight_routes_history_flight_key DO NOTHING;
+    `;
 
-    const flightKey = [icao24Norm, callsignNorm, startKey, endKey].join('|');
-    const routeKey = [depIcao, arrIcao].join('>');
-
-    await this.db.query(query, [
-      routeData.callsign || null,
-      routeData.icao24 || null,
-      flightKey || null,
-      routeKey || null,
-      routeData.aircraft?.type || routeData.aircraft_type || null,
-      routeData.aircraft?.model || routeData.aircraft_model || null,
-      routeData.departureAirport?.iata || null,
-      routeData.departureAirport?.icao || null,
-      routeData.departureAirport?.name || null,
-      routeData.arrivalAirport?.iata || null,
-      routeData.arrivalAirport?.icao || null,
-      routeData.arrivalAirport?.name || null,
-      routeData.source || null,
-      routeData.flightData?.firstSeen || null,
-      routeData.flightData?.lastSeen || null,
-      scheduledStart,
-      scheduledEnd,
-      actualStart,
-      actualEnd,
-      scheduledEte,
-      actualEte,
-    ]);
+    try {
+      await this.db.query(query, [
+        routeData.callsign || null,
+        routeData.icao24 || null,
+        flightKey || null,
+        routeKey || null,
+        routeData.aircraft?.type || routeData.aircraft_type || null,
+        routeData.aircraft?.model || routeData.aircraft_model || null,
+        routeData.departureAirport?.iata || null,
+        routeData.departureAirport?.icao || null,
+        routeData.departureAirport?.name || null,
+        routeData.arrivalAirport?.iata || null,
+        routeData.arrivalAirport?.icao || null,
+        routeData.arrivalAirport?.name || null,
+        routeData.source || null,
+        routeData.flightData?.firstSeen || null,
+        routeData.flightData?.lastSeen || null,
+        scheduledStart,
+        scheduledEnd,
+        actualStart,
+        actualEnd,
+        scheduledEte,
+        actualEte,
+        // FlightAware additional fields
+        routeData.registration || null,
+        routeData.flightStatus || null,
+        routeData.route || null,
+        routeData.routeDistance || null,
+        routeData.baggageClaim || null,
+        routeData.gateOrigin || null,
+        routeData.gateDestination || null,
+        routeData.terminalOrigin || null,
+        routeData.terminalDestination || null,
+        routeData.actualRunwayOff || null,
+        routeData.actualRunwayOn || null,
+        routeData.progressPercent || null,
+        routeData.filedAirspeed || null,
+        routeData.blocked || false,
+        routeData.diverted || false,
+        routeData.cancelled || false,
+        routeData.departureDelay || null,
+        routeData.arrivalDelay || null,
+      ]);
+    } catch (error) {
+      // Ignore duplicate key errors (expected when same flight already stored)
+      if (error.message?.includes('duplicate key') || error.message?.includes('uniq_flight_routes_history_flight_key')) {
+        logger.debug('Flight already exists in history (duplicate key)', {
+          callsign: callsignNorm,
+          icao24: icao24Norm,
+          flightKey,
+        });
+        return;
+      }
+      throw error;
+    }
   }
 
   /**
@@ -767,6 +1050,24 @@ class PostgresRepository {
     if (fields.actual_ete !== undefined) push('actual_ete', fields.actual_ete);
     if (fields.aircraft_type !== undefined) push('aircraft_type', fields.aircraft_type);
     if (fields.aircraft_model !== undefined) push('aircraft_model', fields.aircraft_model);
+    if (fields.registration !== undefined) push('registration', fields.registration);
+    if (fields.flight_status !== undefined) push('flight_status', fields.flight_status);
+    if (fields.route !== undefined) push('route', fields.route);
+    if (fields.route_distance !== undefined) push('route_distance', fields.route_distance);
+    if (fields.baggage_claim !== undefined) push('baggage_claim', fields.baggage_claim);
+    if (fields.gate_origin !== undefined) push('gate_origin', fields.gate_origin);
+    if (fields.gate_destination !== undefined) push('gate_destination', fields.gate_destination);
+    if (fields.terminal_origin !== undefined) push('terminal_origin', fields.terminal_origin);
+    if (fields.terminal_destination !== undefined) push('terminal_destination', fields.terminal_destination);
+    if (fields.actual_runway_off !== undefined) push('actual_runway_off', fields.actual_runway_off);
+    if (fields.actual_runway_on !== undefined) push('actual_runway_on', fields.actual_runway_on);
+    if (fields.progress_percent !== undefined) push('progress_percent', fields.progress_percent);
+    if (fields.filed_airspeed !== undefined) push('filed_airspeed', fields.filed_airspeed);
+    if (fields.blocked !== undefined) push('blocked', fields.blocked);
+    if (fields.diverted !== undefined) push('diverted', fields.diverted);
+    if (fields.cancelled !== undefined) push('cancelled', fields.cancelled);
+    if (fields.departure_delay !== undefined) push('departure_delay', fields.departure_delay);
+    if (fields.arrival_delay !== undefined) push('arrival_delay', fields.arrival_delay);
 
     if (sets.length === 0) return;
 
@@ -830,6 +1131,24 @@ class PostgresRepository {
       },
       recordedAt: row.created_at,
     }));
+  }
+
+  /**
+   * Get latest route history for an aircraft (to extract aircraft type/model)
+   */
+  async getLatestRouteHistory(icao24, callsign) {
+    const query = `
+      SELECT aircraft_type, aircraft_model
+      FROM flight_routes_history
+      WHERE icao24 = $1
+        AND (callsign = $2 OR $2 IS NULL)
+        AND (aircraft_type IS NOT NULL OR aircraft_model IS NOT NULL)
+      ORDER BY created_at DESC, actual_flight_start DESC
+      LIMIT 1
+    `;
+    
+    const result = await this.db.oneOrNone(query, [icao24, callsign]);
+    return result;
   }
 
   /**

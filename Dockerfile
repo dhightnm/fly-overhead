@@ -22,6 +22,10 @@ RUN npm run build
 # ---------------------------------------
 FROM node:16
 
+# Build argument for cache busting (optional, set via docker compose)
+ARG BUILD_DATE
+ENV BUILD_DATE=${BUILD_DATE}
+
 # Set working directory inside container
 WORKDIR /app
 
@@ -36,6 +40,8 @@ RUN npm install --production
 WORKDIR /app
 
 # Copy the rest of your server code
+# Use .dockerignore to exclude node_modules, but include all source files
+# This layer will be invalidated when any server/*.js file changes
 COPY server/ ./server/
 
 # Copy the built React frontend from Stage 1 into server/client/build
