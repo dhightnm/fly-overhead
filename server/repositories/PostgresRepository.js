@@ -169,7 +169,8 @@ class PostgresRepository {
         scheduled_flight_end TIMESTAMPTZ,
         actual_flight_start TIMESTAMPTZ,
         actual_flight_end TIMESTAMPTZ,
-        ete INT,
+        scheduled_ete INT,
+        actual_ete INT,
         first_seen BIGINT,
         last_seen BIGINT,
         created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
@@ -216,9 +217,15 @@ class PostgresRepository {
         END IF;
         IF NOT EXISTS (
           SELECT 1 FROM information_schema.columns
-          WHERE table_name='flight_routes_history' AND column_name='ete'
+          WHERE table_name='flight_routes_history' AND column_name='scheduled_ete'
         ) THEN
-          ALTER TABLE flight_routes_history ADD COLUMN ete INT;
+          ALTER TABLE flight_routes_history ADD COLUMN scheduled_ete INT;
+        END IF;
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='flight_routes_history' AND column_name='actual_ete'
+        ) THEN
+          ALTER TABLE flight_routes_history ADD COLUMN actual_ete INT;
         END IF;
       END $$;
       
@@ -584,7 +591,7 @@ class PostgresRepository {
         first_seen, last_seen,
         scheduled_flight_start, scheduled_flight_end,
         actual_flight_start, actual_flight_end,
-        ete
+        scheduled_ete, actual_ete
       )
       VALUES (
         $1, $2,
@@ -596,7 +603,7 @@ class PostgresRepository {
         $14, $15,
         $16, $17,
         $18, $19,
-        $20
+        $20, $21
       )
       ON CONFLICT ON CONSTRAINT uniq_flight_routes_history_flight_key DO NOTHING;
     `;
@@ -620,6 +627,14 @@ class PostgresRepository {
     } else if (typeof routeData.flightData?.filedEte === 'number') {
       eteSeconds = routeData.flightData.filedEte;
     }
+
+    // Compute ETEs from timestamps when available (seconds)
+    const scheduledEte = (scheduledStart && scheduledEnd)
+      ? Math.max(0, Math.floor((scheduledEnd.getTime() - scheduledStart.getTime()) / 1000))
+      : null;
+    const actualEte = (actualStart && actualEnd)
+      ? Math.max(0, Math.floor((actualEnd.getTime() - actualStart.getTime()) / 1000))
+      : null;
 
     // Build deterministic keys
     const callsignNorm = routeData.callsign ? String(routeData.callsign).trim().toUpperCase() : '';
@@ -652,7 +667,8 @@ class PostgresRepository {
       scheduledEnd,
       actualStart,
       actualEnd,
-      eteSeconds,
+      scheduledEte,
+      actualEte,
     ]);
   }
 
@@ -747,7 +763,8 @@ class PostgresRepository {
     if (fields.scheduled_flight_end !== undefined) push('scheduled_flight_end', fields.scheduled_flight_end);
     if (fields.actual_flight_start !== undefined) push('actual_flight_start', fields.actual_flight_start);
     if (fields.actual_flight_end !== undefined) push('actual_flight_end', fields.actual_flight_end);
-    if (fields.ete !== undefined) push('ete', fields.ete);
+    if (fields.scheduled_ete !== undefined) push('scheduled_ete', fields.scheduled_ete);
+    if (fields.actual_ete !== undefined) push('actual_ete', fields.actual_ete);
     if (fields.aircraft_type !== undefined) push('aircraft_type', fields.aircraft_type);
     if (fields.aircraft_model !== undefined) push('aircraft_model', fields.aircraft_model);
 

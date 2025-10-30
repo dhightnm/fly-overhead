@@ -66,7 +66,7 @@ class BackgroundRouteService {
       const tenMinutesAgo = Math.floor(Date.now() / 1000) - (10 * 60);
       const aircraft = await postgresRepository.findRecentAircraftWithoutRoutes(
         tenMinutesAgo,
-        this.BATCH_SIZE
+        this.BATCH_SIZE,
       );
 
       if (aircraft.length === 0) {
@@ -79,12 +79,12 @@ class BackgroundRouteService {
       // Process each aircraft sequentially with delay (rate limiting)
       for (let i = 0; i < aircraft.length; i++) {
         const plane = aircraft[i];
-        
+
         try {
           // Skip if we just cached this recently (check DB)
           const cacheKey = plane.callsign || plane.icao24;
           const existingRoute = await postgresRepository.getCachedRoute(cacheKey);
-          
+
           if (existingRoute) {
             logger.debug(`Skipping ${cacheKey} - already in cache`);
             continue;
@@ -96,12 +96,12 @@ class BackgroundRouteService {
           await flightRouteService.getFlightRoute(
             plane.icao24,
             plane.callsign,
-            true // isCurrentFlight
+            true, // isCurrentFlight
           );
 
           // Small delay between requests to be respectful to APIs
           if (i < aircraft.length - 1) {
-            await new Promise(resolve => setTimeout(resolve, 2000)); // 2 second delay
+            await new Promise((resolve) => setTimeout(resolve, 2000)); // 2 second delay
           }
         } catch (error) {
           logger.error('Error processing aircraft in background job', {
@@ -156,12 +156,12 @@ class BackgroundRouteService {
           if (f.icao24) {
             try { route = await flightRouteService.fetchRouteFromOpenSky(f.icao24, false); } catch (e) { /* noop */ }
             // Respect OpenSky rate limits
-            await new Promise(resolve => setTimeout(resolve, 2000));
+            await new Promise((resolve) => setTimeout(resolve, 2000));
           }
           if (!route && f.callsign && flightAwareRemaining > 0) {
             // Use the flight's created_at date to improve historical actuals
             const dateStr = new Date(f.created_at).toISOString().split('T')[0];
-            try { 
+            try {
               route = await flightRouteService.fetchRouteFromFlightAware(f.callsign, dateStr);
             } catch (e) { /* noop */ } finally {
               flightAwareRemaining -= 1;
@@ -182,6 +182,17 @@ class BackgroundRouteService {
             if (fd.actualArrival) updates.actual_flight_end = new Date(fd.actualArrival * 1000);
             if (typeof fd.duration === 'number') updates.ete = fd.duration;
           }
+          // Compute ETEs if timestamps present
+          if (updates.scheduled_flight_start && updates.scheduled_flight_end) {
+            updates.scheduled_ete = Math.max(0, Math.floor((updates.scheduled_flight_end - updates.scheduled_flight_start) / 1000));
+          }
+          if (updates.actual_flight_start && updates.actual_flight_end) {
+            updates.actual_ete = Math.max(0, Math.floor((updates.actual_flight_end - updates.actual_flight_start) / 1000));
+            if (!updates.ete) updates.ete = updates.actual_ete;
+          }
+          // Capture aircraft type/model if present
+          if (route?.aircraft?.type && !updates.aircraft_type) updates.aircraft_type = route.aircraft.type;
+          if (route?.aircraft?.model && !updates.aircraft_model) updates.aircraft_model = route.aircraft.model;
           if (route?.aircraft?.type || route?.aircraft_type) {
             updates.aircraft_type = route.aircraft?.type || route.aircraft_type;
           }
@@ -195,7 +206,7 @@ class BackgroundRouteService {
           }
 
           // Small inter-flight delay
-          await new Promise(resolve => setTimeout(resolve, 500));
+          await new Promise((resolve) => setTimeout(resolve, 500));
         } catch (error) {
           logger.warn('Backfill: failed to enrich flight', { id: f.id, error: error.message });
         }
@@ -226,13 +237,13 @@ class BackgroundRouteService {
           // OpenSky first (historical)
           if (f.icao24) {
             try { route = await flightRouteService.fetchRouteFromOpenSky(f.icao24, false); } catch (e) { /* noop */ }
-            await new Promise(resolve => setTimeout(resolve, 2000));
+            await new Promise((resolve) => setTimeout(resolve, 2000));
           }
           // FlightAware with date
           if (!route && f.callsign && flightAwareRemaining > 0) {
             const dateStr = new Date(f.created_at).toISOString().split('T')[0];
-            try { 
-              route = await flightRouteService.fetchRouteFromFlightAware(f.callsign, dateStr); 
+            try {
+              route = await flightRouteService.fetchRouteFromFlightAware(f.callsign, dateStr);
             } catch (e) { /* noop */ } finally {
               flightAwareRemaining -= 1;
             }
@@ -253,6 +264,15 @@ class BackgroundRouteService {
             if (fd.actualArrival) updates.actual_flight_end = new Date(fd.actualArrival * 1000);
             if (typeof fd.duration === 'number') updates.ete = fd.duration;
           }
+          if (updates.scheduled_flight_start && updates.scheduled_flight_end) {
+            updates.scheduled_ete = Math.max(0, Math.floor((updates.scheduled_flight_end - updates.scheduled_flight_start) / 1000));
+          }
+          if (updates.actual_flight_start && updates.actual_flight_end) {
+            updates.actual_ete = Math.max(0, Math.floor((updates.actual_flight_end - updates.actual_flight_start) / 1000));
+            if (!updates.ete) updates.ete = updates.actual_ete;
+          }
+          if (route?.aircraft?.type && !updates.aircraft_type) updates.aircraft_type = route.aircraft.type;
+          if (route?.aircraft?.model && !updates.aircraft_model) updates.aircraft_model = route.aircraft.model;
           if (route?.aircraft?.type || route?.aircraft_type) {
             updates.aircraft_type = route.aircraft?.type || route.aircraft_type;
           }
@@ -265,7 +285,7 @@ class BackgroundRouteService {
             logger.info('Backfill(range): updated', { id: f.id });
           }
 
-          await new Promise(resolve => setTimeout(resolve, 500));
+          await new Promise((resolve) => setTimeout(resolve, 500));
         } catch (error) {
           logger.warn('Backfill(range): failed to enrich', { id: f.id, error: error.message });
         }
@@ -294,13 +314,11 @@ class BackgroundRouteService {
           let route = null;
           if (f.icao24) {
             try { route = await flightRouteService.fetchRouteFromOpenSky(f.icao24, false); } catch (e) { /* noop */ }
-            await new Promise(resolve => setTimeout(resolve, 2000));
+            await new Promise((resolve) => setTimeout(resolve, 2000));
           }
           if (!route && f.callsign && flightAwareRemaining > 0) {
             const dateStr = new Date(f.created_at).toISOString().split('T')[0];
-            try { route = await flightRouteService.fetchRouteFromFlightAware(f.callsign, dateStr); }
-            catch (e) { /* noop */ }
-            finally { flightAwareRemaining -= 1; }
+            try { route = await flightRouteService.fetchRouteFromFlightAware(f.callsign, dateStr); } catch (e) { /* noop */ } finally { flightAwareRemaining -= 1; }
           }
           if (!route && f.callsign) {
             try { route = await flightRouteService.fetchRouteFromAPI(f.icao24, f.callsign); } catch (e) { /* noop */ }
@@ -317,11 +335,20 @@ class BackgroundRouteService {
             if (fd.actualArrival) updates.actual_flight_end = new Date(fd.actualArrival * 1000);
             if (typeof fd.duration === 'number') updates.ete = fd.duration;
           }
+          if (updates.scheduled_flight_start && updates.scheduled_flight_end) {
+            updates.scheduled_ete = Math.max(0, Math.floor((updates.scheduled_flight_end - updates.scheduled_flight_start) / 1000));
+          }
+          if (updates.actual_flight_start && updates.actual_flight_end) {
+            updates.actual_ete = Math.max(0, Math.floor((updates.actual_flight_end - updates.actual_flight_start) / 1000));
+            if (!updates.ete) updates.ete = updates.actual_ete;
+          }
+          if (route?.aircraft?.type && !updates.aircraft_type) updates.aircraft_type = route.aircraft.type;
+          if (route?.aircraft?.model && !updates.aircraft_model) updates.aircraft_model = route.aircraft.model;
           if (Object.keys(updates).length > 0) {
             await postgresRepository.updateFlightHistoryById(f.id, updates);
             logger.info('Backfill(subset): updated', { id: f.id });
           }
-          await new Promise(resolve => setTimeout(resolve, 500));
+          await new Promise((resolve) => setTimeout(resolve, 500));
         } catch (err) {
           logger.warn('Backfill(subset): failed', { id: f.id, error: err.message });
         }
@@ -336,4 +363,3 @@ class BackgroundRouteService {
 const backgroundRouteService = new BackgroundRouteService();
 
 module.exports = backgroundRouteService;
-

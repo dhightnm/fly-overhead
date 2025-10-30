@@ -910,9 +910,21 @@ class FlightRouteService {
       const arrSchedIso = routeData.arrival?.scheduled || routeData.arrival?.scheduled_time;
       if (depSchedIso || arrSchedIso) {
         mapped.flightData = {
+          ...(mapped.flightData || {}),
           scheduledDeparture: depSchedIso ? Math.floor(new Date(depSchedIso).getTime() / 1000) : null,
           scheduledArrival:   arrSchedIso ? Math.floor(new Date(arrSchedIso).getTime() / 1000) : null,
         };
+      }
+
+      // Capture aircraft info if present
+      if (routeData.aircraft) {
+        mapped.aircraft = mapped.aircraft || {};
+        if (routeData.aircraft.icao || routeData.aircraft.iata) {
+          mapped.aircraft.type = mapped.aircraft.type || routeData.aircraft.icao || routeData.aircraft.iata;
+        }
+        if (routeData.aircraft?.registration) {
+          mapped.aircraft.model = mapped.aircraft.model || routeData.aircraft.registration;
+        }
       }
 
       return mapped;
@@ -978,7 +990,7 @@ class FlightRouteService {
       });
 
       // Map FlightAware response format to our internal format
-      return {
+      const mapped = {
         departureAirport: {
           iata: flight.origin.code_iata || null,
           icao: flight.origin.code_icao || flight.origin.code || null,
@@ -997,7 +1009,18 @@ class FlightRouteService {
           actualDeparture: flight.actual_out ? new Date(flight.actual_out).getTime() / 1000 : null,
           actualArrival: flight.actual_in ? new Date(flight.actual_in).getTime() / 1000 : null,
         },
+        aircraft: undefined,
       };
+
+      // Try to attach aircraft type/model if present
+      if (flight.aircraft_type || flight.aircraft || flight.aircraft_type_name) {
+        mapped.aircraft = {
+          type: flight.aircraft_type || null,
+          model: flight.aircraft_type_name || null,
+        };
+      }
+
+      return mapped;
     } catch (error) {
       const statusCode = error.response?.status;
       if (statusCode === 429) {
