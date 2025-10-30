@@ -93,7 +93,8 @@ class PostgresRepository {
    * Create flight routes cache table
    */
   async createFlightRoutesTable() {
-    const query = `
+    // Cache table: Stores most recent route per callsign/icao24 (fast lookups)
+    const cacheQuery = `
       CREATE TABLE IF NOT EXISTS flight_routes_cache (
         id SERIAL PRIMARY KEY,
         callsign TEXT,
@@ -105,16 +106,67 @@ class PostgresRepository {
         arrival_iata TEXT,
         arrival_icao TEXT,
         arrival_name TEXT,
+        source TEXT,
         created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
         last_used TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
       );
+      
+      -- Add source column if it doesn't exist (for existing tables)
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns 
+          WHERE table_name='flight_routes_cache' AND column_name='source'
+        ) THEN
+          ALTER TABLE flight_routes_cache ADD COLUMN source TEXT;
+        END IF;
+      END $$;
       
       CREATE INDEX IF NOT EXISTS idx_routes_cache_key ON flight_routes_cache(cache_key);
       CREATE INDEX IF NOT EXISTS idx_routes_icao24 ON flight_routes_cache(icao24);
       CREATE INDEX IF NOT EXISTS idx_routes_callsign ON flight_routes_cache(callsign);
     `;
-    await this.db.query(query);
-    logger.info('Flight routes cache table created or already exists');
+    await this.db.query(cacheQuery);
+
+    // History table: Stores ALL routes with timestamps (historical tracking)
+    const historyQuery = `
+      CREATE TABLE IF NOT EXISTS flight_routes_history (
+        id SERIAL PRIMARY KEY,
+        callsign TEXT,
+        icao24 TEXT,
+        departure_iata TEXT,
+        departure_icao TEXT,
+        departure_name TEXT,
+        arrival_iata TEXT,
+        arrival_icao TEXT,
+        arrival_name TEXT,
+        source TEXT,
+        flight_start TIMESTAMPTZ,
+        flight_end TIMESTAMPTZ,
+        first_seen BIGINT,
+        last_seen BIGINT,
+        created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(icao24, callsign, first_seen, last_seen)
+      );
+      
+      -- Add source column if it doesn't exist (for existing tables)
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns 
+          WHERE table_name='flight_routes_history' AND column_name='source'
+        ) THEN
+          ALTER TABLE flight_routes_history ADD COLUMN source TEXT;
+        END IF;
+      END $$;
+      
+      CREATE INDEX IF NOT EXISTS idx_routes_history_icao24 ON flight_routes_history(icao24);
+      CREATE INDEX IF NOT EXISTS idx_routes_history_callsign ON flight_routes_history(callsign);
+      CREATE INDEX IF NOT EXISTS idx_routes_history_dates ON flight_routes_history(flight_start, flight_end);
+    `;
+    await this.db.query(historyQuery);
+
+    logger.info('Flight routes tables (cache + history) created or already exist');
   }
 
   /**
@@ -175,7 +227,13 @@ class PostgresRepository {
    * Find aircraft by icao24 or callsign
    */
   async findAircraftByIdentifier(identifier) {
-    const query = 'SELECT * FROM aircraft_states WHERE LOWER(icao24) = LOWER($1) OR LOWER(callsign) = LOWER($1)';
+    const query = `
+      SELECT *
+      FROM aircraft_states
+      WHERE LOWER(icao24) = LOWER($1)
+         OR LOWER(callsign) = LOWER($1)
+      ORDER BY last_contact DESC NULLS LAST, created_at DESC
+    `;
     const results = await this.db.any(query, [identifier.trim()]);
     return results;
   }
@@ -205,19 +263,19 @@ class PostgresRepository {
     const params = [icao24];
 
     if (startTime) {
-      query += ` AND created_at >= $2`;
+      query += ' AND created_at >= $2';
       params.push(startTime);
       if (endTime) {
-        query += ` AND created_at <= $3`;
+        query += ' AND created_at <= $3';
         params.push(endTime);
       }
     } else if (endTime) {
-      query += ` AND created_at <= $2`;
+      query += ' AND created_at <= $2';
       params.push(endTime);
     }
 
-    query += ` ORDER BY created_at ASC`;
-    
+    query += ' ORDER BY created_at ASC';
+
     const results = await this.db.any(query, params);
     return results;
   }
@@ -227,7 +285,7 @@ class PostgresRepository {
    */
   async findMultipleAircraftHistory(icao24s, startTime = null, endTime = null) {
     const placeholders = icao24s.map((_, i) => `$${i + 1}`).join(', ');
-    
+
     let query = `
       SELECT * FROM aircraft_states_history 
       WHERE icao24 IN (${placeholders})
@@ -246,8 +304,8 @@ class PostgresRepository {
       params.push(endTime);
     }
 
-    query += ` ORDER BY created_at ASC`;
-    
+    query += ' ORDER BY created_at ASC';
+
     const results = await this.db.any(query, params);
     return results;
   }
@@ -256,34 +314,65 @@ class PostgresRepository {
    * Cache flight route information
    */
   async cacheRoute(cacheKey, routeData) {
-    const query = `
-      INSERT INTO flight_routes_cache (
-        cache_key, callsign, icao24,
-        departure_iata, departure_icao, departure_name,
-        arrival_iata, arrival_icao, arrival_name
-      )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-      ON CONFLICT (cache_key) DO UPDATE SET
-        last_used = CURRENT_TIMESTAMP,
-        departure_iata = EXCLUDED.departure_iata,
-        departure_icao = EXCLUDED.departure_icao,
-        departure_name = EXCLUDED.departure_name,
-        arrival_iata = EXCLUDED.arrival_iata,
-        arrival_icao = EXCLUDED.arrival_icao,
-        arrival_name = EXCLUDED.arrival_name;
-    `;
+    try {
+      // Log source for debugging
+      logger.info('Caching route with source', {
+        cacheKey,
+        callsign: routeData.callsign,
+        source: routeData.source,
+        hasSource: !!routeData.source,
+        routeDataKeys: Object.keys(routeData),
+      });
 
-    await this.db.query(query, [
-      cacheKey,
-      routeData.callsign || null,
-      routeData.icao24 || null,
-      routeData.departureAirport?.iata || null,
-      routeData.departureAirport?.icao || null,
-      routeData.departureAirport?.name || null,
-      routeData.arrivalAirport?.iata || null,
-      routeData.arrivalAirport?.icao || null,
-      routeData.arrivalAirport?.name || null,
-    ]);
+      const query = `
+        INSERT INTO flight_routes_cache (
+          cache_key, callsign, icao24,
+          departure_iata, departure_icao, departure_name,
+          arrival_iata, arrival_icao, arrival_name,
+          source
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+        ON CONFLICT (cache_key) DO UPDATE SET
+          last_used = CURRENT_TIMESTAMP,
+          departure_iata = EXCLUDED.departure_iata,
+          departure_icao = EXCLUDED.departure_icao,
+          departure_name = EXCLUDED.departure_name,
+          arrival_iata = EXCLUDED.arrival_iata,
+          arrival_icao = EXCLUDED.arrival_icao,
+          arrival_name = EXCLUDED.arrival_name,
+          source = EXCLUDED.source;
+      `;
+
+      const sourceValue = routeData.source || null;
+      logger.info('About to insert route with source value', {
+        cacheKey,
+        sourceValue,
+        sourceType: typeof sourceValue,
+      });
+
+      await this.db.query(query, [
+        cacheKey,
+        routeData.callsign || null,
+        routeData.icao24 || null,
+        routeData.departureAirport?.iata || null,
+        routeData.departureAirport?.icao || null,
+        routeData.departureAirport?.name || null,
+        routeData.arrivalAirport?.iata || null,
+        routeData.arrivalAirport?.icao || null,
+        routeData.arrivalAirport?.name || null,
+        sourceValue, // Use explicit variable instead of inline
+      ]);
+
+      logger.info('Route cached successfully', { cacheKey, source: sourceValue });
+    } catch (error) {
+      logger.error('Error caching route', {
+        cacheKey,
+        callsign: routeData.callsign,
+        error: error.message,
+        stack: error.stack,
+      });
+      throw error;
+    }
   }
 
   /**
@@ -293,13 +382,14 @@ class PostgresRepository {
     const query = `
       SELECT 
         departure_iata, departure_icao, departure_name,
-        arrival_iata, arrival_icao, arrival_name
+        arrival_iata, arrival_icao, arrival_name,
+        source
       FROM flight_routes_cache
       WHERE cache_key = $1
     `;
 
     const result = await this.db.oneOrNone(query, [cacheKey]);
-    
+
     if (!result) return null;
 
     return {
@@ -313,7 +403,105 @@ class PostgresRepository {
         icao: result.arrival_icao,
         name: result.arrival_name,
       },
+      source: result.source,
     };
+  }
+
+  /**
+   * Store route in history table (stores ALL routes for historical tracking)
+   */
+  async storeRouteHistory(routeData) {
+    const query = `
+      INSERT INTO flight_routes_history (
+        callsign, icao24,
+        departure_iata, departure_icao, departure_name,
+        arrival_iata, arrival_icao, arrival_name,
+        source,
+        flight_start, flight_end, first_seen, last_seen
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+      ON CONFLICT (icao24, callsign, first_seen, last_seen) DO NOTHING;
+    `;
+
+    const flightStart = routeData.flightData?.firstSeen
+      ? new Date(routeData.flightData.firstSeen * 1000)
+      : null;
+    const flightEnd = routeData.flightData?.lastSeen
+      ? new Date(routeData.flightData.lastSeen * 1000)
+      : null;
+
+    await this.db.query(query, [
+      routeData.callsign || null,
+      routeData.icao24 || null,
+      routeData.departureAirport?.iata || null,
+      routeData.departureAirport?.icao || null,
+      routeData.departureAirport?.name || null,
+      routeData.arrivalAirport?.iata || null,
+      routeData.arrivalAirport?.icao || null,
+      routeData.arrivalAirport?.name || null,
+      routeData.source || null,
+      flightStart,
+      flightEnd,
+      routeData.flightData?.firstSeen || null,
+      routeData.flightData?.lastSeen || null,
+    ]);
+  }
+
+  /**
+   * Get historical routes for an aircraft
+   */
+  async getHistoricalRoutes(icao24, startDate, endDate, limit = 100) {
+    let query = `
+      SELECT 
+        callsign,
+        departure_icao, departure_iata, departure_name,
+        arrival_icao, arrival_iata, arrival_name,
+        source,
+        flight_start, flight_end, first_seen, last_seen,
+        created_at
+      FROM flight_routes_history
+      WHERE icao24 = $1
+    `;
+    const params = [icao24];
+    let paramIndex = 2;
+
+    if (startDate) {
+      query += ` AND flight_start >= $${paramIndex}`;
+      params.push(startDate);
+      paramIndex++;
+    }
+
+    if (endDate) {
+      query += ` AND flight_end <= $${paramIndex}`;
+      params.push(endDate);
+      paramIndex++;
+    }
+
+    query += ` ORDER BY flight_start DESC LIMIT $${paramIndex}`;
+    params.push(limit);
+
+    const results = await this.db.query(query, params);
+
+    return results.map((row) => ({
+      callsign: row.callsign,
+      departureAirport: {
+        iata: row.departure_iata,
+        icao: row.departure_icao,
+        name: row.departure_name,
+      },
+      arrivalAirport: {
+        iata: row.arrival_iata,
+        icao: row.arrival_icao,
+        name: row.arrival_name,
+      },
+      flightData: {
+        firstSeen: row.first_seen,
+        lastSeen: row.last_seen,
+        flightStart: row.flight_start,
+        flightEnd: row.flight_end,
+      },
+      recordedAt: row.created_at,
+    }));
   }
 
   /**

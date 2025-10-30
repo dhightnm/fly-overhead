@@ -35,8 +35,14 @@ module.exports = {
       apiKey: process.env.N2YO_API_KEY || 'M3FTYY-Q2CLZF-U76MTW-553N',
     },
     aviationEdge: {
-      baseUrl: 'https://aviation-edge.com/v2',
-      apiKey: process.env.AVIATION_EDGE_API_KEY,
+      // Note: Using AviationStack API (different from Aviation Edge)
+      // The /routes endpoint requires higher subscription - using /flights instead
+      baseUrl: 'https://api.aviationstack.com/v1',
+      apiKey: process.env.AVIATION_EDGE_API_KEY || process.env.AVIATION_STACK_API_KEY,
+    },
+    flightAware: {
+      baseUrl: 'https://aeroapi.flightaware.com/aeroapi',
+      apiKey: process.env.FLIGHTAWARE_API_KEY,
     },
   },
   cors: {

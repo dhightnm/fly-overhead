@@ -13,6 +13,7 @@
       "linebreak-style": ["error", "unix"],
       "no-await-in-loop": "off",
       "no-promise-executor-return": "off",
+      "no-plusplus": "off",
       "import/no-extraneous-dependencies": "off",
       "quotes": ["error", "single"],
       "semi": ["error", "always"],
