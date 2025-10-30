@@ -3,13 +3,15 @@ import { MapContainer, Marker, Popup, TileLayer, useMapEvents } from 'react-leaf
 import axios from 'axios';
 import PlaneMarker from './PlaneMarker';
 import SatMarker from './SatMarker';
+import AirportMarker from './AirportMarker';
+import HeatmapLayer from './HeatmapLayer';
 import { PlaneContext } from '../contexts/PlaneContext';
 import MapFlyToHandler from './MapFlyToHandler';
 import FlightHistoryModal from './FlightHistoryModal';
 // Import your CSS
 import './home.css';
 
-const MapEventsHandler = ({ setUserPosition, setPlanes, setStarlink, fetchRoutesCallback }) => {
+const MapEventsHandler = ({ setUserPosition, setPlanes, setStarlink, setAirports, showAirports }) => {
   const API_URL = "http://localhost:3005";
   
   const fetchData = useCallback(async () => {
@@ -43,37 +45,40 @@ const MapEventsHandler = ({ setUserPosition, setPlanes, setStarlink, fetchRoutes
       );
         if (res.data) {
           setPlanes(res.data);
-          // Trigger route fetching
-          if (fetchRoutesCallback) {
-            fetchRoutesCallback(res.data);
-          }
+          // REMOVED: Automatic route fetching on map updates (too expensive)
+          // Routes are now only fetched when user clicks on a specific aircraft
       } else {
         console.log('no planes found');
       }
     } catch (error) {
       console.error('Error fetching plane data:', error);
     }
-  }, [API_URL, setPlanes, setStarlink, fetchRoutesCallback]);
 
-  const mapRef = React.useRef(null);
-  const map = useMapEvents({
-    load: async () => {
-      const loadCenter = map.locate().getCenter();
-      loadCenter();
+    // Fetch airports if enabled
+    if (showAirports && setAirports) {
       try {
-        const res = await axios.get(`${API_URL}/api/area/all`);
-        if (res.data) {
-          setPlanes(res.data);
-          // Trigger route fetching for initial load
-          if (fetchRoutesCallback) {
-            fetchRoutesCallback(res.data);
-          }
-        } else { 
-          console.log('no planes found');
+        const airportRes = await axios.get(
+          `${API_URL}/api/airports/bounds/${wrapBounds._southWest.lat}/${wrapBounds._southWest.lng}/${wrapBounds._northEast.lat}/${wrapBounds._northEast.lng}?limit=150`
+        );
+        if (airportRes.data && airportRes.data.airports) {
+          setAirports(airportRes.data.airports);
+        } else {
+          setAirports([]);
         }
       } catch (error) {
-        console.error('Error fetching initial plane data:', error);
+        console.error('Error fetching airport data:', error);
       }
+    } else if (!showAirports) {
+      setAirports([]);
+    }
+  }, [API_URL, setPlanes, setStarlink, setAirports, showAirports]);
+
+  const mapRef = React.useRef(null);
+  const hasInitiallyLoaded = React.useRef(false);
+  
+  const map = useMapEvents({
+    load: () => {
+      map.locate();
     },
     click: () => {},
     locationfound: (location) => {
@@ -87,6 +92,14 @@ const MapEventsHandler = ({ setUserPosition, setPlanes, setStarlink, fetchRoutes
   });
 
   mapRef.current = map;
+
+  useEffect(() => {
+    // Initial data fetch when map is ready
+    if (map && !hasInitiallyLoaded.current) {
+      hasInitiallyLoaded.current = true;
+      fetchData();
+    }
+  }, [map, fetchData]);
 
   useEffect(() => {
     // Fire the fetchData on an interval to keep the data fresh
@@ -106,11 +119,18 @@ const Home = () => {
   const [planes, setPlanes] = useState([]);
   const [routes, setRoutes] = useState({}); // Map of icao24 -> route data
   const [starlink, setStarlink] = useState([]);
+  const [airports, setAirports] = useState([]);
   const [userPosition, setUserPosition] = useState(null);
   const [isFullscreen, setIsFullscreen] = useState(true); // Default to fullscreen
   const [sidebarOpen, setSidebarOpen] = useState(true); // Sidebar open by default
   const [sidebarSearch, setSidebarSearch] = useState('');
+  const [airportSearch, setAirportSearch] = useState('');
+  const [airportSearchResults, setAirportSearchResults] = useState([]);
   const [searchStatus, setSearchStatus] = useState(null);
+  const [showAirports, setShowAirports] = useState(true); // Default ON
+  const [showClosedAirports, setShowClosedAirports] = useState(false);
+  const [selectedAirport, setSelectedAirport] = useState(null);
+  const [showHeatmap, setShowHeatmap] = useState(false);
   const [historyModalOpen, setHistoryModalOpen] = useState(false);
   const [selectedAircraft, setSelectedAircraft] = useState(null);
 
@@ -165,48 +185,38 @@ const Home = () => {
     }
   };
 
-  const fetchRoutesForAircraft = async (aircraftList) => {
-    // Filter to only new aircraft we haven't fetched routes for
-    const aircraftNeedingRoutes = aircraftList.filter(
-      (plane) => plane.icao24 && !routes[plane.icao24] && plane.callsign && plane.velocity > 2
-    );
-
-    if (aircraftNeedingRoutes.length === 0) return;
-
-    // Fetch routes in parallel (with limit to avoid overwhelming API)
-    const routePromises = aircraftNeedingRoutes.slice(0, 10).map(async (plane) => {
-      try {
-        const res = await axios.get(`${API_URL}/api/route/${plane.callsign || plane.icao24}`, {
-          params: {
-            icao24: plane.icao24,
-            callsign: plane.callsign,
-          },
-        });
-        
-        if (res.data) {
-          return { icao24: plane.icao24, route: res.data };
-        }
-      } catch (error) {
-        // Route not found is OK, just skip
-      }
-      return null;
-    });
-
-    const routeResults = await Promise.allSettled(routePromises);
-    
-    const newRoutes = {};
-    routeResults.forEach((result) => {
-      if (result.status === 'fulfilled' && result.value) {
-        newRoutes[result.value.icao24] = result.value.route;
-      }
-    });
-
-    if (Object.keys(newRoutes).length > 0) {
-      setRoutes((prev) => ({ ...prev, ...newRoutes }));
+  // Fetch route for a single aircraft (on-demand when user clicks)
+  const fetchRouteForAircraft = useCallback(async (plane) => {
+    // Skip if we already have the route
+    if (routes[plane.icao24]) {
+      return routes[plane.icao24];
     }
-  };
 
-  const handleViewHistory = (plane) => {
+    console.log(`Fetching route for ${plane.callsign || plane.icao24} (user-initiated)`);
+
+    try {
+      const res = await axios.get(`${API_URL}/api/route/${plane.callsign || plane.icao24}`, {
+        params: {
+          icao24: plane.icao24,
+          callsign: plane.callsign,
+        },
+      });
+      
+      if (res.data) {
+        // Update routes state
+        setRoutes((prev) => ({ ...prev, [plane.icao24]: res.data }));
+        return res.data;
+      }
+    } catch (error) {
+      console.error(`Failed to fetch route for ${plane.callsign || plane.icao24}:`, error);
+    }
+    return null;
+  }, [routes, API_URL]);
+
+  const handleViewHistory = async (plane) => {
+    // Fetch route on-demand when user clicks
+    await fetchRouteForAircraft(plane);
+    
     setSelectedAircraft({
       icao24: plane.icao24,
       callsign: plane.callsign || 'N/A',
@@ -214,15 +224,78 @@ const Home = () => {
     setHistoryModalOpen(true);
   };
 
+  const handleAirportSearch = async () => {
+    if (!airportSearch.trim() || airportSearch.trim().length < 2) {
+      setAirportSearchResults([]);
+      return;
+    }
+
+    try {
+      const res = await axios.get(`${API_URL}/api/airports/search/${encodeURIComponent(airportSearch.trim())}?limit=10`);
+      if (res.data && res.data.airports) {
+        setAirportSearchResults(res.data.airports);
+      } else {
+        setAirportSearchResults([]);
+      }
+    } catch (err) {
+      console.error("Error searching airports:", err);
+      setAirportSearchResults([]);
+    }
+  };
+
+  const handleAirportSelect = (airport) => {
+    if (airport && airport.latitude_deg && airport.longitude_deg) {
+      contextValue.setSearchLatlng([airport.latitude_deg, airport.longitude_deg]);
+      setAirportSearch('');
+      setAirportSearchResults([]);
+      setSelectedAirport(airport);
+      // Enable airports if not already enabled
+      if (!showAirports) {
+        setShowAirports(true);
+      }
+    }
+  };
+
+  const handleCloseAirportDetail = () => {
+    setSelectedAirport(null);
+  };
+
+  // Debounced airport search
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (airportSearch.trim().length >= 2) {
+        handleAirportSearch();
+      } else {
+        setAirportSearchResults([]);
+      }
+    }, 300);
+
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [airportSearch]);
+
   const renderPlanes = () => {
     if (!planes || planes.length === 0) {
       return <p>No planes to display.</p>;
     }
 
+    const currentTime = Math.floor(Date.now() / 1000);
+    const maxAge = 10 * 60; // 10 minutes in seconds
+
     return planes.map((plane) => {
+      // Filter out stale data (>10 minutes old)
+      if (plane.last_contact && (currentTime - plane.last_contact) > maxAge) {
+        return null;
+      }
+      
       // Show only planes that are flying
       if (plane.velocity > 2) {
-        return <PlaneMarker key={plane.id} plane={plane} route={routes[plane.icao24]} />;
+        return <PlaneMarker 
+          key={plane.id} 
+          plane={plane} 
+          route={routes[plane.icao24]}
+          onMarkerClick={() => fetchRouteForAircraft(plane)}
+        />;
       }
       return null;
     });
@@ -275,47 +348,268 @@ const Home = () => {
           )}
         </div>
 
+        <div className="airport-controls">
+          <div className="airport-toggle">
+            <label className="toggle-label">
+              <input
+                type="checkbox"
+                checked={showAirports}
+                onChange={(e) => setShowAirports(e.target.checked)}
+              />
+              <span className="toggle-text">Show Airports</span>
+            </label>
+          </div>
+          
+          <div className="heatmap-toggle">
+            <label className="toggle-label">
+              <input
+                type="checkbox"
+                checked={showHeatmap}
+                onChange={(e) => setShowHeatmap(e.target.checked)}
+              />
+              <span className="toggle-text">Show Traffic Heatmap</span>
+            </label>
+          </div>
+          
+          {showAirports && (
+            <>
+              <div className="airport-filter">
+                <label className="toggle-label">
+                  <input
+                    type="checkbox"
+                    checked={showClosedAirports}
+                    onChange={(e) => setShowClosedAirports(e.target.checked)}
+                  />
+                  <span className="toggle-text">Show Closed Airports</span>
+                </label>
+              </div>
+              
+              <div className="airport-search">
+                <div className="search-input-wrapper">
+                  <input
+                    type="text"
+                    placeholder="Search airports..."
+                    value={airportSearch}
+                    onChange={(e) => setAirportSearch(e.target.value)}
+                  />
+                  {airportSearch && (
+                    <button 
+                      className="clear-btn"
+                      onClick={() => {
+                        setAirportSearch('');
+                        setAirportSearchResults([]);
+                      }}
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+                {airportSearchResults.length > 0 && (
+                  <div className="airport-search-results">
+                    {airportSearchResults.map((airport) => (
+                      <div
+                        key={airport.id}
+                        className="airport-result-item"
+                        onClick={() => handleAirportSelect(airport)}
+                      >
+                        <div className="airport-result-header">
+                          <span className="airport-result-name">{airport.name}</span>
+                          <div className="airport-result-codes">
+                            {airport.iata_code && (
+                              <span className="airport-result-iata">{airport.iata_code}</span>
+                            )}
+                            <span className="airport-result-icao">{airport.ident}</span>
+                          </div>
+                        </div>
+                        <div className="airport-result-location">
+                          {airport.municipality && `${airport.municipality}, `}
+                          {airport.iso_country}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+        </div>
+
+        {showAirports && airports.length > 0 && !selectedAirport && (
+          <div className="airports-section">
+            <div className="section-header">
+              <h3>Airports in View</h3>
+              <p className="airport-count">
+                {airports.filter(a => showClosedAirports || a.type !== 'closed').length} airports
+              </p>
+            </div>
+            <div className="airport-list">
+              {airports
+                .filter(airport => showClosedAirports || airport.type !== 'closed')
+                .slice(0, 10)
+                .map((airport) => (
+                  <div 
+                    key={airport.id} 
+                    className="airport-item"
+                    onClick={() => handleAirportSelect(airport)}
+                  >
+                    <div className="airport-item-header">
+                      <span className="airport-name">{airport.name}</span>
+                      <div className="airport-codes">
+                        {airport.iata_code && (
+                          <span className="airport-iata">{airport.iata_code}</span>
+                        )}
+                        <span className="airport-icao">{airport.ident}</span>
+                      </div>
+                    </div>
+                    <div className="airport-item-details">
+                      <div className="airport-detail-row">
+                        <span className="airport-label">Type:</span>
+                        <span className="airport-value">{airport.type?.replace(/_/g, ' ')}</span>
+                      </div>
+                      <div className="airport-detail-row">
+                        <span className="airport-label">Location:</span>
+                        <span className="airport-value">
+                          {airport.municipality && `${airport.municipality}, `}
+                          {airport.iso_country}
+                        </span>
+                      </div>
+                      {airport.runways && airport.runways.length > 0 && (
+                        <div className="airport-detail-row">
+                          <span className="airport-label">Runways:</span>
+                          <span className="airport-value">{airport.runways.length}</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              {airports.filter(a => showClosedAirports || a.type !== 'closed').length > 10 && (
+                <div className="more-airports">
+                  +{airports.filter(a => showClosedAirports || a.type !== 'closed').length - 10} more airports
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {selectedAirport && (
+          <div className="airports-section airport-detail-view">
+            <div className="section-header">
+              <h3>Airport Details</h3>
+              <button className="close-detail-btn" onClick={handleCloseAirportDetail}>
+                ✕
+              </button>
+            </div>
+            <div className="airport-detail-content">
+              <div className="airport-detail-main">
+                <h4 className="airport-detail-name">{selectedAirport.name}</h4>
+                <div className="airport-detail-codes">
+                  {selectedAirport.iata_code && (
+                    <span className="airport-iata">{selectedAirport.iata_code}</span>
+                  )}
+                  <span className="airport-icao">{selectedAirport.ident}</span>
+                </div>
+              </div>
+
+              <div className="airport-detail-info">
+                <div className="airport-info-group">
+                  <div className="airport-detail-row">
+                    <span className="airport-label">Type:</span>
+                    <span className="airport-value">{selectedAirport.type?.replace(/_/g, ' ')}</span>
+                  </div>
+                  <div className="airport-detail-row">
+                    <span className="airport-label">Location:</span>
+                    <span className="airport-value">
+                      {selectedAirport.municipality && `${selectedAirport.municipality}, `}
+                      {selectedAirport.iso_country}
+                    </span>
+                  </div>
+                  {selectedAirport.elevation_ft && (
+                    <div className="airport-detail-row">
+                      <span className="airport-label">Elevation:</span>
+                      <span className="airport-value">{selectedAirport.elevation_ft.toLocaleString()} ft</span>
+                    </div>
+                  )}
+                  <div className="airport-detail-row">
+                    <span className="airport-label">Coordinates:</span>
+                    <span className="airport-value">
+                      {selectedAirport.latitude_deg.toFixed(4)}, {selectedAirport.longitude_deg.toFixed(4)}
+                    </span>
+                  </div>
+                </div>
+
+                {selectedAirport.runways && selectedAirport.runways.length > 0 && (
+                  <div className="airport-info-group">
+                    <h5 className="info-group-title">Runways ({selectedAirport.runways.length})</h5>
+                    <div className="runways-list">
+                      {selectedAirport.runways.map((runway, idx) => (
+                        <div key={idx} className="runway-item">
+                          <div className="runway-header">
+                            <span className="runway-name">
+                              {runway.low_end?.ident}/{runway.high_end?.ident}
+                            </span>
+                            <span className="runway-length">
+                              {runway.length_ft ? `${runway.length_ft.toLocaleString()} ft` : 'N/A'}
+                            </span>
+                          </div>
+                          <div className="runway-details">
+                            {runway.surface && (
+                              <span className="runway-surface">{runway.surface}</span>
+                            )}
+                            {runway.width_ft && (
+                              <span className="runway-width">{runway.width_ft} ft wide</span>
+                            )}
+                            {runway.lighted && (
+                              <span className="runway-lighted">💡 Lighted</span>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {selectedAirport.frequencies && selectedAirport.frequencies.length > 0 && (
+                  <div className="airport-info-group">
+                    <h5 className="info-group-title">Frequencies ({selectedAirport.frequencies.length})</h5>
+                    <div className="frequencies-list">
+                      {selectedAirport.frequencies.map((freq, idx) => (
+                        <div key={idx} className="frequency-item">
+                          <div className="frequency-type">{freq.type}</div>
+                          <div className="frequency-value">{freq.frequency_mhz} MHz</div>
+                          {freq.description && (
+                            <div className="frequency-desc">{freq.description}</div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
         <div className="aircraft-list">
-          {planes.filter(p => p.velocity > 2).map((plane) => (
+          {planes.filter(p => {
+            const currentTime = Math.floor(Date.now() / 1000);
+            const maxAge = 10 * 60; // 10 minutes
+            const isRecent = !p.last_contact || (currentTime - p.last_contact) <= maxAge;
+            return p.velocity > 2 && isRecent;
+          }).map((plane) => (
             <div key={plane.id} className="aircraft-item">
               <div className="aircraft-header">
                 <span className="aircraft-callsign">{plane.callsign || 'N/A'}</span>
                 <span className="aircraft-icao">{plane.icao24}</span>
               </div>
               <div className="aircraft-details">
-                {routes[plane.icao24] && (() => {
-                  const route = routes[plane.icao24];
-                  const departureCode = route.departureAirport?.icao || route.departureAirport?.iata || route.departureAirport?.name;
-                  const arrivalCode = route.arrivalAirport?.icao || route.arrivalAirport?.iata || route.arrivalAirport?.name;
-                  
-                  // Show route if we have any airport codes OR if both locations exist (inferred route)
-                  if (departureCode || arrivalCode || (route.departureAirport?.location && route.arrivalAirport?.location)) {
-                    return (
-                      <div className="route-info">
-                        <div className="route-row">
-                          <span className="route-label">From:</span>
-                          <span className="route-value">
-                            {departureCode || (route.departureAirport?.inferred ? 'Unknown' : 'N/A')}
-                          </span>
-                        </div>
-                        <div className="route-row">
-                          <span className="route-label">To:</span>
-                          <span className="route-value">
-                            {arrivalCode || (route.arrivalAirport?.inferred ? 'Unknown' : 'N/A')}
-                          </span>
-                        </div>
-                      </div>
-                    );
-                  }
-                  return null;
-                })()}
+                {/* Route info removed - only shown when user clicks "View Flight History" */}
                 <div className="detail-row">
                   <span className="detail-label">Altitude:</span>
-                  <span className="detail-value">{plane.baro_altitude ? `${(plane.baro_altitude * 0.3048 / 100).toFixed(0)} km` : 'N/A'}</span>
+                  <span className="detail-value">{plane.baro_altitude ? `${Math.round(plane.baro_altitude * 3.28084)}ft` : 'N/A'}</span>
                 </div>
                 <div className="detail-row">
                   <span className="detail-label">Speed:</span>
-                  <span className="detail-value">{plane.velocity ? `${(plane.velocity * 0.514).toFixed(0)} mph` : 'N/A'}</span>
+                  <span className="detail-value">{plane.velocity ? `${Math.round(plane.velocity * 1.94384)}kts` : 'N/A'}</span>
                 </div>
                 <div className="detail-row">
                   <span className="detail-label">Heading:</span>
@@ -351,7 +645,8 @@ const Home = () => {
             setUserPosition={setUserPosition}
             setPlanes={setPlanes}
             setStarlink={setStarlink}
-            fetchRoutesCallback={fetchRoutesForAircraft}
+            setAirports={setAirports}
+            showAirports={showAirports}
           />
           <MapFlyToHandler searchLatlng={searchLatlng} isFullscreen={isFullscreen} />
           <TileLayer
@@ -365,6 +660,41 @@ const Home = () => {
           </Marker>
           {renderStarlink()}
           {renderPlanes()}
+          {showAirports && airports
+            .filter(airport => showClosedAirports || airport.type !== 'closed')
+            .map((airport) => (
+              <AirportMarker 
+                key={airport.id || airport.ident} 
+                airport={airport}
+                onAirportClick={handleAirportSelect}
+              />
+            ))}
+        {showHeatmap && planes.length > 0 && (
+          <HeatmapLayer
+            points={planes.filter(plane => {
+              const currentTime = Math.floor(Date.now() / 1000);
+              const maxAge = 10 * 60; // 10 minutes
+              return plane.velocity > 2 && (!plane.last_contact || (currentTime - plane.last_contact) <= maxAge);
+            }).map(plane => ({
+              latitude: plane.latitude,
+              longitude: plane.longitude,
+              intensity: plane.baro_altitude ? Math.max(0.1, 1 - (plane.baro_altitude / 15000)) : 0.5
+            }))}
+            options={{
+                radius: 20,
+                blur: 25,
+                maxZoom: 15,
+                gradient: {
+                  0.0: 'rgba(0, 0, 255, 0)',
+                  0.2: 'rgba(0, 0, 255, 0.5)',
+                  0.4: 'cyan',
+                  0.6: 'lime',
+                  0.8: 'yellow',
+                  1.0: 'red'
+                }
+              }}
+            />
+          )}
         </MapContainer>
       </div>
 

@@ -12,17 +12,17 @@ class HistoryService {
   async getAircraftHistory(icao24, startTime = null, endTime = null) {
     try {
       logger.info('Fetching historical flight data', { icao24, startTime, endTime });
-      
+
       const history = await postgresRepository.findAircraftHistory(
         icao24,
         startTime,
-        endTime
+        endTime,
       );
 
       logger.info(`Found ${history.length} historical data points for ${icao24}`);
       return history;
     } catch (error) {
-      logger.error('Error fetching aircraft history', { 
+      logger.error('Error fetching aircraft history', {
         icao24,
         error: error.message,
       });
@@ -38,7 +38,7 @@ class HistoryService {
       const history = await this.getAircraftHistory(icao24, startTime, endTime);
 
       // Format for map visualization
-      const flightPath = history.map(point => ({
+      const flightPath = history.map((point) => ({
         lat: point.latitude,
         lng: point.longitude,
         altitude: point.baro_altitude,
@@ -56,7 +56,7 @@ class HistoryService {
         flightPath,
       };
     } catch (error) {
-      logger.error('Error generating flight path', { 
+      logger.error('Error generating flight path', {
         icao24,
         error: error.message,
       });
@@ -101,7 +101,7 @@ class HistoryService {
       logger.info(`Found ${results.length} historical records in time range`);
       return results;
     } catch (error) {
-      logger.error('Error searching flights by time range', { 
+      logger.error('Error searching flights by time range', {
         startTime,
         endTime,
         error: error.message,
@@ -112,4 +112,3 @@ class HistoryService {
 }
 
 module.exports = new HistoryService();
-

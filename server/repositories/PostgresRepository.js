@@ -1,6 +1,7 @@
 const pgp = require('pg-promise')();
 const config = require('../config');
 const logger = require('../utils/logger');
+const PostGISService = require('../services/PostGISService');
 
 /**
  * Repository pattern for PostgreSQL data access
@@ -10,19 +11,37 @@ class PostgresRepository {
   constructor() {
     const connectionString = config.database.postgres.url;
     this.db = pgp(connectionString);
+    this.postgis = new PostGISService(this.db);
     this.initConnection();
   }
 
-  initConnection() {
-    this.db.connect()
-      .then((obj) => {
-        logger.info('Database connection established');
-        obj.done();
-      })
-      .catch((error) => {
-        logger.error('Database connection error', { error });
-        process.exit(1);
+  async initConnection() {
+    try {
+      const obj = await this.db.connect();
+      logger.info('Database connection established');
+      obj.done();
+
+      // Initialize PostGIS after connection is established
+      await this.initializePostGIS();
+    } catch (error) {
+      logger.error('Database connection error', { error });
+      process.exit(1);
+    }
+  }
+
+  /**
+   * Initialize PostGIS extension and spatial features
+   */
+  async initializePostGIS() {
+    try {
+      await this.postgis.initialize();
+      await this.postgis.createGeometryTriggers();
+      logger.info('PostGIS initialized successfully');
+    } catch (error) {
+      logger.warn('PostGIS initialization failed (may already be initialized)', {
+        error: error.message,
       });
+    }
   }
 
   /**
@@ -379,13 +398,33 @@ class PostgresRepository {
    * Get cached route information
    */
   async getCachedRoute(cacheKey) {
+    // Different TTLs based on route completeness:
+    // - Complete routes (has arrival): 24 hours
+    // - Incomplete routes (no arrival, inference): 30 minutes
+    // This allows re-fetching when in-flight aircraft land
     const query = `
       SELECT 
         departure_iata, departure_icao, departure_name,
         arrival_iata, arrival_icao, arrival_name,
-        source
+        source,
+        created_at
       FROM flight_routes_cache
       WHERE cache_key = $1
+        AND (
+          -- Complete routes: 24h cache
+          (arrival_icao IS NOT NULL OR arrival_iata IS NOT NULL) 
+          AND created_at > NOW() - INTERVAL '24 hours'
+          OR
+          -- Incomplete inferred routes: 30min cache
+          (arrival_icao IS NULL AND arrival_iata IS NULL AND source = 'inference')
+          AND created_at > NOW() - INTERVAL '30 minutes'
+          OR
+          -- Incomplete non-inference routes: 2h cache (APIs might have data later)
+          (arrival_icao IS NULL AND arrival_iata IS NULL AND source != 'inference')
+          AND created_at > NOW() - INTERVAL '2 hours'
+        )
+      ORDER BY created_at DESC
+      LIMIT 1
     `;
 
     const result = await this.db.oneOrNone(query, [cacheKey]);
@@ -404,6 +443,40 @@ class PostgresRepository {
         name: result.arrival_name,
       },
       source: result.source,
+    };
+  }
+
+  /**
+   * Find historical route for a given callsign and departure airport
+   * Used for inferring arrival airport based on previous flights
+   */
+  async findHistoricalRoute(callsign, departureIcao) {
+    const query = `
+      SELECT 
+        departure_iata, departure_icao, departure_name,
+        arrival_iata, arrival_icao, arrival_name,
+        source,
+        created_at
+      FROM flight_routes_history
+      WHERE UPPER(TRIM(callsign)) = UPPER($1)
+        AND (UPPER(departure_icao) = UPPER($2) OR UPPER(departure_iata) = UPPER($2))
+      ORDER BY created_at DESC
+      LIMIT 1
+    `;
+
+    const result = await this.db.oneOrNone(query, [callsign, departureIcao]);
+
+    if (!result) return null;
+
+    return {
+      departure_iata: result.departure_iata,
+      departure_icao: result.departure_icao,
+      departure_name: result.departure_name,
+      arrival_iata: result.arrival_iata,
+      arrival_icao: result.arrival_icao,
+      arrival_name: result.arrival_name,
+      source: result.source,
+      created_at: result.created_at,
     };
   }
 
@@ -509,6 +582,231 @@ class PostgresRepository {
    */
   getDb() {
     return this.db;
+  }
+
+  // ==================== PostGIS Spatial Query Methods ====================
+
+  /**
+   * Find aircraft near a point (radius in meters)
+   */
+  async findAircraftNearPoint(latitude, longitude, radiusMeters = 5000) {
+    return this.postgis.findAircraftNearPoint(latitude, longitude, radiusMeters);
+  }
+
+  /**
+   * Find aircraft within a polygon
+   */
+  async findAircraftInPolygon(polygonCoordinates) {
+    return this.postgis.findAircraftInPolygon(polygonCoordinates);
+  }
+
+  /**
+   * Get flight path as GeoJSON
+   */
+  async getFlightPathGeoJSON(icao24, startTime = null, endTime = null) {
+    return this.postgis.getFlightPathGeoJSON(icao24, startTime, endTime);
+  }
+
+  /**
+   * Get traffic density heatmap data
+   */
+  async getTrafficDensity(bounds, cellSizeDegrees = 0.01) {
+    return this.postgis.getTrafficDensity(bounds, cellSizeDegrees);
+  }
+
+  /**
+   * Find potential plane spotting locations near an airport
+   */
+  async findSpottingLocations(airportLat, airportLon, radiusKm = 20) {
+    return this.postgis.findSpottingLocations(airportLat, airportLon, radiusKm);
+  }
+
+  // ==================== Airport Data Query Methods ====================
+
+  /**
+   * Find airports near a point
+   */
+  async findAirportsNearPoint(latitude, longitude, radiusKm = 50, airportType = null) {
+    let query = `
+      SELECT *,
+        ST_Distance(
+          geom::geography,
+          ST_SetSRID(ST_MakePoint($2, $1), 4326)::geography
+        ) / 1000 as distance_km
+      FROM airports
+      WHERE geom IS NOT NULL
+        AND ST_DWithin(
+          geom::geography,
+          ST_SetSRID(ST_MakePoint($2, $1), 4326)::geography,
+          $3
+        )
+    `;
+
+    const params = [latitude, longitude, radiusKm * 1000];
+
+    if (airportType) {
+      query += ' AND type = $4';
+      params.push(airportType);
+    }
+
+    query += ' ORDER BY distance_km ASC LIMIT 50;';
+
+    return this.db.query(query, params);
+  }
+
+  /**
+   * Find airport by IATA or ICAO code (includes runways and frequencies)
+   */
+  async findAirportByCode(code) {
+    const query = `
+      SELECT * FROM airports
+      WHERE UPPER(iata_code) = UPPER($1)
+         OR UPPER(gps_code) = UPPER($1)
+         OR UPPER(ident) = UPPER($1)
+      LIMIT 1;
+    `;
+    return this.db.oneOrNone(query, [code]);
+  }
+
+  /**
+   * Find airports within bounding box (for map viewport)
+   */
+  async findAirportsInBounds(latmin, lonmin, latmax, lonmax, airportType = null, limit = 100) {
+    let query = `
+      SELECT
+        id,
+        airport_id,
+        ident,
+        type,
+        name,
+        latitude_deg,
+        longitude_deg,
+        elevation_ft,
+        iso_country,
+        iso_region,
+        municipality,
+        iata_code,
+        gps_code,
+        runways,
+        frequencies,
+        ST_X(geom::geometry) as lon,
+        ST_Y(geom::geometry) as lat
+      FROM airports
+      WHERE geom IS NOT NULL
+        AND latitude_deg BETWEEN $1 AND $3
+        AND longitude_deg BETWEEN $2 AND $4
+    `;
+
+    const params = [latmin, lonmin, latmax, lonmax];
+
+    if (airportType) {
+      query += ' AND type = $5';
+      params.push(airportType);
+      query += ' ORDER BY type, name LIMIT $6';
+      params.push(limit);
+    } else {
+      query += ' ORDER BY type, name LIMIT $5';
+      params.push(limit);
+    }
+
+    return this.db.query(query, params);
+  }
+
+  /**
+   * Find navaids near a point
+   */
+  async findNavaidsNearPoint(latitude, longitude, radiusKm = 50, navaidType = null) {
+    let query = `
+      SELECT *,
+        ST_Distance(
+          geom::geography,
+          ST_SetSRID(ST_MakePoint($2, $1), 4326)::geography
+        ) / 1000 as distance_km
+      FROM navaids
+      WHERE geom IS NOT NULL
+        AND ST_DWithin(
+          geom::geography,
+          ST_SetSRID(ST_MakePoint($2, $1), 4326)::geography,
+          $3
+        )
+    `;
+
+    const params = [latitude, longitude, radiusKm * 1000];
+
+    if (navaidType) {
+      query += ' AND type = $4';
+      params.push(navaidType);
+    }
+
+    query += ' ORDER BY distance_km ASC LIMIT 50;';
+
+    return this.db.query(query, params);
+  }
+
+  /**
+   * Search airports by name or code (includes runways and frequencies)
+   */
+  async searchAirports(searchTerm, limit = 10) {
+    const query = `
+      SELECT * FROM airports
+      WHERE UPPER(name) LIKE UPPER($1)
+         OR UPPER(iata_code) LIKE UPPER($1)
+         OR UPPER(gps_code) LIKE UPPER($1)
+         OR UPPER(ident) LIKE UPPER($1)
+         OR UPPER(municipality) LIKE UPPER($1)
+      ORDER BY 
+        CASE 
+          WHEN UPPER(iata_code) = UPPER($2) THEN 1
+          WHEN UPPER(ident) = UPPER($2) THEN 2
+          WHEN UPPER(gps_code) = UPPER($2) THEN 3
+          ELSE 4
+        END,
+        name
+      LIMIT $3;
+    `;
+    return this.db.query(query, [`%${searchTerm}%`, searchTerm, limit]);
+  }
+
+  /**
+   * Find recent aircraft that don't have cached route data
+   * Used by background job to populate route database
+   */
+  async findRecentAircraftWithoutRoutes(limit = 10, minLastContact) {
+    const query = `
+      SELECT DISTINCT ON (a.icao24) 
+        a.icao24, 
+        a.callsign,
+        a.last_contact
+      FROM aircraft_states a
+      LEFT JOIN flight_routes_cache c ON (c.cache_key = a.callsign OR c.cache_key = a.icao24)
+      WHERE a.last_contact > $1
+        AND a.callsign IS NOT NULL
+        AND a.callsign != ''
+        AND a.on_ground = false
+        AND a.velocity > 50
+        AND (c.cache_key IS NULL OR c.created_at < NOW() - INTERVAL '6 hours')
+      ORDER BY a.icao24, a.last_contact DESC
+      LIMIT $2;
+    `;
+    return this.db.query(query, [minLastContact, limit]);
+  }
+
+  /**
+   * Get statistics for routes: totals and with both dep/arr present
+   */
+  async getRouteStats() {
+    const query = `
+      SELECT
+        (SELECT COUNT(*) FROM flight_routes_history) as history_total,
+        (SELECT COUNT(*) FROM flight_routes_history
+         WHERE (departure_icao IS NOT NULL OR departure_iata IS NOT NULL)
+           AND (arrival_icao IS NOT NULL OR arrival_iata IS NOT NULL)) as history_complete,
+        (SELECT COUNT(*) FROM flight_routes_cache) as cache_total,
+        (SELECT COUNT(*) FROM flight_routes_cache
+         WHERE (departure_icao IS NOT NULL OR departure_iata IS NOT NULL)
+           AND (arrival_icao IS NOT NULL OR arrival_iata IS NOT NULL)) as cache_complete
+    `;
+    return this.db.one(query);
   }
 }
 

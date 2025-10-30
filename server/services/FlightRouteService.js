@@ -16,13 +16,104 @@ class FlightRouteService {
     this.flightAwareBaseUrl = config.external.flightAware?.baseUrl;
     this.flightAwareApiKey = config.external.flightAware?.apiKey;
     this.cache = new Map(); // In-memory cache for current session
+    this.landedFlightsCache = new Map(); // Cache for landed flight status (callsign -> {hasLanded, timestamp})
+  }
+
+  /**
+   * Check if a flight has landed based on FlightAware data
+   * Returns true if the flight has landed (has actualArrival timestamp in the past)
+   * Uses aggressive caching to minimize API calls
+   */
+  async hasFlightLanded(callsign) {
+    if (!this.flightAwareApiKey || !callsign) return { hasLanded: false, lastArrival: null };
+
+    // Check cache first (30-minute TTL)
+    const cached = this.landedFlightsCache.get(callsign);
+    if (cached) {
+      const age = Date.now() - cached.timestamp;
+      if (age < 30 * 60 * 1000) { // 30 minutes
+        logger.debug(`Landed flight cache HIT: ${callsign} = ${cached.hasLanded}`);
+        return { hasLanded: cached.hasLanded, lastArrival: cached.lastArrival };
+      }
+      // Cache expired, remove it
+      this.landedFlightsCache.delete(callsign);
+    }
+
+    try {
+      const today = new Date();
+      const yesterday = new Date(today);
+      yesterday.setDate(yesterday.getDate() - 1);
+      const startDate = yesterday.toISOString().split('T')[0];
+
+      const response = await axios.get(`${this.flightAwareBaseUrl}/flights/${callsign}`, {
+        params: {
+          start: startDate, // Check last 24 hours
+        },
+        headers: {
+          Accept: 'application/json; charset=UTF-8',
+          'x-apikey': this.flightAwareApiKey,
+        },
+        timeout: 2000, // Reduced from 5s to 2s for faster failover
+      });
+
+      if (!response.data?.flights || response.data.flights.length === 0) {
+        this.landedFlightsCache.set(callsign, {
+          hasLanded: false,
+          lastArrival: null,
+          timestamp: Date.now(),
+        });
+        return { hasLanded: false, lastArrival: null };
+      }
+
+      let mostRecentLandedFlight = null;
+      for (const flight of response.data.flights) {
+        if (flight.actual_in) {
+          mostRecentLandedFlight = flight;
+          break;
+        }
+      }
+
+      if (mostRecentLandedFlight) {
+        const flight = mostRecentLandedFlight;
+        const arrivalTime = new Date(flight.actual_in).getTime();
+        const now = Date.now();
+        const hoursAgo = (now - arrivalTime) / (1000 * 60 * 60);
+        logger.info('Flight landing status', {
+          callsign,
+          origin: flight.origin?.code_icao || flight.origin?.code_iata,
+          destination: flight.destination?.code_icao || flight.destination?.code_iata,
+          actualArrival: flight.actual_in,
+          hoursAgo: hoursAgo.toFixed(2),
+          hasLanded: hoursAgo > 0,
+        });
+        // Cache the result
+        this.landedFlightsCache.set(callsign, {
+          hasLanded: hoursAgo > 0,
+          lastArrival: arrivalTime,
+          timestamp: Date.now(),
+        });
+        return { hasLanded: hoursAgo > 0, lastArrival: arrivalTime };
+      }
+      // No completed flights found
+      logger.debug('No completed flights found for callsign', { callsign });
+      this.landedFlightsCache.set(callsign, {
+        hasLanded: false,
+        lastArrival: null,
+        timestamp: Date.now(),
+      });
+      return { hasLanded: false, lastArrival: null };
+    } catch (error) {
+      logger.debug('Could not check flight landing status', { callsign, error: error.message });
+      return { hasLanded: false, lastArrival: null };
+    }
   }
 
   /**
    * Get flight route information for an aircraft
    * Priority: Cache -> Check if current flight -> OpenSky (historical only) -> Aviation Edge (current flights) -> Position inference
+   * @param {boolean} allowExpensiveApis - Whether to use FlightAware (only for user-initiated requests, default false)
    */
-  async getFlightRoute(icao24, callsign, isCurrentFlight = false) {
+  async getFlightRoute(icao24, callsign, isCurrentFlight = false, allowExpensiveApis = false) {
     // 1. Check in-memory cache
     const cacheKey = `${callsign || icao24}`;
     if (this.cache.has(cacheKey)) {
@@ -33,77 +124,72 @@ class FlightRouteService {
     // 2. Check database cache
     const cachedRoute = await postgresRepository.getCachedRoute(cacheKey);
     if (cachedRoute) {
-      logger.info('Route cache HIT (database) - skipping API call', { 
-        cacheKey, 
-        icao24, 
+      logger.info('Route cache HIT (database) - skipping API call', {
+        cacheKey,
+        icao24,
         callsign,
         source: cachedRoute.source || 'unknown',
       });
       this.cache.set(cacheKey, cachedRoute);
       return cachedRoute; // Already has source from database
     }
-    
-    logger.info('Route cache MISS - fetching from API', { cacheKey, icao24, callsign, isCurrentFlight });
 
-    // 3. Try OpenSky FIRST (even for current flights) - better data coverage
-    // OpenSky provides historical routes (last 24-48 hours) which are often still valid for flights in progress
-    // AviationStack has limited coverage - many flights aren't in their database
-    // Strategy: Use OpenSky historical data as fallback when AviationStack doesn't have the flight
-    logger.info('Trying OpenSky for route data (historical, but may still be valid)', { icao24, callsign, isCurrentFlight });
-    
-    let openSkyRoute = null; // Store OpenSky route to use if AviationStack fails
-    
-    try {
-      const route = await this.fetchRouteFromOpenSky(icao24, isCurrentFlight);
-      if (route) {
-        logger.info('Found route from OpenSky (historical data)', { 
-          icao24, 
-          callsign,
-          departure: route.departureAirport?.icao || route.departureAirport?.iata,
-          arrival: route.arrivalAirport?.icao || route.arrivalAirport?.iata,
-        });
-        // Store in cache (fast lookup for most recent)
-        await this.cacheRoute(cacheKey, {
-          ...route,
-          callsign,
-          icao24,
-          source: 'opensky',
-        });
-        
-        // Also store in history (all routes preserved)
-        await postgresRepository.storeRouteHistory({
-          ...route,
-          callsign,
-          icao24,
-          source: 'opensky',
-        });
-        
-        // For historical flights, OpenSky data is perfect - return immediately
-        if (!isCurrentFlight) {
+    logger.info('Route cache MISS - fetching from API', {
+      cacheKey, icao24, callsign, isCurrentFlight,
+    });
+
+    // 3. Try OpenSky ONLY for historical flights (not current flights)
+    // OpenSky data is 24+ hours old, so it's not useful for current/in-flight aircraft
+    // For current flights, skip straight to FlightAware (much faster, saves 4-8 seconds)
+    if (!isCurrentFlight) {
+      logger.info('Trying OpenSky for route data (historical flights only)', { icao24, callsign });
+      try {
+        const route = await this.fetchRouteFromOpenSky(icao24, isCurrentFlight);
+        if (route) {
+          logger.info('Found route from OpenSky (historical data)', {
+            icao24,
+            callsign,
+            departure: route.departureAirport?.icao || route.departureAirport?.iata,
+            arrival: route.arrivalAirport?.icao || route.arrivalAirport?.iata,
+          });
+          // Store in cache (fast lookup for most recent)
+          await this.cacheRoute(cacheKey, {
+            ...route,
+            callsign,
+            icao24,
+            source: 'opensky',
+          });
+
+          // Also store in history (all routes preserved)
+          await postgresRepository.storeRouteHistory({
+            ...route,
+            callsign,
+            icao24,
+            source: 'opensky',
+          });
+
+          // For historical flights, OpenSky data is perfect - return immediately
           return { ...route, source: 'opensky' };
         }
-        
-        // For current flights, store OpenSky route as fallback
-        // Continue to try AviationStack for more real-time data
-        openSkyRoute = { ...route, source: 'opensky' };
-        logger.info('OpenSky route found, will try AviationStack for more current data', { icao24, callsign });
+      } catch (error) {
+        logger.debug('OpenSky flight route not available', {
+          icao24,
+          error: error.message,
+        });
       }
-    } catch (error) {
-      logger.debug('OpenSky flight route not available', { 
-        icao24, 
-        error: error.message,
-      });
+    } else {
+      logger.info('Skipping OpenSky for current flight (saves 4-8 seconds)', { icao24, callsign });
     }
 
-    // 4. Try FlightAware (for current flights) - better coverage than AviationStack
-    // FlightAware has excellent real-time flight tracking
-    if (this.flightAwareApiKey && callsign) {
-      logger.info('Trying FlightAware AeroAPI for route (real-time data)', { icao24, callsign });
+    // 4. Try FlightAware (ONLY if allowExpensiveApis=true, for user-initiated requests)
+    // FlightAware has excellent real-time flight tracking but is $$$
+    if (this.flightAwareApiKey && callsign && allowExpensiveApis) {
+      logger.info('Trying FlightAware AeroAPI for route (user-initiated request)', { icao24, callsign });
       try {
         const route = await this.fetchRouteFromFlightAware(callsign);
         if (route) {
-          logger.info('Successfully fetched route from FlightAware', { 
-            icao24, 
+          logger.info('Successfully fetched route from FlightAware', {
+            icao24,
             callsign,
             departure: route.departureAirport?.icao || route.departureAirport?.iata,
             arrival: route.arrivalAirport?.icao || route.arrivalAirport?.iata,
@@ -115,7 +201,7 @@ class FlightRouteService {
             icao24,
             source: 'flightaware',
           });
-          
+
           // Also store in history if we have flight timestamps
           if (route.flightData) {
             await postgresRepository.storeRouteHistory({
@@ -125,24 +211,23 @@ class FlightRouteService {
               source: 'flightaware',
             });
           }
-          
+
           return { ...route, source: 'flightaware' };
-        } else {
-          logger.info('FlightAware returned no route data', { icao24, callsign });
-          // Continue to try AviationStack if FlightAware doesn't have the flight
         }
+        logger.info('FlightAware returned no route data', { icao24, callsign });
+        // Continue to try AviationStack if FlightAware doesn't have the flight
       } catch (error) {
         const statusCode = error.response?.status;
         const isRateLimited = statusCode === 429;
-        
+
         if (isRateLimited) {
-          logger.warn('FlightAware rate limit reached (429) - trying other sources', { 
+          logger.warn('FlightAware rate limit reached (429) - trying other sources', {
             icao24,
             callsign,
             status: statusCode,
           });
         } else {
-          logger.warn('Error fetching route from FlightAware API', { 
+          logger.warn('Error fetching route from FlightAware API', {
             icao24,
             callsign,
             error: error.message,
@@ -152,6 +237,8 @@ class FlightRouteService {
         }
         // Continue to try AviationStack even if FlightAware fails
       }
+    } else if (!allowExpensiveApis) {
+      logger.info('Skipping FlightAware (background job) - using AviationStack + inference', { icao24, callsign });
     }
 
     // 5. Try AviationStack (for current flights) - limited coverage but more real-time
@@ -161,8 +248,8 @@ class FlightRouteService {
       try {
         const route = await this.fetchRouteFromAPI(icao24, callsign);
         if (route) {
-          logger.info('Successfully fetched route from AviationStack', { 
-            icao24, 
+          logger.info('Successfully fetched route from AviationStack', {
+            icao24,
             callsign,
             departure: route.departureAirport?.icao || route.departureAirport?.iata,
             arrival: route.arrivalAirport?.icao || route.arrivalAirport?.iata,
@@ -174,7 +261,7 @@ class FlightRouteService {
             icao24,
             source: 'aviationstack',
           });
-          
+
           // Also store in history if we have flight timestamps
           if (route.flightData) {
             await postgresRepository.storeRouteHistory({
@@ -184,29 +271,23 @@ class FlightRouteService {
               source: 'aviationstack',
             });
           }
-          
+
           return { ...route, source: 'aviationstack' };
-        } else {
-          logger.info('AviationStack returned no route data (limited coverage - flight not in their database)', { icao24, callsign });
-          // AviationStack has limited coverage - many flights aren't in their system
-          // If we have OpenSky data, use that instead
-          if (openSkyRoute) {
-            logger.info('Using OpenSky historical route data since AviationStack has no data for this flight', { icao24, callsign });
-            return openSkyRoute;
-          }
         }
+        logger.info('AviationStack returned no route data (limited coverage)', { icao24, callsign });
+        // Continue to inference
       } catch (error) {
         const statusCode = error.response?.status;
         const isRateLimited = statusCode === 429;
-        
+
         if (isRateLimited) {
-          logger.warn('AviationStack rate limit reached (429) - falling back to OpenSky', { 
+          logger.warn('AviationStack rate limit reached (429) - moving to inference', {
             icao24,
             callsign,
             status: statusCode,
           });
         } else {
-          logger.warn('Error fetching route from AviationStack API', { 
+          logger.warn('Error fetching route from AviationStack API', {
             icao24,
             callsign,
             error: error.message,
@@ -214,35 +295,43 @@ class FlightRouteService {
             statusText: error.response?.statusText,
           });
         }
-        
-        // If error (including rate limit) and we have OpenSky data, use that
-        if (openSkyRoute) {
-          logger.info('Using OpenSky route data after AviationStack error/rate limit', { 
-            icao24, 
-            callsign,
-            reason: isRateLimited ? 'rate_limit' : 'error',
-          });
-          return openSkyRoute;
-        }
+        // Continue to inference
       }
     } else {
       logger.debug('AviationStack API key not configured, skipping', { icao24, callsign });
-      // If no API key and we have OpenSky data, use that
-      if (openSkyRoute) {
-        logger.info('Using OpenSky route data (AviationStack not configured)', { icao24, callsign });
-        return openSkyRoute;
-      }
     }
 
-    // 6. If we found OpenSky data earlier, return it now (better than nothing)
-    if (openSkyRoute) {
-      logger.info('Falling back to OpenSky historical route data', { icao24, callsign });
-      return openSkyRoute; // Already has source: 'opensky'
-    }
-
-    // 7. Last resort: Position-based inference
+    // 6. Last resort: Position-based inference
     const inferredRoute = await this.inferRouteFromPosition(icao24);
     if (inferredRoute) {
+      // Cache inferred routes, but with shorter TTL if arrival is missing
+      const hasArrival = inferredRoute.arrivalAirport?.icao || inferredRoute.arrivalAirport?.iata;
+      
+      logger.info('Caching inferred route', {
+        icao24,
+        callsign,
+        hasDeparture: !!(inferredRoute.departureAirport?.icao || inferredRoute.departureAirport?.iata),
+        hasArrival,
+        cacheTTL: hasArrival ? '24h' : '30min',
+      });
+
+      // Store in cache (will expire based on created_at in database)
+      await this.cacheRoute(cacheKey, {
+        ...inferredRoute,
+        callsign,
+        icao24,
+        source: 'inference',
+        incompleteRoute: !hasArrival, // Flag for shorter cache TTL
+      });
+
+      // Also store in history (permanent record)
+      await postgresRepository.storeRouteHistory({
+        ...inferredRoute,
+        callsign,
+        icao24,
+        source: 'inference',
+      });
+
       return { ...inferredRoute, source: 'inference' };
     }
     return null;
@@ -259,7 +348,7 @@ class FlightRouteService {
       const now = Math.floor(Date.now() / 1000);
       const oneDay = 24 * 60 * 60;
       const twoDays = 2 * oneDay;
-      
+
       // Try multiple time ranges going back up to 7 days (OpenSky has historical data)
       // Each range is max 2 days (OpenSky limitation)
       const timeRanges = [];
@@ -270,9 +359,9 @@ class FlightRouteService {
         });
       }
 
-      logger.info('Querying OpenSky for flights', { 
-        icao24, 
-        timeRanges: timeRanges.map(r => ({
+      logger.info('Querying OpenSky for flights', {
+        icao24,
+        timeRanges: timeRanges.map((r) => ({
           begin: new Date(r.begin * 1000).toISOString(),
           end: new Date(r.end * 1000).toISOString(),
         })),
@@ -280,7 +369,7 @@ class FlightRouteService {
 
       // Collect ALL flights from ALL time ranges (not just the first match)
       const allFlights = [];
-      
+
       for (const range of timeRanges) {
         const flights = await openSkyService.getFlightsByAircraft(icao24, range.begin, range.end);
         if (flights && flights.length > 0) {
@@ -310,10 +399,10 @@ class FlightRouteService {
           // estDepartureAirport can be null or empty string - both should trigger inference
           const candidates = (mostRecentFlight.departureAirportCandidatesCount || 0);
           const departureAirport = mostRecentFlight.estDepartureAirport;
-          const hasReliableDeparture = candidates > 0 
-            && departureAirport 
+          const hasReliableDeparture = candidates > 0
+            && departureAirport
             && String(departureAirport).trim() !== '';
-          
+
           logger.info('Checking if departure inference needed', {
             icao24,
             hasReliableDeparture,
@@ -322,7 +411,7 @@ class FlightRouteService {
             sortedFlightsCount: sortedFlights.length,
             mostRecentFlight: mostRecentFlight.callsign?.trim(),
           });
-          
+
           if (!hasReliableDeparture) {
             // Look for the previous flight (next in sorted array) that has an arrival airport
             // Check flights in chronological order (most recent first, so i=1 is the previous flight)
@@ -346,8 +435,8 @@ class FlightRouteService {
           }
         }
 
-        logger.info('Found OpenSky flight routes', { 
-          icao24, 
+        logger.info('Found OpenSky flight routes', {
+          icao24,
           totalFlights: uniqueFlights.length,
           mostRecent: {
             callsign: mostRecentFlight.callsign?.trim(),
@@ -367,7 +456,7 @@ class FlightRouteService {
             const hasArrivalCandidates = (flight.arrivalAirportCandidatesCount || 0) > 0;
             const hasDepartureData = !!flight.estDepartureAirport;
             const hasArrivalData = !!flight.estArrivalAirport;
-            
+
             // Log warnings for potentially unreliable data
             if (hasDepartureData && !hasDepartureCandidates) {
               logger.warn('OpenSky flight has departure airport but 0 candidates (may be unreliable/wrong)', {
@@ -379,21 +468,19 @@ class FlightRouteService {
                 arrivalCandidates: flight.arrivalAirportCandidatesCount,
               });
             }
-            
+
             // If departure has 0 candidates, consider it unreliable
             // Try to infer from previous flight in the sorted array
             let reliableDeparture = hasDepartureCandidates ? flight.estDepartureAirport : null;
-            
+
             // If no reliable departure, check if we can infer from previous flight
             if (!reliableDeparture && flight !== mostRecentFlight) {
               // Find this flight's position and check previous flight's arrival
-              const currentIndex = sortedFlights.findIndex(f => 
-                f.firstSeen === flight.firstSeen && f.lastSeen === flight.lastSeen
-              );
+              const currentIndex = sortedFlights.findIndex((f) => f.firstSeen === flight.firstSeen && f.lastSeen === flight.lastSeen);
               if (currentIndex > 0) {
                 const previousFlight = sortedFlights[currentIndex - 1];
-                if (previousFlight.estArrivalAirport && 
-                    ((previousFlight.arrivalAirportCandidatesCount || 0) > 0 || previousFlight.estArrivalAirport)) {
+                if (previousFlight.estArrivalAirport
+                    && ((previousFlight.arrivalAirportCandidatesCount || 0) > 0 || previousFlight.estArrivalAirport)) {
                   reliableDeparture = previousFlight.estArrivalAirport;
                   logger.debug('Inferred departure for historical flight from previous arrival', {
                     icao24,
@@ -403,7 +490,7 @@ class FlightRouteService {
                 }
               }
             }
-            
+
             return postgresRepository.storeRouteHistory({
               callsign: flight.callsign?.trim() || null,
               icao24,
@@ -423,14 +510,14 @@ class FlightRouteService {
                 duration: flight.lastSeen ? flight.lastSeen - flight.firstSeen : null,
               },
             });
-          })
+          }),
         ).then((results) => {
-          const succeeded = results.filter(r => r.status === 'fulfilled').length;
-          const failed = results.filter(r => r.status === 'rejected').length;
+          const succeeded = results.filter((r) => r.status === 'fulfilled').length;
+          const failed = results.filter((r) => r.status === 'rejected').length;
           if (succeeded > 0) {
-            logger.info('Stored routes in history', { 
-              icao24, 
-              stored: succeeded, 
+            logger.info('Stored routes in history', {
+              icao24,
+              stored: succeeded,
               failed,
             });
           }
@@ -445,7 +532,7 @@ class FlightRouteService {
         const now = Math.floor(Date.now() / 1000);
         const sevenDaysAgo = now - (7 * 24 * 60 * 60);
         const flightIsTooOld = mostRecentFlight.lastSeen < sevenDaysAgo;
-        
+
         if (flightIsTooOld) {
           logger.info('OpenSky flight data is too old (more than 7 days), skipping', {
             icao24,
@@ -454,7 +541,7 @@ class FlightRouteService {
           });
           return null;
         }
-        
+
         // Use OpenSky data even for current flights - historical routes are often still valid
         logger.info('Using OpenSky historical route data (valid for current flights)', {
           icao24,
@@ -462,15 +549,15 @@ class FlightRouteService {
           openSkyLastSeenDate: new Date(mostRecentFlight.lastSeen * 1000).toISOString(),
           isCurrentFlight,
         });
-        
+
         // Return most recent flight for immediate use
         // Only use departure if OpenSky has candidates (reliable data)
         // Otherwise, try to infer from previous flight's arrival
         const hasDepartureCandidates = (mostRecentFlight.departureAirportCandidatesCount || 0) > 0;
-        const reliableDeparture = hasDepartureCandidates 
-          ? mostRecentFlight.estDepartureAirport 
+        const reliableDeparture = hasDepartureCandidates
+          ? mostRecentFlight.estDepartureAirport
           : (inferredDeparture || null); // Use inferred departure if available
-        
+
         return {
           departureAirport: {
             iata: null, // OpenSky provides ICAO codes, can convert later if needed
@@ -503,8 +590,8 @@ class FlightRouteService {
    * Cache route data
    */
   async cacheRoute(cacheKey, routeData) {
-    logger.info('FlightRouteService.cacheRoute called', { 
-      cacheKey, 
+    logger.info('FlightRouteService.cacheRoute called', {
+      cacheKey,
       source: routeData.source,
       hasCallsign: !!routeData.callsign,
     });
@@ -531,7 +618,7 @@ class FlightRouteService {
       // Strategy: Try multiple parameter combinations to find the flight
       if (callsign) {
         const callsignTrimmed = callsign.trim();
-        
+
         // 1. Try flight_icao first (e.g., "AAL445" - ICAO format)
         // Note: flight_date parameter may require higher subscription tier, try without it first
         logger.info('Trying AviationStack with flight_icao', { flight_icao: callsignTrimmed });
@@ -543,17 +630,17 @@ class FlightRouteService {
               flight_status: 'active', // Prioritize active flights (real-time)
               limit: 1,
             },
-            timeout: 5000,
+            timeout: 2000, // Reduced from 5s to 2s for faster failover
           });
 
-          logger.debug('AviationStack /flights response (by flight_icao)', { 
+          logger.debug('AviationStack /flights response (by flight_icao)', {
             flight_icao: callsignTrimmed,
             dataLength: response.data?.data?.length || 0,
           });
 
           if (response.data?.data && response.data.data.length > 0) {
             routeData = response.data.data[0];
-            logger.info('Found route from AviationStack using flight_icao', { 
+            logger.info('Found route from AviationStack using flight_icao', {
               flight_icao: callsignTrimmed,
               departure: routeData.departure?.icao || routeData.departure?.iata,
               arrival: routeData.arrival?.icao || routeData.arrival?.iata,
@@ -568,7 +655,7 @@ class FlightRouteService {
             });
             throw error; // Re-throw to trigger fallback immediately
           }
-          logger.debug('AviationStack search by flight_icao failed', { 
+          logger.debug('AviationStack search by flight_icao failed', {
             flight_icao: callsignTrimmed,
             error: error.message,
             status: statusCode,
@@ -586,12 +673,12 @@ class FlightRouteService {
                 flight_status: 'active',
                 limit: 1,
               },
-              timeout: 5000,
+              timeout: 2000, // Reduced from 5s to 2s for faster failover
             });
 
             if (response.data?.data && response.data.data.length > 0) {
               routeData = response.data.data[0];
-              logger.info('Found route from AviationStack using flight_iata', { 
+              logger.info('Found route from AviationStack using flight_iata', {
                 flight_iata: callsignTrimmed,
                 departure: routeData.departure?.icao || routeData.departure?.iata,
                 arrival: routeData.arrival?.icao || routeData.arrival?.iata,
@@ -606,7 +693,7 @@ class FlightRouteService {
               });
               throw error; // Re-throw to trigger fallback immediately
             }
-            logger.debug('AviationStack search by flight_iata failed', { 
+            logger.debug('AviationStack search by flight_iata failed', {
               flight_iata: callsignTrimmed,
               error: error.message,
               status: statusCode,
@@ -620,9 +707,9 @@ class FlightRouteService {
           if (airlineMatch) {
             const airlineCode = airlineMatch[1];
             const flightNumber = airlineMatch[2];
-            
+
             // Try airline_icao + flight_num
-            logger.info('Trying AviationStack with airline_icao + flight_num', { 
+            logger.info('Trying AviationStack with airline_icao + flight_num', {
               airline_icao: airlineCode,
               flight_num: flightNumber,
             });
@@ -635,13 +722,13 @@ class FlightRouteService {
                   flight_status: 'active', // Real-time active flights
                   limit: 5,
                 },
-                timeout: 5000,
+                timeout: 2000, // Reduced from 5s to 2s for faster failover
               });
 
               if (response.data?.data && response.data.data.length > 0) {
                 // Prefer active flights, otherwise use first result
-                routeData = response.data.data.find(f => f.flight_status === 'active') || response.data.data[0];
-                logger.info('Found route from AviationStack using airline_icao + flight_num', { 
+                routeData = response.data.data.find((f) => f.flight_status === 'active') || response.data.data[0];
+                logger.info('Found route from AviationStack using airline_icao + flight_num', {
                   airline_icao: airlineCode,
                   flight_num: flightNumber,
                   departure: routeData.departure?.icao || routeData.departure?.iata,
@@ -657,21 +744,21 @@ class FlightRouteService {
                 });
                 throw error; // Re-throw to trigger fallback immediately
               }
-              logger.debug('AviationStack search by airline_icao failed', { 
+              logger.debug('AviationStack search by airline_icao failed', {
                 airline_icao: airlineCode,
                 error: error.message,
                 status: statusCode,
               });
             }
           }
-          
+
           // 4. If still no results, try without flight_status filter (might be scheduled or landed)
           if (!routeData && airlineMatch) {
             const airlineCode = airlineMatch[1];
             const flightNumber = airlineMatch[2];
-            
+
             // Try without flight_status filter (may catch scheduled/landed flights from today)
-            logger.info('Trying AviationStack without flight_status filter', { 
+            logger.info('Trying AviationStack without flight_status filter', {
               airline_icao: airlineCode,
               flight_num: flightNumber,
             });
@@ -683,15 +770,15 @@ class FlightRouteService {
                   flight_number: flightNumber,
                   limit: 10, // Get more results to find the right one
                 },
-                timeout: 5000,
+                timeout: 2000, // Reduced from 5s to 2s for faster failover
               });
 
               if (response.data?.data && response.data.data.length > 0) {
                 // Prioritize active, then scheduled, then most recent
-                routeData = response.data.data.find(f => f.flight_status === 'active') 
-                  || response.data.data.find(f => f.flight_status === 'scheduled')
+                routeData = response.data.data.find((f) => f.flight_status === 'active')
+                  || response.data.data.find((f) => f.flight_status === 'scheduled')
                   || response.data.data[0];
-                logger.info('Found route from AviationStack (without status filter)', { 
+                logger.info('Found route from AviationStack (without status filter)', {
                   airline_icao: airlineCode,
                   flight_num: flightNumber,
                   status: routeData.flight_status,
@@ -708,7 +795,7 @@ class FlightRouteService {
                 });
                 throw error; // Re-throw to trigger fallback immediately
               }
-              logger.debug('AviationStack search without status filter failed', { 
+              logger.debug('AviationStack search without status filter failed', {
                 airline_icao: airlineCode,
                 error: error.message,
                 status: statusCode,
@@ -724,32 +811,32 @@ class FlightRouteService {
       if (!routeData && icao24 && callsign) {
         const icao24Lower = icao24.toLowerCase().trim();
         logger.info('Searching AviationStack active flights and filtering by aircraft.icao24', { icao24: icao24Lower, callsign });
-        
+
         try {
           // Extract airline code from callsign (e.g., "AAL445" -> "AAL")
           const airlineMatch = callsign.trim().match(/^([A-Z0-9]{2,3})/);
           if (airlineMatch) {
             const airlineCode = airlineMatch[1];
-            
+
             // Build search params: use airline_icao if 3-letter, airline_iata if 2-letter
             const searchParams = {
               access_key: this.apiKey,
               flight_status: 'active', // Required for this API key tier
               limit: 100, // Get more results to increase chance of finding our aircraft
             };
-            
+
             if (airlineCode.length === 3) {
               searchParams.airline_icao = airlineCode;
             } else if (airlineCode.length === 2) {
               searchParams.airline_iata = airlineCode;
             }
-            
-            logger.info('Querying active flights from airline and filtering by ICAO24', { 
-              airlineCode, 
+
+            logger.info('Querying active flights from airline and filtering by ICAO24', {
+              airlineCode,
               icao24: icao24Lower,
               param: airlineCode.length === 3 ? 'airline_icao' : 'airline_iata',
             });
-            
+
             const response = await axios.get(`${this.baseUrl}/flights`, {
               params: searchParams,
               timeout: 8000, // Longer timeout for larger result sets
@@ -758,12 +845,12 @@ class FlightRouteService {
             if (response.data?.data && response.data.data.length > 0) {
               // Filter results by matching aircraft.icao24
               const matchingFlight = response.data.data.find(
-                (flight) => flight.aircraft?.icao24?.toLowerCase() === icao24Lower
+                (flight) => flight.aircraft?.icao24?.toLowerCase() === icao24Lower,
               );
-              
+
               if (matchingFlight) {
                 routeData = matchingFlight;
-                logger.info('Found route from AviationStack by filtering active flights by ICAO24', { 
+                logger.info('Found route from AviationStack by filtering active flights by ICAO24', {
                   icao24: icao24Lower,
                   airlineCode,
                   flight_iata: routeData.flight?.iata,
@@ -772,31 +859,31 @@ class FlightRouteService {
                   arrival: routeData.arrival?.icao || routeData.arrival?.iata,
                 });
               } else {
-                logger.debug('ICAO24 not found in active flights', { 
+                logger.debug('ICAO24 not found in active flights', {
                   icao24: icao24Lower,
                   airlineCode,
                   totalResults: response.data.data.length,
-                  flightsWithIcao24: response.data.data.filter(f => f.aircraft?.icao24).length,
+                  flightsWithIcao24: response.data.data.filter((f) => f.aircraft?.icao24).length,
                 });
               }
             }
           }
-             } catch (error) {
-               const statusCode = error.response?.status;
-               if (statusCode === 429) {
-                 rateLimited = true;
-                 logger.warn('AviationStack rate limit (429) reached on ICAO24 filter search - aborting', {
-                   icao24: icao24Lower,
-                 });
-                 throw error; // Re-throw to trigger fallback immediately
-               }
-               logger.debug('AviationStack search by filtering active flights failed', { 
-                 icao24: icao24Lower,
-                 error: error.message,
-                 status: statusCode,
-               });
-             }
-           }
+        } catch (error) {
+          const statusCode = error.response?.status;
+          if (statusCode === 429) {
+            rateLimited = true;
+            logger.warn('AviationStack rate limit (429) reached on ICAO24 filter search - aborting', {
+              icao24: icao24Lower,
+            });
+            throw error; // Re-throw to trigger fallback immediately
+          }
+          logger.debug('AviationStack search by filtering active flights failed', {
+            icao24: icao24Lower,
+            error: error.message,
+            status: statusCode,
+          });
+        }
+      }
 
       if (!routeData) {
         logger.warn('No route data found from AviationStack /flights API', { icao24, callsign });
@@ -819,13 +906,13 @@ class FlightRouteService {
     } catch (error) {
       const statusCode = error.response?.status;
       if (statusCode === 429) {
-        logger.warn('AviationStack rate limit (429) - returning null to trigger OpenSky fallback', { 
-          icao24, 
+        logger.warn('AviationStack rate limit (429) - returning null to trigger OpenSky fallback', {
+          icao24,
           callsign,
         });
       } else {
-        logger.error('Error fetching route from AviationStack API', { 
-          icao24, 
+        logger.error('Error fetching route from AviationStack API', {
+          icao24,
           callsign,
           error: error.message,
           status: statusCode,
@@ -843,15 +930,15 @@ class FlightRouteService {
   async fetchRouteFromFlightAware(callsign) {
     try {
       const today = new Date().toISOString().split('T')[0]; // Format: YYYY-MM-DD
-      
+
       logger.info('Querying FlightAware AeroAPI', { callsign, date: today });
-      
+
       const response = await axios.get(`${this.flightAwareBaseUrl}/flights/${callsign}`, {
         params: {
           start: today,
         },
         headers: {
-          'Accept': 'application/json; charset=UTF-8',
+          Accept: 'application/json; charset=UTF-8',
           'x-apikey': this.flightAwareApiKey,
         },
         timeout: 8000,
@@ -864,7 +951,7 @@ class FlightRouteService {
 
       // Get the most recent/active flight (first one is usually the current or most recent)
       const flight = response.data.flights[0];
-      
+
       if (!flight.origin || !flight.destination) {
         logger.debug('FlightAware flight missing origin or destination', { callsign });
         return null;
@@ -907,7 +994,7 @@ class FlightRouteService {
         logger.debug('Flight not found in FlightAware', { callsign });
         return null; // Not an error, just no data
       }
-      logger.error('Error fetching route from FlightAware API', { 
+      logger.error('Error fetching route from FlightAware API', {
         callsign,
         error: error.message,
         status: statusCode,
@@ -918,47 +1005,233 @@ class FlightRouteService {
   }
 
   /**
-   * Fallback: Infer route from flight position history
-   * Uses first and last known positions to find nearest airports
+   * Fallback: Infer route from flight position history and historical flight patterns
+   * Strategy:
+   * 1. Find departure airport from first position
+   * 2. Check flight_routes_cache/history for previous flights with same callsign + departure
+   * 3. Use historical arrival airport if found
+   * 4. Otherwise, only infer arrival if aircraft is clearly landing (descending + near airport)
    */
   async inferRouteFromPosition(icao24) {
     try {
       const history = await postgresRepository.findAircraftHistory(icao24);
-      
+
       if (history.length < 2) {
+        logger.debug('Not enough position history to infer route', { icao24, historyLength: history.length });
         return null;
       }
 
-      // Get first and last positions
+      // Get first and last positions, plus callsign
       const firstPos = history[0];
       const lastPos = history[history.length - 1];
+      const callsign = firstPos.callsign ? firstPos.callsign.trim() : null;
 
-      // Find nearest airports (you'd need an airport database for this)
-      // For now, return null and let frontend orchestrator handle it
+      if (!firstPos.latitude || !firstPos.longitude) {
+        logger.debug('Missing lat/lng in first position', { icao24 });
+        return null;
+      }
+
+      logger.info('Inferring route from position history and flight patterns', {
+        icao24,
+        callsign,
+        firstPos: { lat: firstPos.latitude, lng: firstPos.longitude },
+        lastPos: lastPos.latitude && lastPos.longitude
+          ? { lat: lastPos.latitude, lng: lastPos.longitude }
+          : 'invalid',
+        historyPoints: history.length,
+      });
+
+      // STEP 1: Find departure airport from first position
+      const departureAirports = await postgresRepository.findAirportsNearPoint(
+        firstPos.latitude,
+        firstPos.longitude,
+        50, // 50km radius for departure
+        null,
+      );
+
+      const departureAirport = this.selectBestAirport(departureAirports, 'departure', icao24);
+
+      if (!departureAirport) {
+        logger.debug('Could not identify departure airport', { icao24 });
+        return null;
+      }
+
+      logger.info('Identified departure airport', {
+        icao24,
+        callsign,
+        airport: departureAirport.ident,
+        name: departureAirport.name,
+        distance_km: departureAirport.distance_km,
+      });
+
+      // STEP 2: Look up historical routes for this callsign + departure airport
+      let arrivalAirport = null;
+
+      if (callsign) {
+        const historicalRoute = await postgresRepository.findHistoricalRoute(
+          callsign,
+          departureAirport.ident,
+        );
+
+        if (historicalRoute) {
+          logger.info('Found historical route for callsign', {
+            icao24,
+            callsign,
+            departure: historicalRoute.departure_icao,
+            arrival: historicalRoute.arrival_icao,
+            source: historicalRoute.source,
+          });
+
+          // Use historical arrival airport
+          return {
+            departureAirport: {
+              iata: departureAirport.iata_code || null,
+              icao: departureAirport.ident || departureAirport.gps_code || null,
+              name: departureAirport.name || null,
+              inferred: true,
+              location: {
+                lat: departureAirport.latitude_deg,
+                lng: departureAirport.longitude_deg,
+              },
+            },
+            arrivalAirport: {
+              iata: historicalRoute.arrival_iata || null,
+              icao: historicalRoute.arrival_icao || null,
+              name: historicalRoute.arrival_name || null,
+              inferred: true,
+              historical: true, // Flag to indicate this came from historical data
+            },
+          };
+        }
+
+        logger.debug('No historical route found for callsign + departure', { icao24, callsign });
+      }
+
+      // STEP 3: Check if aircraft is on final approach (descending near an airport)
+      if (lastPos.latitude && lastPos.longitude) {
+        const isDescending = lastPos.vertical_rate && lastPos.vertical_rate < -2; // Descending
+        const isLowAltitude = lastPos.baro_altitude && lastPos.baro_altitude < 1500; // Below 1500m (~5000ft)
+        const hasLowVelocity = lastPos.velocity && lastPos.velocity < 100; // Slowing down
+
+        if (isDescending && isLowAltitude) {
+          logger.info('Aircraft appears to be on final approach', {
+            icao24,
+            altitude: lastPos.baro_altitude,
+            verticalRate: lastPos.vertical_rate,
+            velocity: lastPos.velocity,
+          });
+
+          // Find nearby airports
+          const nearbyAirports = await postgresRepository.findAirportsNearPoint(
+            lastPos.latitude,
+            lastPos.longitude,
+            25, // 25km radius for landing
+            null,
+          );
+
+          arrivalAirport = this.selectBestAirport(nearbyAirports, 'arrival', icao24);
+
+          if (arrivalAirport) {
+            logger.info('Inferred arrival airport from final approach', {
+              icao24,
+              airport: arrivalAirport.ident,
+              name: arrivalAirport.name,
+              distance_km: arrivalAirport.distance_km,
+            });
+
+            return {
+              departureAirport: {
+                iata: departureAirport.iata_code || null,
+                icao: departureAirport.ident || departureAirport.gps_code || null,
+                name: departureAirport.name || null,
+                inferred: true,
+                location: {
+                  lat: departureAirport.latitude_deg,
+                  lng: departureAirport.longitude_deg,
+                },
+              },
+              arrivalAirport: {
+                iata: arrivalAirport.iata_code || null,
+                icao: arrivalAirport.ident || arrivalAirport.gps_code || null,
+                name: arrivalAirport.name || null,
+                inferred: true,
+                location: {
+                  lat: arrivalAirport.latitude_deg,
+                  lng: arrivalAirport.longitude_deg,
+                },
+              },
+            };
+          }
+        }
+      }
+
+      // STEP 4: Return with departure only (arrival unknown for in-flight aircraft)
+      logger.info('Returning departure only - arrival cannot be inferred for in-flight aircraft', { icao24 });
       return {
         departureAirport: {
-          iata: null,
-          icao: null,
-          name: null,
+          iata: departureAirport.iata_code || null,
+          icao: departureAirport.ident || departureAirport.gps_code || null,
+          name: departureAirport.name || null,
           inferred: true,
-          location: firstPos.latitude && firstPos.longitude 
-            ? { lat: firstPos.latitude, lng: firstPos.longitude }
-            : null,
+          location: {
+            lat: departureAirport.latitude_deg,
+            lng: departureAirport.longitude_deg,
+          },
         },
         arrivalAirport: {
           iata: null,
           icao: null,
           name: null,
-          inferred: true,
-          location: lastPos.latitude && lastPos.longitude
-            ? { lat: lastPos.latitude, lng: lastPos.longitude }
-            : null,
+          inferred: false, // Not inferred - genuinely unknown
+          location: null,
         },
       };
     } catch (error) {
       logger.error('Error inferring route from position', { icao24, error: error.message });
       return null;
     }
+  }
+
+  /**
+   * Helper: Select best airport from candidates
+   */
+  selectBestAirport(airports, positionType, icao24) {
+    if (!airports || airports.length === 0) {
+      logger.debug(`No airports found near ${positionType} position`, { icao24 });
+      return null;
+    }
+
+    // Filter out closed airports and heliports, prioritize by:
+    // 1. Type (large_airport > medium_airport > small_airport)
+    // 2. Has runways (from JSONB field)
+    // 3. Distance (closer is better)
+    const priorityTypes = {
+      large_airport: 3,
+      medium_airport: 2,
+      small_airport: 1,
+    };
+
+    const scored = airports
+      .filter((apt) => apt.type !== 'closed' && apt.type !== 'heliport')
+      .map((apt) => {
+        const typeScore = priorityTypes[apt.type] || 0;
+        const hasRunways = apt.runways && Array.isArray(apt.runways) && apt.runways.length > 0;
+        const runwayScore = hasRunways ? apt.runways.length : 0;
+        const distanceScore = 1 / (apt.distance_km + 1); // Inverse distance (closer = higher score)
+
+        return {
+          airport: apt,
+          score: (typeScore * 100) + (runwayScore * 10) + distanceScore,
+        };
+      })
+      .sort((a, b) => b.score - a.score);
+
+    if (scored.length === 0) {
+      logger.debug(`No suitable airports found near ${positionType} position after filtering`, { icao24 });
+      return null;
+    }
+
+    return scored[0].airport;
   }
 
   /**
@@ -973,7 +1246,7 @@ class FlightRouteService {
           callsign: aircraft.callsign,
           route,
         };
-      })
+      }),
     );
 
     return results
@@ -982,5 +1255,17 @@ class FlightRouteService {
   }
 }
 
-module.exports = new FlightRouteService();
+/**
+ * Decides if an aircraft should be filtered as 'landed' based on lastContact/actualArrival.
+ * lastContact: ms since epoch
+ * lastArrival: ms since epoch or null
+ * bufferMs: window after landing to hide the plane (default 10 min)
+ */
+function shouldFilterAsLanded(lastContact, lastArrival, bufferMs = 10 * 60 * 1000) {
+  if (!lastArrival) return false;
+  return lastContact <= lastArrival + bufferMs;
+}
 
+module.exports.shouldFilterAsLanded = shouldFilterAsLanded;
+
+module.exports = new FlightRouteService();

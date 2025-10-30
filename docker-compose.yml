@@ -1,6 +1,6 @@
 services:
   db:
-    image: postgres:15
+    image: postgis/postgis:15-3.3
     container_name: fly-overhead-postgres
     environment:
       - POSTGRES_USER=postgres
