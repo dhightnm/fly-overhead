@@ -205,13 +205,25 @@ const Home = () => {
       if (res.data) {
         // Update routes state
         setRoutes((prev) => ({ ...prev, [plane.icao24]: res.data }));
+        
+        // Update aircraft category in planes state if we got an updated category
+        if (res.data.aircraftCategory !== undefined && res.data.aircraftCategory !== null) {
+          setPlanes((prevPlanes) => 
+            prevPlanes.map((p) => 
+              p.icao24 === plane.icao24 
+                ? { ...p, category: res.data.aircraftCategory }
+                : p
+            )
+          );
+        }
+        
         return res.data;
       }
     } catch (error) {
       console.error(`Failed to fetch route for ${plane.callsign || plane.icao24}:`, error);
     }
     return null;
-  }, [routes, API_URL]);
+  }, [routes, API_URL, setPlanes]);
 
   const handleViewHistory = async (plane) => {
     // Fetch route on-demand when user clicks

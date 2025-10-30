@@ -23,7 +23,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-      # Add build args to help with cache invalidation
+      # Force rebuild on code changes
       args:
         - BUILD_DATE=${BUILD_DATE:-$(date -u +'%Y-%m-%dT%H:%M:%SZ')}
     container_name: fly-overhead-server
@@ -34,8 +34,19 @@ services:
     environment:
       - POSTGRES_URL=postgresql://postgres:postgres@db:5432/fly_overhead
       - PORT=3005
+      - NODE_ENV=development
+      # Enable nodemon for auto-restart on file changes (optional)
+      # Requires: npm install nodemon in server/package.json
       - AVIATION_EDGE_API_KEY=4f486100c981ea8a41d6a83e395a2827
       - FLIGHTAWARE_API_KEY=gmyEuwaSA620GprtqWgiJ2jEEsAc200G
+    # Mount server code as volume for live reloading (no rebuild needed)
+    # Note: On Windows, use forward slashes and relative paths
+    volumes:
+      - ./server:/app/server
+      # Mount client build directory so the server can serve static files
+      - ./client/build:/app/server/client/build
+      # Anonymous volume to preserve node_modules installed in container
+      - /app/server/node_modules
     depends_on:
       db:
         condition: service_healthy
@@ -50,3 +61,4 @@ volumes:
 networks:
   fly-overhead-network:
     driver: bridge
+

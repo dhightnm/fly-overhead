@@ -30,8 +30,21 @@ class OpenSkyService {
   async getAllStates() {
     try {
       const response = await axios.get(`${this.baseUrl}/states/all`, {
+        params: {
+          extended: 1, // Include category field (index 17) - use 1 instead of true
+        },
         headers: this.getAuthHeader(),
       });
+      // Log sample state structure if available (use info level for visibility)
+      if (response.data.states && response.data.states.length > 0) {
+        const sample = response.data.states[0];
+        logger.info('OpenSky state sample', {
+          length: sample.length,
+          hasCategory: sample[17] !== undefined,
+          categoryValue: sample[17],
+          firstFewItems: sample.slice(0, 5),
+        });
+      }
       return response.data;
     } catch (error) {
       logger.error('Error fetching all states from OpenSky', { error: error.message });
@@ -48,6 +61,7 @@ class OpenSkyService {
     try {
       const response = await axios.get(`${this.baseUrl}/states/all`, {
         params: {
+          extended: 1, // Include category field (index 17) - use 1 instead of true
           lamin, lomin, lamax, lomax,
         },
         headers: this.getAuthHeader(),
@@ -111,12 +125,27 @@ class OpenSkyService {
 
   /**
    * Validate and prepare state data for database
+   * OpenSky extended format: 18 items (0-17), where 17 is category
+   * We append created_at as index 18
    */
   // eslint-disable-next-line class-methods-use-this
   prepareStateForDatabase(state) {
-    // OpenSky API returns 17 items, add null for category, then Date
-    const stateWithCategory = [...state, null];
-    const stateWithDate = [...stateWithCategory, new Date()];
+    // OpenSky API with extended=true returns 18 items (0-17)
+    // Index 17 is category (may be null if not broadcast by aircraft)
+    // Append created_at as index 18
+    let category = state[17] !== undefined ? state[17] : null;
+    
+    // Validate category: must be between 0 and 19 (OpenSky valid range)
+    // Some data sources may return invalid values (e.g., 20), so clamp to valid range
+    if (category !== null && (typeof category !== 'number' || category < 0 || category > 19)) {
+      logger.warn('Invalid category value from OpenSky, setting to null', {
+        icao24: state[0],
+        invalidCategory: category,
+      });
+      category = null;
+    }
+    
+    const stateWithDate = [...state.slice(0, 17), category, new Date()];
     return stateWithDate;
   }
 }

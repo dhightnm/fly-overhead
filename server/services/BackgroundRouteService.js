@@ -1,6 +1,7 @@
 const postgresRepository = require('../repositories/PostgresRepository');
 const flightRouteService = require('./FlightRouteService');
 const logger = require('../utils/logger');
+const { mapAircraftTypeToCategory } = require('../utils/aircraftCategoryMapper');
 
 /**
  * Background service to periodically populate route database
@@ -162,7 +163,37 @@ class BackgroundRouteService {
             // Use the flight's created_at date to improve historical actuals
             const dateStr = new Date(f.created_at).toISOString().split('T')[0];
             try {
-              route = await flightRouteService.fetchRouteFromFlightAware(f.callsign, dateStr);
+              const routeResult = await flightRouteService.fetchRouteFromFlightAware(f.callsign, dateStr);
+              
+              // FlightAware returns array of historical flights - process all of them
+              if (routeResult) {
+                const routes = Array.isArray(routeResult) ? routeResult : [routeResult];
+                
+                // Store all flights from FlightAware response in history
+                for (const faRoute of routes) {
+                  try {
+                    await postgresRepository.storeRouteHistory({
+                      ...faRoute,
+                      callsign: f.callsign,
+                      icao24: f.icao24,
+                      source: 'flightaware',
+                    });
+                    logger.debug('Stored FlightAware historical flight', {
+                      callsign: f.callsign,
+                      date: dateStr,
+                      aircraftType: faRoute.aircraft?.type,
+                    });
+                  } catch (storeErr) {
+                    // Ignore duplicate key errors
+                    if (!storeErr.message?.includes('duplicate key')) {
+                      logger.warn('Failed to store FlightAware flight', { error: storeErr.message });
+                    }
+                  }
+                }
+                
+                // Use most recent flight for updates (first in array)
+                route = routes[0];
+              }
             } catch (e) { /* noop */ } finally {
               flightAwareRemaining -= 1;
             }
@@ -193,6 +224,46 @@ class BackgroundRouteService {
           // Capture aircraft type/model if present
           if (route?.aircraft?.type && !updates.aircraft_type) updates.aircraft_type = route.aircraft.type;
           if (route?.aircraft?.model && !updates.aircraft_model) updates.aircraft_model = route.aircraft.model;
+          
+          // Capture FlightAware additional fields
+          if (route?.registration) updates.registration = route.registration;
+          if (route?.flightStatus) updates.flight_status = route.flightStatus;
+          if (route?.route) updates.route = route.route;
+          if (route?.routeDistance) updates.route_distance = route.routeDistance;
+          if (route?.baggageClaim) updates.baggage_claim = route.baggageClaim;
+          if (route?.gateOrigin) updates.gate_origin = route.gateOrigin;
+          if (route?.gateDestination) updates.gate_destination = route.gateDestination;
+          if (route?.terminalOrigin) updates.terminal_origin = route.terminalOrigin;
+          if (route?.terminalDestination) updates.terminal_destination = route.terminalDestination;
+          if (route?.actualRunwayOff) updates.actual_runway_off = route.actualRunwayOff;
+          if (route?.actualRunwayOn) updates.actual_runway_on = route.actualRunwayOn;
+          if (route?.progressPercent !== undefined) updates.progress_percent = route.progressPercent;
+          if (route?.filedAirspeed) updates.filed_airspeed = route.filedAirspeed;
+          if (route?.blocked !== undefined) updates.blocked = route.blocked;
+          if (route?.diverted !== undefined) updates.diverted = route.diverted;
+          if (route?.cancelled !== undefined) updates.cancelled = route.cancelled;
+          if (route?.departureDelay !== undefined) updates.departure_delay = route.departureDelay;
+          if (route?.arrivalDelay !== undefined) updates.arrival_delay = route.arrivalDelay;
+          
+          // Map aircraft type to OpenSky category and update aircraft_states table
+          if (f.icao24 && (route?.aircraft?.type || route?.aircraft?.model || updates.aircraft_type || updates.aircraft_model)) {
+            const aircraftType = route?.aircraft?.type || updates.aircraft_type;
+            const aircraftModel = route?.aircraft?.model || updates.aircraft_model;
+            const inferredCategory = mapAircraftTypeToCategory(aircraftType, aircraftModel);
+            if (inferredCategory !== null) {
+              try {
+                await postgresRepository.updateAircraftCategory(f.icao24, inferredCategory);
+                logger.debug('Updated aircraft category from type/model', {
+                  icao24: f.icao24,
+                  type: aircraftType,
+                  model: aircraftModel,
+                  category: inferredCategory,
+                });
+              } catch (err) {
+                logger.warn('Failed to update aircraft category', { error: err.message });
+              }
+            }
+          }
           if (route?.aircraft?.type || route?.aircraft_type) {
             updates.aircraft_type = route.aircraft?.type || route.aircraft_type;
           }
@@ -243,7 +314,32 @@ class BackgroundRouteService {
           if (!route && f.callsign && flightAwareRemaining > 0) {
             const dateStr = new Date(f.created_at).toISOString().split('T')[0];
             try {
-              route = await flightRouteService.fetchRouteFromFlightAware(f.callsign, dateStr);
+              const routeResult = await flightRouteService.fetchRouteFromFlightAware(f.callsign, dateStr);
+              
+              // FlightAware returns array of historical flights - process all of them
+              if (routeResult) {
+                const routes = Array.isArray(routeResult) ? routeResult : [routeResult];
+                
+                // Store all flights from FlightAware response in history
+                for (const faRoute of routes) {
+                  try {
+                    await postgresRepository.storeRouteHistory({
+                      ...faRoute,
+                      callsign: f.callsign,
+                      icao24: f.icao24,
+                      source: 'flightaware',
+                    });
+                  } catch (storeErr) {
+                    // Ignore duplicate key errors
+                    if (!storeErr.message?.includes('duplicate key')) {
+                      logger.warn('Failed to store FlightAware flight', { error: storeErr.message });
+                    }
+                  }
+                }
+                
+                // Use most recent flight for updates (first in array)
+                route = routes[0];
+              }
             } catch (e) { /* noop */ } finally {
               flightAwareRemaining -= 1;
             }
@@ -273,6 +369,26 @@ class BackgroundRouteService {
           }
           if (route?.aircraft?.type && !updates.aircraft_type) updates.aircraft_type = route.aircraft.type;
           if (route?.aircraft?.model && !updates.aircraft_model) updates.aircraft_model = route.aircraft.model;
+          
+          // Capture FlightAware additional fields
+          if (route?.registration) updates.registration = route.registration;
+          if (route?.flightStatus) updates.flight_status = route.flightStatus;
+          if (route?.route) updates.route = route.route;
+          if (route?.routeDistance) updates.route_distance = route.routeDistance;
+          if (route?.baggageClaim) updates.baggage_claim = route.baggageClaim;
+          if (route?.gateOrigin) updates.gate_origin = route.gateOrigin;
+          if (route?.gateDestination) updates.gate_destination = route.gateDestination;
+          if (route?.terminalOrigin) updates.terminal_origin = route.terminalOrigin;
+          if (route?.terminalDestination) updates.terminal_destination = route.terminalDestination;
+          if (route?.actualRunwayOff) updates.actual_runway_off = route.actualRunwayOff;
+          if (route?.actualRunwayOn) updates.actual_runway_on = route.actualRunwayOn;
+          if (route?.progressPercent !== undefined) updates.progress_percent = route.progressPercent;
+          if (route?.filedAirspeed) updates.filed_airspeed = route.filedAirspeed;
+          if (route?.blocked !== undefined) updates.blocked = route.blocked;
+          if (route?.diverted !== undefined) updates.diverted = route.diverted;
+          if (route?.cancelled !== undefined) updates.cancelled = route.cancelled;
+          if (route?.departureDelay !== undefined) updates.departure_delay = route.departureDelay;
+          if (route?.arrivalDelay !== undefined) updates.arrival_delay = route.arrivalDelay;
           if (route?.aircraft?.type || route?.aircraft_type) {
             updates.aircraft_type = route.aircraft?.type || route.aircraft_type;
           }
@@ -318,7 +434,34 @@ class BackgroundRouteService {
           }
           if (!route && f.callsign && flightAwareRemaining > 0) {
             const dateStr = new Date(f.created_at).toISOString().split('T')[0];
-            try { route = await flightRouteService.fetchRouteFromFlightAware(f.callsign, dateStr); } catch (e) { /* noop */ } finally { flightAwareRemaining -= 1; }
+            try {
+              const routeResult = await flightRouteService.fetchRouteFromFlightAware(f.callsign, dateStr);
+              
+              // FlightAware returns array of historical flights - process all of them
+              if (routeResult) {
+                const routes = Array.isArray(routeResult) ? routeResult : [routeResult];
+                
+                // Store all flights from FlightAware response in history
+                for (const faRoute of routes) {
+                  try {
+                    await postgresRepository.storeRouteHistory({
+                      ...faRoute,
+                      callsign: f.callsign,
+                      icao24: f.icao24,
+                      source: 'flightaware',
+                    });
+                  } catch (storeErr) {
+                    // Ignore duplicate key errors
+                    if (!storeErr.message?.includes('duplicate key')) {
+                      logger.warn('Failed to store FlightAware flight', { error: storeErr.message });
+                    }
+                  }
+                }
+                
+                // Use most recent flight for updates (first in array)
+                route = routes[0];
+              }
+            } catch (e) { /* noop */ } finally { flightAwareRemaining -= 1; }
           }
           if (!route && f.callsign) {
             try { route = await flightRouteService.fetchRouteFromAPI(f.icao24, f.callsign); } catch (e) { /* noop */ }
@@ -344,6 +487,27 @@ class BackgroundRouteService {
           }
           if (route?.aircraft?.type && !updates.aircraft_type) updates.aircraft_type = route.aircraft.type;
           if (route?.aircraft?.model && !updates.aircraft_model) updates.aircraft_model = route.aircraft.model;
+          
+          // Capture FlightAware additional fields
+          if (route?.registration) updates.registration = route.registration;
+          if (route?.flightStatus) updates.flight_status = route.flightStatus;
+          if (route?.route) updates.route = route.route;
+          if (route?.routeDistance) updates.route_distance = route.routeDistance;
+          if (route?.baggageClaim) updates.baggage_claim = route.baggageClaim;
+          if (route?.gateOrigin) updates.gate_origin = route.gateOrigin;
+          if (route?.gateDestination) updates.gate_destination = route.gateDestination;
+          if (route?.terminalOrigin) updates.terminal_origin = route.terminalOrigin;
+          if (route?.terminalDestination) updates.terminal_destination = route.terminalDestination;
+          if (route?.actualRunwayOff) updates.actual_runway_off = route.actualRunwayOff;
+          if (route?.actualRunwayOn) updates.actual_runway_on = route.actualRunwayOn;
+          if (route?.progressPercent !== undefined) updates.progress_percent = route.progressPercent;
+          if (route?.filedAirspeed) updates.filed_airspeed = route.filedAirspeed;
+          if (route?.blocked !== undefined) updates.blocked = route.blocked;
+          if (route?.diverted !== undefined) updates.diverted = route.diverted;
+          if (route?.cancelled !== undefined) updates.cancelled = route.cancelled;
+          if (route?.departureDelay !== undefined) updates.departure_delay = route.departureDelay;
+          if (route?.arrivalDelay !== undefined) updates.arrival_delay = route.arrivalDelay;
+          
           if (Object.keys(updates).length > 0) {
             await postgresRepository.updateFlightHistoryById(f.id, updates);
             logger.info('Backfill(subset): updated', { id: f.id });

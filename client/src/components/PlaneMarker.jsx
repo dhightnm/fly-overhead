@@ -3,36 +3,30 @@ import { Marker, Popup } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet-rotatedmarker';
 
-// ---- ICON IMPORTS (TEMPORARILY DISABLED - add SVGs/PNGs to assets to enable) ---- //
-// import planeHeavy from '../assets/plane-heavy.svg';     // category 5
-// import planeLarge from '../assets/plane-large.svg';     // category 3/4
-// import planeSmall from '../assets/plane-small.svg';     // category 1/2
-// import planeGround from '../assets/plane-ground.png';   // fallback for ground
-import planeDefault from '../assets/plane.png';         // fallback for unknown/uncategorized
-// import helicopter from '../assets/helicopter.svg';      // category 7
-// import drone from '../assets/drone.svg';                // category 13
-// import uav from '../assets/uav.svg';                    // category 13 (optional: alias to drone)
-// import military from '../assets/military.svg';          // category 18/19
-// import glider from '../assets/glider.svg';              // category 8
-// import blimp from '../assets/blimp.svg';                // category 9
-// import ultralight from '../assets/ultralight.svg';      // category 11
+import planeDefault from '../assets/plane-default.svg';
+import planeSmall from '../assets/plane-small.svg';     // category 2
+import planeLarge from '../assets/plane-large.svg';     // category 3
+import plane757 from '../assets/plane-757.svg';         // category 4
+import helicopter from '../assets/helicopter.svg';      // category 7
+import glider from '../assets/glider.svg';              // category 8
+import drone from '../assets/drone.svg';                // category 13
+import military from '../assets/military.svg';          // category 18/19
 
 import './planeMarker.css';
 
 const CATEGORY_ICON_MAP = {
-  // Temporarily using default icon for all categories until SVGs are added
-  1: planeDefault,   // Light
-  2: planeDefault,   // Small
-  3: planeDefault,   // Large
-  4: planeDefault,   // High vortex large (e.g., B757)
-  5: planeDefault,   // Heavy
-  7: planeDefault,   // Rotorcraft
-  8: planeDefault,   // Glider/sailplane
-  9: planeDefault,   // Lighter-than-air
-  11: planeDefault,  // Ultralight/hang-glider/paraglider
-  13: planeDefault,   // Unmanned aerial vehicle
-  18: planeDefault,    // Military/unknown
-  19: planeDefault,    // Military/unknown
+  1: planeDefault,   // Light (no specific icon, using default)
+  2: planeSmall,     // Small aircraft
+  3: planeLarge,     // Large jet
+  4: plane757,        // High vortex large (e.g., B757)
+  5: planeDefault,   // Heavy (no specific icon, using default)
+  7: helicopter,     // Rotorcraft
+  8: glider,         // Glider/sailplane
+  9: planeDefault,   // Lighter-than-air (no specific icon, using default)
+  11: planeDefault,  // Ultralight/hang-glider/paraglider (no specific icon, using default)
+  13: drone,         // Unmanned aerial vehicle
+  18: military,      // Military
+  19: military,       // Military/Unknown
   default: planeDefault,
 };
 
@@ -61,8 +55,7 @@ const CATEGORY_LABEL_MAP = {
 };
 
 function getIconForPlane(plane) {
-  // Use default icon for all planes until SVGs are added
-  const iconFile = CATEGORY_ICON_MAP[plane.category] || CATEGORY_ICON_MAP['default'];
+  const iconFile = CATEGORY_ICON_MAP[plane.category] || CATEGORY_ICON_MAP.default;
   return L.icon({
     iconUrl: iconFile,
     iconSize: [32, 32],
@@ -73,6 +66,18 @@ function getIconForPlane(plane) {
 
 function getCategoryLabel(plane) {
   return CATEGORY_LABEL_MAP[plane.category] || CATEGORY_LABEL_MAP['default'];
+}
+
+function getAircraftDisplayType(plane, route) {
+  // Prefer aircraft model/type from route data when available
+  if (route?.aircraft?.model) {
+    return route.aircraft.model;
+  }
+  if (route?.aircraft?.type) {
+    return route.aircraft.type;
+  }
+  // Fall back to category label
+  return getCategoryLabel(plane);
 }
 
 const PlaneMarker = ({ plane, route, onMarkerClick }) => {
@@ -101,7 +106,7 @@ const PlaneMarker = ({ plane, route, onMarkerClick }) => {
         <div className="plane-popup">
           <div><strong>Callsign:</strong> <span>{callsign || 'N/A'}</span></div>
           <div><strong>ICAO24:</strong> <span>{icao24 || 'N/A'}</span></div>
-          <div><strong>Aircraft Type:</strong> <span>{getCategoryLabel(plane)}</span></div>
+          <div><strong>Aircraft:</strong> <span>{getAircraftDisplayType(plane, route)}</span></div>
           {route && (() => {
             const departureCode = route.departureAirport?.icao || route.departureAirport?.iata || route.departureAirport?.name;
             const arrivalCode = route.arrivalAirport?.icao || route.arrivalAirport?.iata || route.arrivalAirport?.name;
