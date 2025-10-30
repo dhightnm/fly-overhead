@@ -1,0 +1,199 @@
+/* Airport Marker Icons */
+.airport-marker-large .airport-icon,
+.airport-marker-medium .airport-icon,
+.airport-marker-small .airport-icon,
+.airport-marker-heliport .airport-icon,
+.airport-marker-seaplane .airport-icon,
+.airport-marker-default .airport-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  font-weight: bold;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+/* Large Airport - Major international */
+.airport-marker-large .airport-icon {
+  background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%);
+  color: white;
+  font-size: 16px;
+  border: 2px solid white;
+}
+
+.airport-marker-large .airport-icon:hover {
+  transform: scale(1.2);
+  box-shadow: 0 4px 8px rgba(59, 130, 246, 0.6);
+}
+
+/* Medium Airport - Regional */
+.airport-marker-medium .airport-icon {
+  background: linear-gradient(135deg, #0891b2 0%, #06b6d4 100%);
+  color: white;
+  font-size: 14px;
+  border: 2px solid white;
+}
+
+.airport-marker-medium .airport-icon:hover {
+  transform: scale(1.2);
+  box-shadow: 0 4px 8px rgba(6, 182, 212, 0.6);
+}
+
+/* Small Airport - Local */
+.airport-marker-small .airport-icon {
+  background: linear-gradient(135deg, #059669 0%, #10b981 100%);
+  color: white;
+  font-size: 12px;
+  border: 1px solid white;
+}
+
+.airport-marker-small .airport-icon:hover {
+  transform: scale(1.2);
+  box-shadow: 0 3px 6px rgba(16, 185, 129, 0.6);
+}
+
+/* Heliport */
+.airport-marker-heliport .airport-icon {
+  background: linear-gradient(135deg, #7c3aed 0%, #a78bfa 100%);
+  color: white;
+  font-size: 12px;
+  border: 1px solid white;
+}
+
+.airport-marker-heliport .airport-icon:hover {
+  transform: scale(1.2);
+  box-shadow: 0 3px 6px rgba(124, 58, 237, 0.6);
+}
+
+/* Seaplane Base */
+.airport-marker-seaplane .airport-icon {
+  background: linear-gradient(135deg, #0284c7 0%, #0ea5e9 100%);
+  color: white;
+  font-size: 12px;
+  border: 1px solid white;
+}
+
+.airport-marker-seaplane .airport-icon:hover {
+  transform: scale(1.2);
+  box-shadow: 0 3px 6px rgba(14, 165, 233, 0.6);
+}
+
+/* Default */
+.airport-marker-default .airport-icon {
+  background: linear-gradient(135deg, #6b7280 0%, #9ca3af 100%);
+  color: white;
+  font-size: 12px;
+  border: 1px solid white;
+}
+
+.airport-marker-default .airport-icon:hover {
+  transform: scale(1.2);
+  box-shadow: 0 3px 6px rgba(107, 114, 128, 0.6);
+}
+
+/* Airport Popup Styling */
+.airport-popup {
+  min-width: 250px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+}
+
+.airport-popup-header {
+  border-bottom: 2px solid #e5e7eb;
+  padding-bottom: 8px;
+  margin-bottom: 12px;
+}
+
+.airport-popup-header h3 {
+  margin: 0 0 6px 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: #1f2937;
+  line-height: 1.3;
+}
+
+.airport-codes {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.iata-code,
+.icao-code {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: 'Courier New', monospace;
+}
+
+.iata-code {
+  background-color: #dbeafe;
+  color: #1e40af;
+}
+
+.icao-code {
+  background-color: #fef3c7;
+  color: #92400e;
+}
+
+.airport-popup-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.airport-info-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.airport-info-row .label {
+  font-weight: 600;
+  color: #6b7280;
+  margin-right: 8px;
+  flex-shrink: 0;
+}
+
+.airport-info-row .value {
+  color: #1f2937;
+  text-align: right;
+  flex-grow: 1;
+}
+
+.airport-popup-footer {
+  border-top: 1px solid #e5e7eb;
+  padding-top: 8px;
+  text-align: center;
+}
+
+.coordinates {
+  font-size: 11px;
+  color: #9ca3af;
+  font-family: 'Courier New', monospace;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .airport-popup {
+    min-width: 200px;
+  }
+
+  .airport-popup-header h3 {
+    font-size: 14px;
+  }
+
+  .airport-info-row {
+    font-size: 12px;
+  }
+}
+
+

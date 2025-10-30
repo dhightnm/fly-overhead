@@ -1,5 +1,6 @@
 const postgresRepository = require('../repositories/PostgresRepository');
 const openSkyService = require('./OpenSkyService');
+const flightRouteService = require('./FlightRouteService');
 const config = require('../config');
 const logger = require('../utils/logger');
 
@@ -87,8 +88,13 @@ class AircraftService {
         return null;
       }
 
+      const aircraft = results[0];
+
+      // DISABLED: FlightAware landed flight checks (too expensive - $13/night!)
+      // Rely on OpenSky's on_ground flag and last_contact for filtering instead
+
       logger.info(`Found aircraft for identifier: ${identifier}`);
-      return results[0];
+      return aircraft;
     } catch (error) {
       logger.error('Error in getAircraftByIdentifier', {
         identifier,
@@ -115,8 +121,17 @@ class AircraftService {
         tenMinutesAgo,
       );
 
-      logger.info(`Found ${results.length} recent aircraft in bounds`);
-      return results;
+      // DISABLED: FlightAware landed flight checks (too expensive - $13/night!)
+      // For now, rely on OpenSky's on_ground flag and last_contact timestamp
+      // to filter out stale data instead of making expensive API calls
+      const filteredResults = results;
+
+      const filteredCount = results.length - filteredResults.length;
+      if (filteredCount > 0) {
+        logger.info(`Filtered out ${filteredCount} landed flights (OpenSky data quality issue)`);
+      }
+      logger.info(`Returning ${filteredResults.length} aircraft still flying`);
+      return filteredResults;
     } catch (error) {
       logger.error('Error in getAircraftInBounds', {
         bounds: {

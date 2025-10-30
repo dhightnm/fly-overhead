@@ -53,18 +53,19 @@ router.get('/planes/:identifier', async (req, res, next) => {
       // So we default to treating map-visible aircraft as current
       // Only use OpenSky for explicit historical queries (flight history feature)
       const isCurrentFlight = true; // Default: assume current if visible on map
-      
+
       logger.info('Fetching route for aircraft (assumed current since visible on map)', {
         icao24: aircraft.icao24,
         callsign: aircraft.callsign,
         isCurrentFlight,
         lastContact: aircraft.last_contact,
       });
-      
+
       const route = await flightRouteService.getFlightRoute(
         aircraft.icao24,
         aircraft.callsign,
-        isCurrentFlight
+        isCurrentFlight,
+        true, // allowExpensiveApis=true (user-initiated request)
       );
       if (route) {
         aircraft.route = route;
@@ -92,7 +93,7 @@ router.get('/route/:identifier', async (req, res, next) => {
     let aircraftCallsign = callsign;
 
     // Always try to get aircraft data to check if it's a current flight
-    let aircraft = await aircraftService.getAircraftByIdentifier(identifier);
+    const aircraft = await aircraftService.getAircraftByIdentifier(identifier);
     if (aircraft) {
       aircraftIcao24 = aircraft.icao24;
       aircraftCallsign = aircraft.callsign;
@@ -103,17 +104,18 @@ router.get('/route/:identifier', async (req, res, next) => {
     // OpenSky routes endpoint only has historical data (previous day+)
     // Use AviationStack for current flights instead
     const isCurrentFlight = true;
-    
+
     logger.info('Fetching route (assumed current - visible/trackable aircraft)', {
       icao24: aircraftIcao24,
       callsign: aircraftCallsign,
       hasAircraftData: !!aircraft,
     });
-    
+
     const route = await flightRouteService.getFlightRoute(
       aircraftIcao24,
       aircraftCallsign,
-      isCurrentFlight
+      isCurrentFlight,
+      true, // allowExpensiveApis=true (user-initiated request via /api/route)
     );
 
     if (!route) {
@@ -208,7 +210,7 @@ router.get('/history/search', async (req, res, next) => {
   }
 
   try {
-    const flights = await historyService.searchFlightsByTimeRange(start, end, parseInt(limit));
+    const flights = await historyService.searchFlightsByTimeRange(start, end, parseInt(limit, 10));
     return res.json(flights);
   } catch (err) {
     return next(err);
@@ -244,22 +246,23 @@ router.get('/health', async (req, res) => {
  */
 router.get('/test-opensky/:icao24', async (req, res, next) => {
   const { icao24 } = req.params;
-  
+
   try {
+    // eslint-disable-next-line global-require
     const openSkyService = require('../services/OpenSkyService');
     const now = Math.floor(Date.now() / 1000);
     const oneDay = 24 * 60 * 60;
-    
+
     // Try multiple time ranges
     const allFlights = [];
     for (let i = 1; i <= 4; i++) {
       const begin = now - ((i + 1) * oneDay);
       const end = now - (i * oneDay);
-      
+
       try {
         const flights = await openSkyService.getFlightsByAircraft(icao24, begin, end);
         if (flights && flights.length > 0) {
-          allFlights.push(...flights.map(f => ({
+          allFlights.push(...flights.map((f) => ({
             ...f,
             timeRange: {
               begin: new Date(begin * 1000).toISOString(),
@@ -271,12 +274,278 @@ router.get('/test-opensky/:icao24', async (req, res, next) => {
         // Continue to next range
       }
     }
-    
+
     return res.json({
       icao24,
       totalFlights: allFlights.length,
       flights: allFlights,
       rawData: allFlights.length > 0 ? allFlights[0] : null,
+    });
+  } catch (err) {
+    return next(err);
+  }
+});
+
+/**
+ * PostGIS Spatial Endpoints
+ */
+
+/**
+ * Get aircraft near a point
+ */
+router.get('/spatial/near/:lat/:lon', async (req, res, next) => {
+  const { lat, lon } = req.params;
+  const { radius = 5000 } = req.query; // radius in meters, default 5km
+
+  try {
+    const aircraft = await postgresRepository.findAircraftNearPoint(
+      parseFloat(lat),
+      parseFloat(lon),
+      parseFloat(radius),
+    );
+
+    return res.json({
+      center: { latitude: parseFloat(lat), longitude: parseFloat(lon) },
+      radius: parseFloat(radius),
+      count: aircraft.length,
+      aircraft,
+    });
+  } catch (err) {
+    return next(err);
+  }
+});
+
+/**
+ * Get flight path as GeoJSON
+ */
+router.get('/spatial/path/:icao24', async (req, res, next) => {
+  const { icao24 } = req.params;
+  const { start, end } = req.query;
+
+  try {
+    const path = await postgresRepository.getFlightPathGeoJSON(icao24, start, end);
+
+    if (!path) {
+      return res.status(404).json({ error: 'No flight path found' });
+    }
+
+    return res.json({
+      type: 'Feature',
+      properties: {
+        icao24: path.icao24,
+        callsign: path.callsign,
+        startTime: path.start_time,
+        endTime: path.end_time,
+        pointCount: path.point_count,
+      },
+      geometry: JSON.parse(path.path_geojson),
+    });
+  } catch (err) {
+    return next(err);
+  }
+});
+
+/**
+ * Get traffic density heatmap
+ */
+router.get('/spatial/density/:latmin/:lonmin/:latmax/:lonmax', async (req, res, next) => {
+  const {
+    latmin, lonmin, latmax, lonmax,
+  } = req.params;
+  const { cellSize = 0.01 } = req.query;
+
+  try {
+    const density = await postgresRepository.getTrafficDensity(
+      {
+        latmin: parseFloat(latmin),
+        lonmin: parseFloat(lonmin),
+        latmax: parseFloat(latmax),
+        lonmax: parseFloat(lonmax),
+      },
+      parseFloat(cellSize),
+    );
+
+    return res.json({
+      bounds: {
+        latmin, lonmin, latmax, lonmax,
+      },
+      cellSize: parseFloat(cellSize),
+      cells: density,
+    });
+  } catch (err) {
+    return next(err);
+  }
+});
+
+/**
+ * Get spotting locations near an airport
+ */
+router.get('/spatial/spotting/:lat/:lon', async (req, res, next) => {
+  const { lat, lon } = req.params;
+  const { radius = 20 } = req.query; // radius in km, default 20km
+
+  try {
+    const locations = await postgresRepository.findSpottingLocations(
+      parseFloat(lat),
+      parseFloat(lon),
+      parseFloat(radius),
+    );
+
+    return res.json({
+      airport: { latitude: parseFloat(lat), longitude: parseFloat(lon) },
+      radius: parseFloat(radius),
+      count: locations.length,
+      locations,
+    });
+  } catch (err) {
+    return next(err);
+  }
+});
+
+/**
+ * Airport Data Endpoints
+ */
+
+/**
+ * Find airports near a location
+ */
+router.get('/airports/near/:lat/:lon', async (req, res, next) => {
+  const { lat, lon } = req.params;
+  const { radius = 50, type } = req.query;
+
+  try {
+    const airports = await postgresRepository.findAirportsNearPoint(
+      parseFloat(lat),
+      parseFloat(lon),
+      parseFloat(radius),
+      type,
+    );
+
+    return res.json({
+      center: { latitude: parseFloat(lat), longitude: parseFloat(lon) },
+      radius: parseFloat(radius),
+      count: airports.length,
+      airports,
+    });
+  } catch (err) {
+    return next(err);
+  }
+});
+
+/**
+ * Get airports within bounding box (for map viewport)
+ */
+router.get('/airports/bounds/:latmin/:lonmin/:latmax/:lonmax', async (req, res, next) => {
+  const {
+    latmin, lonmin, latmax, lonmax,
+  } = req.params;
+  const { type, limit = 100 } = req.query;
+
+  try {
+    const airports = await postgresRepository.findAirportsInBounds(
+      parseFloat(latmin),
+      parseFloat(lonmin),
+      parseFloat(latmax),
+      parseFloat(lonmax),
+      type || null,
+      parseInt(limit, 10),
+    );
+
+    return res.json({
+      bounds: {
+        latmin: parseFloat(latmin),
+        lonmin: parseFloat(lonmin),
+        latmax: parseFloat(latmax),
+        lonmax: parseFloat(lonmax),
+      },
+      count: airports.length,
+      airports,
+    });
+  } catch (err) {
+    return next(err);
+  }
+});
+
+/**
+ * Get airport by IATA/ICAO code (includes runways and frequencies)
+ */
+router.get('/airports/:code', async (req, res, next) => {
+  const { code } = req.params;
+
+  try {
+    const airport = await postgresRepository.findAirportByCode(code);
+
+    if (!airport) {
+      return res.status(404).json({ error: 'Airport not found' });
+    }
+
+    return res.json(airport);
+  } catch (err) {
+    return next(err);
+  }
+});
+
+/**
+ * Search airports by name or code
+ */
+router.get('/airports/search/:term', async (req, res, next) => {
+  const { term } = req.params;
+  const { limit = 10 } = req.query;
+
+  try {
+    const airports = await postgresRepository.searchAirports(term, parseInt(limit, 10));
+
+    return res.json({
+      searchTerm: term,
+      count: airports.length,
+      airports,
+    });
+  } catch (err) {
+    return next(err);
+  }
+});
+
+/**
+ * Find navaids near a location
+ */
+router.get('/navaids/near/:lat/:lon', async (req, res, next) => {
+  const { lat, lon } = req.params;
+  const { radius = 50, type } = req.query;
+
+  try {
+    const navaids = await postgresRepository.findNavaidsNearPoint(
+      parseFloat(lat),
+      parseFloat(lon),
+      parseFloat(radius),
+      type,
+    );
+
+    return res.json({
+      center: { latitude: parseFloat(lat), longitude: parseFloat(lon) },
+      radius: parseFloat(radius),
+      count: navaids.length,
+      navaids,
+    });
+  } catch (err) {
+    return next(err);
+  }
+});
+
+/**
+ * Get route statistics (history + cache)
+ */
+router.get('/routes/stats', async (req, res, next) => {
+  try {
+    const stats = await postgresRepository.getRouteStats();
+    return res.json({
+      history: {
+        total: parseInt(stats.history_total, 10),
+        complete: parseInt(stats.history_complete, 10),
+      },
+      cache: {
+        total: parseInt(stats.cache_total, 10),
+        complete: parseInt(stats.cache_complete, 10),
+      },
     });
   } catch (err) {
     return next(err);

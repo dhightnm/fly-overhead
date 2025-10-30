@@ -72,7 +72,7 @@ class OpenSkyService {
     try {
       // OpenSky requires lowercase icao24
       const lowerIcao24 = icao24.toLowerCase();
-      
+
       const response = await axios.get(`${this.baseUrl}/flights/aircraft`, {
         params: {
           icao24: lowerIcao24,
@@ -81,14 +81,14 @@ class OpenSkyService {
         },
         headers: this.getAuthHeader(),
       });
-      
+
       return response.data;
     } catch (error) {
       if (error.response && error.response.status === 404) {
         // No flights found for this time period
-        logger.debug('No flights found in OpenSky for aircraft (404)', { 
-          icao24, 
-          begin, 
+        logger.debug('No flights found in OpenSky for aircraft (404)', {
+          icao24,
+          begin,
           end,
           beginDate: new Date(begin * 1000).toISOString(),
           endDate: new Date(end * 1000).toISOString(),
@@ -100,7 +100,7 @@ class OpenSkyService {
         logger.debug('Invalid request to OpenSky (likely current flight)', { icao24, begin, end });
         return [];
       }
-      logger.warn('Error fetching flights by aircraft from OpenSky', { 
+      logger.warn('Error fetching flights by aircraft from OpenSky', {
         icao24,
         error: error.message,
       });

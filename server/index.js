@@ -3,6 +3,7 @@ const path = require('path');
 const cors = require('cors');
 const config = require('./config');
 const aircraftService = require('./services/AircraftService');
+const backgroundRouteService = require('./services/BackgroundRouteService');
 const errorHandler = require('./middlewares/errorHandler');
 const requestLogger = require('./middlewares/requestLogger');
 const logger = require('./utils/logger');
@@ -49,7 +50,11 @@ async function startServer() {
       aircraftService.fetchAndUpdateAllAircraft();
     }, config.aircraft.updateInterval);
 
-    // 4) Start the server
+    // 4) Start background route population service
+    // Fetches routes slowly (5 flights every 5 min) to build database
+    backgroundRouteService.start();
+
+    // 5) Start the server
     const { port, host } = config.server;
     app.listen(port, host, () => {
       logger.info(`Server listening on ${host}:${port}`);
@@ -63,11 +68,13 @@ async function startServer() {
 // Graceful shutdown
 process.on('SIGTERM', () => {
   logger.info('SIGTERM received, shutting down gracefully');
+  backgroundRouteService.stop();
   process.exit(0);
 });
 
 process.on('SIGINT', () => {
   logger.info('SIGINT received, shutting down gracefully');
+  backgroundRouteService.stop();
   process.exit(0);
 });
 
