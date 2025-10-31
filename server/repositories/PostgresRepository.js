@@ -1,4 +1,5 @@
 const pgp = require('pg-promise')();
+const crypto = require('crypto');
 const config = require('../config');
 const logger = require('../utils/logger');
 const PostGISService = require('../services/PostGISService');
@@ -781,13 +782,22 @@ class PostgresRepository {
       if (existingFlight) {
         existingFlightId = existingFlight.id;
         
+        // Check if this is truly a duplicate (same flight) vs. just similar departure time
+        // For completed flights, also check arrival time
+        const isSameFlight = !actualEnd || !existingFlight.actual_flight_end 
+          || Math.abs((actualEnd.getTime() - existingFlight.actual_flight_end.getTime()) / 1000) < 300; // within 5 min
+        
         // Always update if:
-        // 1. Existing flight doesn't have arrival time but new data does
-        // 2. Status changed (e.g., "En Route" -> "Arrived")
-        // 3. New data has more complete information
+        // 1. It's the same flight (same departure AND arrival if both exist)
+        // 2. Existing flight doesn't have arrival time but new data does
+        // 3. Status changed (e.g., "En Route" -> "Arrived")
+        // 4. Existing flight has empty/malformed flight_key but we have valid times
         const hasMoreCompleteData = actualEnd && !existingFlight.actual_flight_end;
         const statusChanged = existingFlight.flight_status !== routeData.flightStatus && routeData.flightStatus;
-        const needsUpdate = hasMoreCompleteData || statusChanged;
+        const needsFlightKeyFix = (!existingFlight.flight_key || existingFlight.flight_key.includes('||')) 
+          && departureTime && (actualEnd || scheduledEnd);
+        const needsUpdate = (isSameFlight && (hasMoreCompleteData || statusChanged || needsFlightKeyFix))
+          || (needsFlightKeyFix && departureTime);
         
         if (needsUpdate && existingFlightId) {
           logger.info('Updating existing recent flight with completed data', {
@@ -802,8 +812,22 @@ class PostgresRepository {
           
           // Update the existing record instead of creating a new one
           const updateFields = {};
+          // Also update flight_key if it's empty or malformed (old format or missing)
+          if (needsFlightKeyFix) {
+            const startKey = departureTime ? departureTime.toISOString() : 'null';
+            const endKey = (actualEnd || scheduledEnd) ? (actualEnd || scheduledEnd).toISOString() : 'null';
+            const flightKeyComponents = [
+              icao24Norm,
+              callsignNorm,
+              startKey,
+              endKey,
+            ].join('|');
+            updateFields.flight_key = crypto.createHash('md5').update(flightKeyComponents).digest('hex');
+          }
           if (actualEnd) updateFields.actual_flight_end = actualEnd;
+          if (actualStart && !existingFlight.actual_flight_start) updateFields.actual_flight_start = actualStart;
           if (scheduledEnd) updateFields.scheduled_flight_end = scheduledEnd;
+          if (scheduledStart && !existingFlight.scheduled_flight_start) updateFields.scheduled_flight_start = scheduledStart;
           if (routeData.flightStatus) updateFields.flight_status = routeData.flightStatus;
           if (routeData.registration) updateFields.registration = routeData.registration;
           if (routeData.route) updateFields.route = routeData.route;
@@ -832,12 +856,21 @@ class PostgresRepository {
     }
 
     // Build deterministic keys for new flights
+    // Use MD5 hash of key components for a clean, fixed-length identifier
+    // This ensures same flight always gets same key, even if some fields are null
     const startKey = departureTime ? departureTime.toISOString() : '';
     const endKey = (actualEnd || scheduledEnd) ? (actualEnd || scheduledEnd).toISOString() : '';
     const depIcao = routeData.departureAirport?.icao ? String(routeData.departureAirport.icao).trim().toUpperCase() : '';
     const arrIcao = routeData.arrivalAirport?.icao ? String(routeData.arrivalAirport.icao).trim().toUpperCase() : '';
 
-    const flightKey = [icao24Norm, callsignNorm, startKey, endKey].join('|');
+    // Generate deterministic hash-based flight_key (32 char hex string)
+    const flightKeyComponents = [
+      icao24Norm,
+      callsignNorm,
+      startKey || 'null',
+      endKey || 'null',
+    ].join('|');
+    const flightKey = crypto.createHash('md5').update(flightKeyComponents).digest('hex');
     const routeKey = [depIcao, arrIcao].join('>');
 
     // Calculate ETEs
@@ -1040,6 +1073,7 @@ class PostgresRepository {
     };
 
     // legacy fields removed
+    if (fields.flight_key !== undefined) push('flight_key', fields.flight_key);
     if (fields.first_seen !== undefined) push('first_seen', fields.first_seen);
     if (fields.last_seen !== undefined) push('last_seen', fields.last_seen);
     if (fields.scheduled_flight_start !== undefined) push('scheduled_flight_start', fields.scheduled_flight_start);
