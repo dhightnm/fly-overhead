@@ -54,10 +54,10 @@ coverage/
 *_REPORT_*.md
 BACKUP_RESTORE.md
 AWS_DEPLOYMENT_PLAN.md
-
-# Keep deployment guides
-!DEPLOY_*.md
-!README_AWS.md
+DEPLOY_*.md
+README_AWS.md
+TEST_*.md
+DOCKER_VS_*.md
 
 # Misc
 *.md.bak
