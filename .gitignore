@@ -28,6 +28,8 @@ Thumbs.db
 # Logs
 logs/
 *.log
+pm2-error.log
+pm2-out.log
 
 # Docker volumes (if any local volumes)
 docker-volumes/
@@ -35,6 +37,24 @@ docker-volumes/
 # Test coverage
 coverage/
 .nyc_output/
+
+# Database backups (keep local, don't commit)
+*.sql
+*.dump
+
+# AWS
+.aws/
+*.pem
+
+# PM2
+.pm2/
+
+# Reports (temporary analysis files)
+*_PROJECTION_*.md
+*_REPORT_*.md
+BACKUP_RESTORE.md
+DEPLOY_*.md
+AWS_DEPLOYMENT_PLAN.md
 
 # Misc
 *.md.bak

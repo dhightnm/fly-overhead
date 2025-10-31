@@ -25,14 +25,34 @@ class AircraftService {
 
       logger.info(`Processing ${data.states.length} aircraft states`);
 
-      // Process each aircraft
-      const statePromises = data.states.map((state) => {
-        const preparedState = openSkyService.prepareStateForDatabase(state);
-        return postgresRepository.upsertAircraftState(preparedState);
-      });
+      // Process in batches to prevent event loop blocking and EC2 lockups
+      // Large Promise.all() can overwhelm the system with thousands of aircraft
+      const BATCH_SIZE = 50; // Process 50 at a time
+      let processed = 0;
 
-      await Promise.all(statePromises);
-      logger.info('Database updated successfully with all aircraft');
+      for (let i = 0; i < data.states.length; i += BATCH_SIZE) {
+        const batch = data.states.slice(i, i + BATCH_SIZE);
+        const batchPromises = batch.map((state) => {
+          const preparedState = openSkyService.prepareStateForDatabase(state);
+          return postgresRepository.upsertAircraftState(preparedState);
+        });
+
+        await Promise.all(batchPromises);
+        processed += batch.length;
+
+        // Log progress every 5 batches
+        if ((i / BATCH_SIZE) % 5 === 0) {
+          logger.debug(`Processed ${processed}/${data.states.length} aircraft`);
+        }
+
+        // Yield to event loop between batches to prevent blocking
+        // This prevents EC2 from locking up during large data pulls
+        if (i + BATCH_SIZE < data.states.length) {
+          await new Promise((resolve) => setImmediate(resolve));
+        }
+      }
+
+      logger.info(`Database updated successfully with all ${processed} aircraft`);
 
       return data.states;
     } catch (error) {
