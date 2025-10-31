@@ -29,6 +29,7 @@ app.use(express.static(path.join(__dirname, 'client/build')));
 
 // API Routes
 app.use('/api', require('./routes/aircraft.routes'));
+app.use('/api', require('./routes/health.routes'));
 
 // Catch-all handler: send back React's index.html for client-side routing
 // This must be AFTER API routes and BEFORE error handler
@@ -41,34 +42,47 @@ app.use(errorHandler);
 
 /**
  * Initialize server
+ * 
+ * NOTE: In production (AWS), aircraft fetching and background jobs
+ * should run in a separate worker process (see server/worker.js)
+ * to prevent EC2 lockups. Set ENABLE_WORKER=false to disable.
  */
 async function startServer() {
   try {
     // 1) Initialize database tables
     await aircraftService.initializeDatabase();
 
-    // 2) Initial data population
-    aircraftService.fetchAndUpdateAllAircraft();
-    aircraftService.populateInitialData();
+    // 2) Check if worker should run in this process
+    // In production, worker should be separate (PM2 or ECS task)
+    const enableWorker = process.env.ENABLE_WORKER !== 'false';
 
-    // 3) Schedule periodic updates
-    setInterval(() => {
-      aircraftService.fetchAndUpdateAllAircraft();
-    }, config.aircraft.updateInterval);
+    if (enableWorker) {
+      logger.info('Running in combined mode (web + worker)');
+      
+      // 2a) Initial data population
+      aircraftService.fetchAndUpdateAllAircraft().catch((err) => {
+        logger.error('Error in initial aircraft fetch', { error: err.message });
+      });
+      aircraftService.populateInitialData();
 
-    // 4) Start background route population service
-    // Fetches routes slowly (5 flights every 5 min) to build database
-    backgroundRouteService.start();
+      // 2b) Schedule periodic updates
+      setInterval(() => {
+        aircraftService.fetchAndUpdateAllAircraft().catch((err) => {
+          logger.error('Error in periodic aircraft fetch', { error: err.message });
+        });
+      }, config.aircraft.updateInterval);
 
-    // 4b) Kick a one-time backfill sample to enrich historical flights (times/type)
-    backgroundRouteService.backfillFlightHistorySample();
+      // 2c) Start background route population service
+      backgroundRouteService.start();
 
-    // 4c) One-time backfill for date range 2025-10-27 to today
-    const todayStr = new Date().toISOString().split('T')[0];
-    backgroundRouteService.backfillFlightsInRange('2025-10-27', todayStr, 50);
-
-    // 4d) One-time subset backfill: 50 recent flights missing all fields, FA cap ~100
-    backgroundRouteService.backfillFlightsMissingAll(50, 100);
+      // 2d) One-time backfills (only in combined mode - in production worker handles these)
+      backgroundRouteService.backfillFlightHistorySample();
+      const todayStr = new Date().toISOString().split('T')[0];
+      backgroundRouteService.backfillFlightsInRange('2025-10-27', todayStr, 50);
+      backgroundRouteService.backfillFlightsMissingAll(50, 100);
+    } else {
+      logger.info('Running in web-only mode (worker should be separate process)');
+    }
 
     // 5) Start the server
     const { port, host } = config.server;
