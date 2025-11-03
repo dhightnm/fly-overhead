@@ -1,10 +1,10 @@
 import React, { useState, useContext } from 'react';
 import { PlaneContext } from '../contexts/PlaneContext';
 import axios from 'axios';
+import { API_URL } from '../config';
 import './navbar.css';
 
 const NavBar = () => {
-  const API_URL = "http://localhost:3005";
 
     const [search, setSearch] = useState('');
     const [searchStatus, setSearchStatus] = useState(null); // 'found', 'not-found', 'searching'

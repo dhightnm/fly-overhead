@@ -1,6 +1,7 @@
 const postgresRepository = require('../repositories/PostgresRepository');
 const openSkyService = require('./OpenSkyService');
 const flightRouteService = require('./FlightRouteService');
+const trajectoryPredictionService = require('./TrajectoryPredictionService');
 const config = require('../config');
 const logger = require('../utils/logger');
 
@@ -125,7 +126,8 @@ class AircraftService {
   }
 
   /**
-   * Get aircraft within geographical bounds
+   * Get aircraft within geographical bounds (with trajectory prediction)
+   * Uses route data to extrapolate positions between real API updates
    */
   // eslint-disable-next-line class-methods-use-this
   async getAircraftInBounds(latmin, lonmin, latmax, lonmax) {
@@ -150,8 +152,18 @@ class AircraftService {
       if (filteredCount > 0) {
         logger.info(`Filtered out ${filteredCount} landed flights (OpenSky data quality issue)`);
       }
-      logger.info(`Returning ${filteredResults.length} aircraft still flying`);
-      return filteredResults;
+
+      // Enhance with trajectory predictions (extrapolates positions between real updates)
+      // This allows smooth updates every 15 seconds instead of every 2 minutes
+      const enhanced = await trajectoryPredictionService.enhanceAircraftWithPredictions(filteredResults);
+
+      const predictedCount = enhanced.filter(a => a.predicted).length;
+      if (predictedCount > 0) {
+        logger.debug(`Applied trajectory predictions to ${predictedCount}/${enhanced.length} aircraft`);
+      }
+
+      logger.info(`Returning ${enhanced.length} aircraft still flying`);
+      return enhanced;
     } catch (error) {
       logger.error('Error in getAircraftInBounds', {
         bounds: {

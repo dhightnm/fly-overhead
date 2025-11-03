@@ -5,14 +5,15 @@ import PlaneMarker from './PlaneMarker';
 import SatMarker from './SatMarker';
 import AirportMarker from './AirportMarker';
 import HeatmapLayer from './HeatmapLayer';
+import FlightPlanRouteOverlay from './FlightPlanRouteOverlay';
 import { PlaneContext } from '../contexts/PlaneContext';
 import MapFlyToHandler from './MapFlyToHandler';
 import FlightHistoryModal from './FlightHistoryModal';
+import { API_URL } from '../config';
 // Import your CSS
 import './home.css';
 
 const MapEventsHandler = ({ setUserPosition, setPlanes, setStarlink, setAirports, showAirports }) => {
-  const API_URL = "http://localhost:3005";
   
   const fetchData = useCallback(async () => {
     const map = mapRef.current;
@@ -71,7 +72,7 @@ const MapEventsHandler = ({ setUserPosition, setPlanes, setStarlink, setAirports
     } else if (!showAirports) {
       setAirports([]);
     }
-  }, [API_URL, setPlanes, setStarlink, setAirports, showAirports]);
+  }, [setPlanes, setStarlink, setAirports, showAirports]);
 
   const mapRef = React.useRef(null);
   const hasInitiallyLoaded = React.useRef(false);
@@ -115,9 +116,11 @@ const MapEventsHandler = ({ setUserPosition, setPlanes, setStarlink, setAirports
 };
 
 const Home = () => {
-  const API_URL = "http://localhost:3005";
   const [planes, setPlanes] = useState([]);
   const [routes, setRoutes] = useState({}); // Map of icao24 -> route data
+  const [flightPlanRoutes, setFlightPlanRoutes] = useState({}); // Map of icao24 -> flight plan route waypoints
+  const [showFlightPlanRoute, setShowFlightPlanRoute] = useState(false); // Toggle for flight plan overlay
+  const [routeAvailabilityStatus, setRouteAvailabilityStatus] = useState({}); // Map of icao24 -> { available: boolean, message?: string }
   const [starlink, setStarlink] = useState([]);
   const [airports, setAirports] = useState([]);
   const [userPosition, setUserPosition] = useState(null);
@@ -155,7 +158,7 @@ const Home = () => {
     setSearchStatus('searching');
     
     try {
-      const res = await axios.get(`http://localhost:3005/api/planes/${encodeURIComponent(sidebarSearch.trim())}`);
+      const res = await axios.get(`${API_URL}/api/planes/${encodeURIComponent(sidebarSearch.trim())}`);
       const planeDetails = res.data;
       
       if (planeDetails && planeDetails.latitude && planeDetails.longitude) {
@@ -223,11 +226,101 @@ const Home = () => {
       console.error(`Failed to fetch route for ${plane.callsign || plane.icao24}:`, error);
     }
     return null;
-  }, [routes, API_URL, setPlanes]);
+  }, [routes, setPlanes]);
+
+  // Track which routes are currently being fetched to prevent duplicate requests
+  const fetchingRoutes = React.useRef(new Set());
+  const flightPlanRoutesRef = React.useRef({});
+  const routeAvailabilityStatusRef = React.useRef({});
+
+  // Keep refs in sync with state
+  useEffect(() => {
+    flightPlanRoutesRef.current = flightPlanRoutes;
+  }, [flightPlanRoutes]);
+
+  useEffect(() => {
+    routeAvailabilityStatusRef.current = routeAvailabilityStatus;
+  }, [routeAvailabilityStatus]);
+
+  // Fetch flight plan route for a single aircraft
+  const fetchFlightPlanRoute = useCallback(async (plane) => {
+    const cacheKey = `${plane.icao24}`;
+    
+    // Skip if we're already fetching this route
+    if (fetchingRoutes.current.has(cacheKey)) {
+      return flightPlanRoutesRef.current[plane.icao24] || null;
+    }
+
+    // Skip if we already have the flight plan route (and it's available)
+    const existingRoute = flightPlanRoutesRef.current[plane.icao24];
+    const existingStatus = routeAvailabilityStatusRef.current[plane.icao24];
+    if (existingRoute && existingStatus?.available !== false) {
+      return existingRoute;
+    }
+
+    // Mark as fetching
+    fetchingRoutes.current.add(cacheKey);
+    console.log(`Fetching flight plan route for ${plane.callsign || plane.icao24}`);
+
+    try {
+      const res = await axios.get(`${API_URL}/api/flightplan/${plane.callsign || plane.icao24}`, {
+        params: {
+          icao24: plane.icao24,
+          callsign: plane.callsign,
+        },
+      });
+      
+      if (res.data) {
+        // Check if route is available
+        const isAvailable = res.data.available !== false && res.data.waypoints && res.data.waypoints.length > 0;
+        
+        // Update availability status
+        setRouteAvailabilityStatus((prev) => ({
+          ...prev,
+          [plane.icao24]: {
+            available: isAvailable,
+            message: res.data.message || (isAvailable ? null : 'Flight route not available for this flight'),
+          },
+        }));
+
+        // Store route data (available or not, for UI purposes)
+        setFlightPlanRoutes((prev) => ({ ...prev, [plane.icao24]: res.data }));
+        
+        return res.data;
+      }
+    } catch (error) {
+      // Handle 404 or other errors
+      if (error.response?.status === 404 || error.response?.data?.available === false) {
+        setRouteAvailabilityStatus((prev) => ({
+          ...prev,
+          [plane.icao24]: {
+            available: false,
+            message: error.response?.data?.message || 'Flight route not available for this flight',
+          },
+        }));
+      } else {
+        console.error(`Failed to fetch flight plan route for ${plane.callsign || plane.icao24}:`, error);
+        setRouteAvailabilityStatus((prev) => ({
+          ...prev,
+          [plane.icao24]: {
+            available: false,
+            message: 'Failed to fetch flight route',
+          },
+        }));
+      }
+    } finally {
+      // Remove from fetching set
+      fetchingRoutes.current.delete(cacheKey);
+    }
+    return null;
+  }, []); // Remove dependencies to prevent infinite loops - use refs for caching
 
   const handleViewHistory = async (plane) => {
     // Fetch route on-demand when user clicks
     await fetchRouteForAircraft(plane);
+    
+    // Always fetch flight plan route when aircraft is selected
+    await fetchFlightPlanRoute(plane);
     
     setSelectedAircraft({
       icao24: plane.icao24,
@@ -235,6 +328,28 @@ const Home = () => {
     });
     setHistoryModalOpen(true);
   };
+
+  // Fetch flight plan route when toggle is enabled and aircraft is selected
+  useEffect(() => {
+    if (showFlightPlanRoute && selectedAircraft?.icao24) {
+      // Use setTimeout to avoid running during render
+      const timer = setTimeout(() => {
+        const plane = planes.find(p => p.icao24 === selectedAircraft.icao24);
+        if (plane) {
+          // Only fetch if we don't already have it or if it's not available (to retry)
+          const existingRoute = flightPlanRoutesRef.current[plane.icao24];
+          const existingStatus = routeAvailabilityStatusRef.current[plane.icao24];
+          
+          if (!existingRoute || (existingStatus?.available === false)) {
+            fetchFlightPlanRoute(plane);
+          }
+        }
+      }, 0);
+      
+      return () => clearTimeout(timer);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showFlightPlanRoute, selectedAircraft?.icao24]); // Only depend on these to prevent infinite loops
 
   const handleAirportSearch = async () => {
     if (!airportSearch.trim() || airportSearch.trim().length < 2) {
@@ -306,7 +421,14 @@ const Home = () => {
           key={plane.id} 
           plane={plane} 
           route={routes[plane.icao24]}
-          onMarkerClick={() => fetchRouteForAircraft(plane)}
+          onMarkerClick={async () => {
+            await fetchRouteForAircraft(plane);
+            await fetchFlightPlanRoute(plane);
+            setSelectedAircraft({
+              icao24: plane.icao24,
+              callsign: plane.callsign || 'N/A',
+            });
+          }}
         />;
       }
       return null;
@@ -381,6 +503,36 @@ const Home = () => {
               />
               <span className="toggle-text">Show Traffic Heatmap</span>
             </label>
+          </div>
+          
+          <div className="flightplan-toggle">
+            <label className="toggle-label">
+              <input
+                type="checkbox"
+                checked={showFlightPlanRoute}
+                onChange={(e) => {
+                  setShowFlightPlanRoute(e.target.checked);
+                  // Route will be fetched automatically when aircraft is selected
+                }}
+                disabled={!selectedAircraft}
+              />
+              <span className="toggle-text">
+                Show Flight Plan Route
+                {selectedAircraft && routeAvailabilityStatus[selectedAircraft.icao24]?.available === false && (
+                  <span className="route-warning" title={routeAvailabilityStatus[selectedAircraft.icao24]?.message}>
+                    ⚠️
+                  </span>
+                )}
+              </span>
+            </label>
+            {selectedAircraft && routeAvailabilityStatus[selectedAircraft.icao24]?.available === false && (
+              <p className="route-unavailable-message">
+                {routeAvailabilityStatus[selectedAircraft.icao24]?.message || 'Flight route not available for this flight'}
+              </p>
+            )}
+            {!selectedAircraft && (
+              <p className="route-select-hint">Select an aircraft to view flight plan route</p>
+            )}
           </div>
           
           {showAirports && (
@@ -707,6 +859,20 @@ const Home = () => {
               }}
             />
           )}
+        {showFlightPlanRoute && selectedAircraft && (() => {
+          const flightPlanRoute = flightPlanRoutes[selectedAircraft.icao24];
+          // Only show overlay if route is available and has waypoints
+          if (flightPlanRoute && flightPlanRoute.available !== false && flightPlanRoute.waypoints && flightPlanRoute.waypoints.length > 0) {
+            return (
+              <FlightPlanRouteOverlay
+                key={flightPlanRoute.icao24 || flightPlanRoute.callsign}
+                flightPlanRoute={flightPlanRoute}
+                showWaypoints={true}
+              />
+            );
+          }
+          return null;
+        })()}
         </MapContainer>
       </div>
 

@@ -5,6 +5,7 @@
   "scripts": {
     "docker:dev": "docker compose -f docker-compose.dev.yml up -d",
     "docker:dev:build": "docker compose -f docker-compose.dev.yml build --no-cache server && docker compose -f docker-compose.dev.yml up -d",
+    "docker:dev:rebuild": "docker compose -f docker-compose.dev.yml down && docker compose -f docker-compose.dev.yml build --no-cache --pull && docker compose -f docker-compose.dev.yml up -d",
     "docker:dev:down": "docker compose -f docker-compose.dev.yml down",
     "docker:dev:restart": "docker compose -f docker-compose.dev.yml restart server",
     "docker:prod": "docker compose up -d",
