@@ -52,7 +52,12 @@ module.exports = {
       'http://www.flyoverhead.com',
       'https://www.flyoverhead.com',
       `http://localhost:${process.env.PORT || 3005}`,
+      `http://192.168.58.15:${process.env.PORT || 3005}`,
+      'http://192.168.58.15:3000',
+      'http://192.168.58.15:3005',
+      'http://192.168.58.15',
     ],
+    allowedIPs: ['192.168.58.15'],
   },
   aircraft: {
     updateInterval: 120000, // 2 minutes

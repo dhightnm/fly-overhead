@@ -4,6 +4,7 @@ const aircraftService = require('../services/AircraftService');
 const satelliteService = require('../services/SatelliteService');
 const historyService = require('../services/HistoryService');
 const flightRouteService = require('../services/FlightRouteService');
+const flightPlanRouteService = require('../services/FlightPlanRouteService');
 const postgresRepository = require('../repositories/PostgresRepository');
 const logger = require('../utils/logger');
 const { mapAircraftTypeToCategory } = require('../utils/aircraftCategoryMapper');
@@ -581,6 +582,65 @@ router.get('/routes/stats', async (req, res, next) => {
         complete: parseInt(stats.cache_complete, 10),
       },
     });
+  } catch (err) {
+    return next(err);
+  }
+});
+
+/**
+ * Get flight plan route waypoints for an aircraft
+ * Returns parsed route string as coordinates from navaids table
+ */
+router.get('/flightplan/:identifier', async (req, res, next) => {
+  const { identifier } = req.params;
+  const { icao24, callsign } = req.query;
+
+  try {
+    // Try to get aircraft data first
+    const aircraft = await aircraftService.getAircraftByIdentifier(identifier);
+    const aircraftIcao24 = icao24 || aircraft?.icao24 || identifier;
+    const aircraftCallsign = callsign || aircraft?.callsign;
+
+    logger.info('Fetching flight plan route', {
+      identifier,
+      icao24: aircraftIcao24,
+      callsign: aircraftCallsign,
+    });
+
+    const flightPlanRoute = await flightPlanRouteService.getFlightPlanRoute(
+      aircraftIcao24,
+      aircraftCallsign,
+    );
+
+    // Return response even if route is not available (frontend will show warning)
+    if (!flightPlanRoute) {
+      return res.status(404).json({
+        error: 'Flight plan route not found',
+        message: 'No route data available for this aircraft',
+        available: false,
+      });
+    }
+
+    // Check if route is available (has waypoints)
+    if (flightPlanRoute.available === false) {
+      // Return 200 with availability status so frontend can show warning
+      return res.json(flightPlanRoute);
+    }
+
+    return res.json(flightPlanRoute);
+  } catch (err) {
+    return next(err);
+  }
+});
+
+/**
+ * TEST ENDPOINT: Check route data availability and format
+ * Returns statistics and sample routes for testing
+ */
+router.get('/flightplan/test/data', async (req, res, next) => {
+  try {
+    const testResults = await flightPlanRouteService.testRouteDataAvailability();
+    return res.json(testResults);
   } catch (err) {
     return next(err);
   }

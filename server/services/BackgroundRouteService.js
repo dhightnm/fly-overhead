@@ -136,7 +136,9 @@ class BackgroundRouteService {
         return;
       }
 
-      logger.info(`Backfill: enriching ${flights.length} flights`);
+      logger.info(`Backfill: enriching ${flights.length} flights`, { 
+        flightAwareCap: this.FLIGHTAWARE_CALLS_CAP 
+      });
 
       let flightAwareRemaining = this.FLIGHTAWARE_CALLS_CAP;
       for (let i = 0; i < flights.length; i++) {
@@ -163,6 +165,11 @@ class BackgroundRouteService {
             // Use the flight's created_at date to improve historical actuals
             const dateStr = new Date(f.created_at).toISOString().split('T')[0];
             try {
+              logger.debug('Calling FlightAware API', { 
+                callsign: f.callsign, 
+                date: dateStr, 
+                remaining: flightAwareRemaining 
+              });
               const routeResult = await flightRouteService.fetchRouteFromFlightAware(f.callsign, dateStr);
               
               // FlightAware returns array of historical flights - process all of them
@@ -193,10 +200,25 @@ class BackgroundRouteService {
                 
                 // Use most recent flight for updates (first in array)
                 route = routes[0];
+                logger.info('FlightAware API call successful', { 
+                  callsign: f.callsign, 
+                  flightsFound: routes.length,
+                  remaining: flightAwareRemaining - 1
+                });
+              } else {
+                logger.debug('FlightAware returned no data', { callsign: f.callsign });
               }
-            } catch (e) { /* noop */ } finally {
               flightAwareRemaining -= 1;
+            } catch (e) {
+              flightAwareRemaining -= 1;
+              logger.warn('FlightAware API call failed', { 
+                callsign: f.callsign, 
+                error: e.message,
+                remaining: flightAwareRemaining
+              });
             }
+          } else if (!route && f.callsign && flightAwareRemaining <= 0) {
+            logger.debug('Skipping FlightAware - cap reached', { callsign: f.callsign });
           }
           if (!route && f.callsign) {
             try { route = await flightRouteService.fetchRouteFromAPI(f.icao24, f.callsign); } catch (e) { /* noop */ }
@@ -298,7 +320,12 @@ class BackgroundRouteService {
         return;
       }
 
-      logger.info('Backfill(range): enriching flights', { startDate, endDate, count: flights.length });
+      logger.info('Backfill(range): enriching flights', { 
+        startDate, 
+        endDate, 
+        count: flights.length,
+        flightAwareCap: this.FLIGHTAWARE_CALLS_CAP
+      });
 
       let flightAwareRemaining = this.FLIGHTAWARE_CALLS_CAP;
       for (let i = 0; i < flights.length; i++) {
@@ -314,6 +341,11 @@ class BackgroundRouteService {
           if (!route && f.callsign && flightAwareRemaining > 0) {
             const dateStr = new Date(f.created_at).toISOString().split('T')[0];
             try {
+              logger.debug('Calling FlightAware API (range)', { 
+                callsign: f.callsign, 
+                date: dateStr, 
+                remaining: flightAwareRemaining 
+              });
               const routeResult = await flightRouteService.fetchRouteFromFlightAware(f.callsign, dateStr);
               
               // FlightAware returns array of historical flights - process all of them
@@ -339,10 +371,25 @@ class BackgroundRouteService {
                 
                 // Use most recent flight for updates (first in array)
                 route = routes[0];
+                logger.info('FlightAware API call successful (range)', { 
+                  callsign: f.callsign, 
+                  flightsFound: routes.length,
+                  remaining: flightAwareRemaining - 1
+                });
+              } else {
+                logger.debug('FlightAware returned no data (range)', { callsign: f.callsign });
               }
-            } catch (e) { /* noop */ } finally {
               flightAwareRemaining -= 1;
+            } catch (e) {
+              flightAwareRemaining -= 1;
+              logger.warn('FlightAware API call failed (range)', { 
+                callsign: f.callsign, 
+                error: e.message,
+                remaining: flightAwareRemaining
+              });
             }
+          } else if (!route && f.callsign && flightAwareRemaining <= 0) {
+            logger.debug('Skipping FlightAware (range) - cap reached', { callsign: f.callsign });
           }
           // AviationStack fallback
           if (!route && f.callsign) {
@@ -421,7 +468,10 @@ class BackgroundRouteService {
         logger.info('Backfill(subset): none missing all fields');
         return;
       }
-      logger.info('Backfill(subset): enriching flights', { count: flights.length });
+      logger.info('Backfill(subset): enriching flights', { 
+        count: flights.length,
+        flightAwareCap: flightAwareCap
+      });
 
       let flightAwareRemaining = flightAwareCap;
       for (let i = 0; i < flights.length; i++) {
@@ -435,6 +485,11 @@ class BackgroundRouteService {
           if (!route && f.callsign && flightAwareRemaining > 0) {
             const dateStr = new Date(f.created_at).toISOString().split('T')[0];
             try {
+              logger.debug('Calling FlightAware API (subset)', { 
+                callsign: f.callsign, 
+                date: dateStr, 
+                remaining: flightAwareRemaining 
+              });
               const routeResult = await flightRouteService.fetchRouteFromFlightAware(f.callsign, dateStr);
               
               // FlightAware returns array of historical flights - process all of them
@@ -460,8 +515,25 @@ class BackgroundRouteService {
                 
                 // Use most recent flight for updates (first in array)
                 route = routes[0];
+                logger.info('FlightAware API call successful (subset)', { 
+                  callsign: f.callsign, 
+                  flightsFound: routes.length,
+                  remaining: flightAwareRemaining - 1
+                });
+              } else {
+                logger.debug('FlightAware returned no data (subset)', { callsign: f.callsign });
               }
-            } catch (e) { /* noop */ } finally { flightAwareRemaining -= 1; }
+              flightAwareRemaining -= 1;
+            } catch (e) {
+              flightAwareRemaining -= 1;
+              logger.warn('FlightAware API call failed (subset)', { 
+                callsign: f.callsign, 
+                error: e.message,
+                remaining: flightAwareRemaining
+              });
+            }
+          } else if (!route && f.callsign && flightAwareRemaining <= 0) {
+            logger.debug('Skipping FlightAware (subset) - cap reached', { callsign: f.callsign });
           }
           if (!route && f.callsign) {
             try { route = await flightRouteService.fetchRouteFromAPI(f.icao24, f.callsign); } catch (e) { /* noop */ }

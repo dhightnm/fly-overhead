@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
+import { API_URL } from '../config';
 import './FlightHistoryModal.css';
 
 const FlightHistoryModal = ({ icao24, callsign, isOpen, onClose }) => {
@@ -15,8 +16,8 @@ const FlightHistoryModal = ({ icao24, callsign, isOpen, onClose }) => {
     try {
       // Fetch both history and route in parallel
       const [historyRes, routeRes] = await Promise.allSettled([
-        axios.get(`http://localhost:3005/api/history/${icao24}`),
-        axios.get(`http://localhost:3005/api/route/${callsign || icao24}`, {
+        axios.get(`${API_URL}/api/history/${icao24}`),
+        axios.get(`${API_URL}/api/route/${callsign || icao24}`, {
           params: { icao24, callsign },
         }),
       ]);
