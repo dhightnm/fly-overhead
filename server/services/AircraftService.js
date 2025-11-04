@@ -27,9 +27,7 @@ class AircraftService {
 
       logger.info(`Processing ${data.states.length} aircraft states`);
 
-      // Process in batches to prevent event loop blocking and EC2 lockups
-      // Large Promise.all() can overwhelm the system with thousands of aircraft
-      const BATCH_SIZE = 50; // Process 50 at a time
+      const BATCH_SIZE = 50;
       let processed = 0;
 
       for (let i = 0; i < data.states.length; i += BATCH_SIZE) {
@@ -42,13 +40,10 @@ class AircraftService {
         await Promise.all(batchPromises);
         processed += batch.length;
 
-        // Log progress every 5 batches
         if ((i / BATCH_SIZE) % 5 === 0) {
           logger.debug(`Processed ${processed}/${data.states.length} aircraft`);
         }
 
-        // Yield to event loop between batches to prevent blocking
-        // This prevents EC2 from locking up during large data pulls
         if (i + BATCH_SIZE < data.states.length) {
           await new Promise((resolve) => setImmediate(resolve));
         }
@@ -56,9 +51,6 @@ class AircraftService {
 
       logger.info(`Database updated successfully with all ${processed} aircraft`);
 
-      // Broadcast update via WebSocket to all clients
-      // Note: We broadcast a global update signal - clients will fetch their specific bounds
-      // In the future, we can optimize to send only changes per bounding box
       webSocketService.getIO()?.emit('aircraft:global_update', {
         timestamp: new Date().toISOString(),
         message: 'Aircraft data updated',
@@ -120,9 +112,6 @@ class AircraftService {
 
       const aircraft = results[0];
 
-      // DISABLED: FlightAware landed flight checks (too expensive - $13/night!)
-      // Rely on OpenSky's on_ground flag and last_contact for filtering instead
-
       logger.info(`Found aircraft for identifier: ${identifier}`);
       return aircraft;
     } catch (error) {
@@ -152,19 +141,7 @@ class AircraftService {
         tenMinutesAgo,
       );
 
-      // DISABLED: FlightAware landed flight checks (too expensive - $13/night!)
-      // For now, rely on OpenSky's on_ground flag and last_contact timestamp
-      // to filter out stale data instead of making expensive API calls
-      const filteredResults = results;
-
-      const filteredCount = results.length - filteredResults.length;
-      if (filteredCount > 0) {
-        logger.info(`Filtered out ${filteredCount} landed flights (OpenSky data quality issue)`);
-      }
-
-      // Enhance with trajectory predictions (extrapolates positions between real updates)
-      // This allows smooth updates every 15 seconds instead of every 2 minutes
-      const enhanced = await trajectoryPredictionService.enhanceAircraftWithPredictions(filteredResults);
+      const enhanced = await trajectoryPredictionService.enhanceAircraftWithPredictions(results);
 
       const predictedCount = enhanced.filter(a => a.predicted).length;
       if (predictedCount > 0) {

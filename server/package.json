@@ -14,7 +14,6 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "aws-sdk": "^2.1479.0",
     "axios": "^0.21.1",
     "cors": "^2.8.5",
     "csv-parser": "^3.2.0",

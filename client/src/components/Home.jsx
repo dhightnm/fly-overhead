@@ -47,8 +47,6 @@ const MapEventsHandler = ({ setUserPosition, setPlanes, setStarlink, setAirports
       );
         if (res.data) {
           setPlanes(res.data);
-          // REMOVED: Automatic route fetching on map updates (too expensive)
-          // Routes are now only fetched when user clicks on a specific aircraft
       } else {
         console.log('no planes found');
       }
@@ -97,24 +95,19 @@ const MapEventsHandler = ({ setUserPosition, setPlanes, setStarlink, setAirports
       map.flyTo(location.latlng, map.getZoom());
     },
     moveend: () => {
-      // Debounce moveend to prevent excessive API calls during zoom/pan
-      // Clear any existing timer
       if (moveEndTimerRef.current) {
         clearTimeout(moveEndTimerRef.current);
       }
       
-      // Only fetch if bounds actually changed significantly
       const currentBounds = map.getBounds();
       const boundsKey = `${currentBounds.getSouth().toFixed(2)},${currentBounds.getWest().toFixed(2)},${currentBounds.getNorth().toFixed(2)},${currentBounds.getEast().toFixed(2)}`;
       
-      // Skip if bounds haven't changed much
       if (lastBoundsRef.current === boundsKey) {
         return;
       }
       
       lastBoundsRef.current = boundsKey;
       
-      // Debounce: wait 300ms after movement stops before fetching
       moveEndTimerRef.current = setTimeout(() => {
         fetchData();
       }, 300);
@@ -124,10 +117,8 @@ const MapEventsHandler = ({ setUserPosition, setPlanes, setStarlink, setAirports
   mapRef.current = map;
 
   useEffect(() => {
-    // Initial data fetch when map is ready
     if (map && !hasInitiallyLoaded.current) {
       hasInitiallyLoaded.current = true;
-      // Use setTimeout to ensure map is fully initialized
       setTimeout(() => {
         fetchData();
         console.log('Initial aircraft data fetch triggered');
@@ -136,11 +127,7 @@ const MapEventsHandler = ({ setUserPosition, setPlanes, setStarlink, setAirports
   }, [map, fetchData]);
 
   useEffect(() => {
-    // Fire the fetchData on an interval to keep the data fresh
-    // With WebSocket, we get real-time updates, so we can poll less frequently
-    // Without WebSocket, poll more frequently as fallback
-    // With trajectory prediction, we can smooth positions between updates
-    const pollInterval = websocketConnected ? 30 * 1000 : 15 * 1000; // 30s with WebSocket, 15s without
+    const pollInterval = websocketConnected ? 30 * 1000 : 15 * 1000;
     
     const interval = setInterval(() => {
       if (mapRef.current) {

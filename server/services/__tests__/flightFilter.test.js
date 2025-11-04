@@ -1,8 +1,4 @@
-// const flightRouteService = require('../FlightRouteService');
-const { shouldFilterAsLanded } = require('../flightLandingHelper');
-
-
-// const { shouldFilterAsLanded } = flightRouteService;
+const { shouldFilterAsLanded } = require('../FlightRouteService');
 
 describe('shouldFilterAsLanded', () => {
   const now = Date.now();
