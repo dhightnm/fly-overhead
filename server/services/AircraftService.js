@@ -2,6 +2,7 @@ const postgresRepository = require('../repositories/PostgresRepository');
 const openSkyService = require('./OpenSkyService');
 const flightRouteService = require('./FlightRouteService');
 const trajectoryPredictionService = require('./TrajectoryPredictionService');
+const webSocketService = require('./WebSocketService');
 const config = require('../config');
 const logger = require('../utils/logger');
 
@@ -54,6 +55,14 @@ class AircraftService {
       }
 
       logger.info(`Database updated successfully with all ${processed} aircraft`);
+
+      // Broadcast update via WebSocket to all clients
+      // Note: We broadcast a global update signal - clients will fetch their specific bounds
+      // In the future, we can optimize to send only changes per bounding box
+      webSocketService.getIO()?.emit('aircraft:global_update', {
+        timestamp: new Date().toISOString(),
+        message: 'Aircraft data updated',
+      });
 
       return data.states;
     } catch (error) {

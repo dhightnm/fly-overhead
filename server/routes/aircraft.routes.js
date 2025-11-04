@@ -11,6 +11,13 @@ const { mapAircraftTypeToCategory } = require('../utils/aircraftCategoryMapper')
 
 const cache = new NodeCache({ stdTTL: 60, maxKeys: 100 });
 
+// Enhanced cache for bounding box queries (shorter TTL for freshness)
+const boundsCache = new NodeCache({ 
+  stdTTL: 15, // 15 second cache (half of typical polling interval)
+  maxKeys: 1000, // Cache up to 1000 different bounding boxes
+  checkperiod: 60, // Check for expired keys every minute
+});
+
 /**
  * Get all aircraft (cached)
  */
@@ -166,18 +173,44 @@ router.get('/route/:identifier', async (req, res, next) => {
 /**
  * Get aircraft within geographical bounds
  */
+/**
+ * Get aircraft within geographical bounds (CACHED + PostGIS optimized)
+ */
 router.get('/area/:latmin/:lonmin/:latmax/:lonmax', async (req, res, next) => {
   const {
     latmin, lonmin, latmax, lonmax,
   } = req.params;
 
+  // Create cache key from bounding box (rounded to reduce cache fragmentation)
+  // Round to 2 decimal places (~1.1km precision) to improve cache hits
+  const roundedLatMin = Math.floor(parseFloat(latmin) * 100) / 100;
+  const roundedLonMin = Math.floor(parseFloat(lonmin) * 100) / 100;
+  const roundedLatMax = Math.ceil(parseFloat(latmax) * 100) / 100;
+  const roundedLonMax = Math.ceil(parseFloat(lonmax) * 100) / 100;
+  
+  const cacheKey = `/area/${roundedLatMin}/${roundedLonMin}/${roundedLatMax}/${roundedLonMax}`;
+
   try {
+    // Check cache first
+    if (boundsCache.has(cacheKey)) {
+      logger.debug('Serving cached aircraft data for bounding box', { cacheKey });
+      return res.json(boundsCache.get(cacheKey));
+    }
+
+    // Cache miss - fetch from database
     const aircraft = await aircraftService.getAircraftInBounds(
       parseFloat(latmin),
       parseFloat(lonmin),
       parseFloat(latmax),
       parseFloat(lonmax),
     );
+
+    // Store in cache
+    boundsCache.set(cacheKey, aircraft);
+    logger.debug('Cached aircraft data for bounding box', { 
+      cacheKey, 
+      aircraftCount: aircraft.length 
+    });
 
     return res.json(aircraft);
   } catch (err) {

@@ -488,14 +488,31 @@ class PostgresRepository {
 
   /**
    * Find aircraft within bounding box with recent contact
+   * Uses PostGIS spatial queries for better performance with spatial indexes
+   * Falls back to BETWEEN if geom column not populated yet
    */
   async findAircraftInBounds(latmin, lonmin, latmax, lonmax, recentContactThreshold) {
+    // Try PostGIS spatial query first (faster with GIST spatial index on large datasets)
+    // ST_Contains with ST_MakeEnvelope handles bounding box queries efficiently
+    // Falls back to BETWEEN if geom is NULL (for backwards compatibility)
     const query = `
       SELECT * 
       FROM aircraft_states
       WHERE last_contact >= $1
-        AND latitude BETWEEN $2 AND $3
-        AND longitude BETWEEN $4 AND $5
+        AND (
+          -- Use PostGIS spatial query when geom is available (preferred, uses spatial index)
+          (geom IS NOT NULL 
+           AND ST_Contains(
+             ST_MakeEnvelope($4, $2, $5, $3, 4326), -- lonmin, latmin, lonmax, latmax
+             geom
+           ))
+          OR
+          -- Fallback to BETWEEN when geom is NULL (backwards compatibility)
+          (geom IS NULL
+           AND latitude BETWEEN $2 AND $3
+           AND longitude BETWEEN $4 AND $5)
+        )
+      ORDER BY last_contact DESC
     `;
     return this.db.manyOrNone(query, [recentContactThreshold, latmin, latmax, lonmin, lonmax]);
   }
