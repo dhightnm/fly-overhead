@@ -1,14 +1,17 @@
 const express = require('express');
+const { createServer } = require('http');
 const path = require('path');
 const cors = require('cors');
 const config = require('./config');
 const aircraftService = require('./services/AircraftService');
 const backgroundRouteService = require('./services/BackgroundRouteService');
+const webSocketService = require('./services/WebSocketService');
 const errorHandler = require('./middlewares/errorHandler');
 const requestLogger = require('./middlewares/requestLogger');
 const logger = require('./utils/logger');
 
 const app = express();
+const server = createServer(app);
 
 // Configure CORS
 app.use(cors({
@@ -133,10 +136,14 @@ async function startServer() {
       logger.info('Running in web-only mode (worker should be separate process)');
     }
 
-    // 5) Start the server
+    // 5) Initialize WebSocket server
+    webSocketService.initialize(server);
+
+    // 6) Start the server
     const { port, host } = config.server;
-    app.listen(port, host, () => {
+    server.listen(port, host, () => {
       logger.info(`Server listening on ${host}:${port}`);
+      logger.info('WebSocket server ready for real-time updates');
     });
   } catch (err) {
     logger.error('Error starting server', { error: err.message });

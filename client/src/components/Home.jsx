@@ -1,4 +1,4 @@
-import React, { useState, useContext, useEffect, useCallback } from 'react';
+import React, { useState, useContext, useEffect, useCallback, useRef } from 'react';
 import { MapContainer, Marker, Popup, TileLayer, useMapEvents } from 'react-leaflet';
 import axios from 'axios';
 import PlaneMarker from './PlaneMarker';
@@ -9,11 +9,12 @@ import FlightPlanRouteOverlay from './FlightPlanRouteOverlay';
 import { PlaneContext } from '../contexts/PlaneContext';
 import MapFlyToHandler from './MapFlyToHandler';
 import FlightHistoryModal from './FlightHistoryModal';
+import WebSocketHandler from './WebSocketHandler';
 import { API_URL } from '../config';
 // Import your CSS
 import './home.css';
 
-const MapEventsHandler = ({ setUserPosition, setPlanes, setStarlink, setAirports, showAirports }) => {
+const MapEventsHandler = ({ setUserPosition, setPlanes, setStarlink, setAirports, showAirports, websocketConnected, fetchDataRef }) => {
   
   const fetchData = useCallback(async () => {
     const map = mapRef.current;
@@ -74,8 +75,17 @@ const MapEventsHandler = ({ setUserPosition, setPlanes, setStarlink, setAirports
     }
   }, [setPlanes, setStarlink, setAirports, showAirports]);
 
+  // Expose fetchData to parent via ref
+  React.useEffect(() => {
+    if (fetchDataRef) {
+      fetchDataRef.current = fetchData;
+    }
+  }, [fetchData, fetchDataRef]);
+
   const mapRef = React.useRef(null);
   const hasInitiallyLoaded = React.useRef(false);
+  const moveEndTimerRef = React.useRef(null);
+  const lastBoundsRef = React.useRef(null);
   
   const map = useMapEvents({
     load: () => {
@@ -86,9 +96,28 @@ const MapEventsHandler = ({ setUserPosition, setPlanes, setStarlink, setAirports
       setUserPosition(location.latlng);
       map.flyTo(location.latlng, map.getZoom());
     },
-    moveend: async () => {
-      // fetch data whenever the map finishes moving
-      await fetchData();
+    moveend: () => {
+      // Debounce moveend to prevent excessive API calls during zoom/pan
+      // Clear any existing timer
+      if (moveEndTimerRef.current) {
+        clearTimeout(moveEndTimerRef.current);
+      }
+      
+      // Only fetch if bounds actually changed significantly
+      const currentBounds = map.getBounds();
+      const boundsKey = `${currentBounds.getSouth().toFixed(2)},${currentBounds.getWest().toFixed(2)},${currentBounds.getNorth().toFixed(2)},${currentBounds.getEast().toFixed(2)}`;
+      
+      // Skip if bounds haven't changed much
+      if (lastBoundsRef.current === boundsKey) {
+        return;
+      }
+      
+      lastBoundsRef.current = boundsKey;
+      
+      // Debounce: wait 300ms after movement stops before fetching
+      moveEndTimerRef.current = setTimeout(() => {
+        fetchData();
+      }, 300);
     }
   });
 
@@ -98,19 +127,31 @@ const MapEventsHandler = ({ setUserPosition, setPlanes, setStarlink, setAirports
     // Initial data fetch when map is ready
     if (map && !hasInitiallyLoaded.current) {
       hasInitiallyLoaded.current = true;
-      fetchData();
+      // Use setTimeout to ensure map is fully initialized
+      setTimeout(() => {
+        fetchData();
+        console.log('Initial aircraft data fetch triggered');
+      }, 100);
     }
   }, [map, fetchData]);
 
   useEffect(() => {
     // Fire the fetchData on an interval to keep the data fresh
+    // With WebSocket, we get real-time updates, so we can poll less frequently
+    // Without WebSocket, poll more frequently as fallback
+    // With trajectory prediction, we can smooth positions between updates
+    const pollInterval = websocketConnected ? 30 * 1000 : 15 * 1000; // 30s with WebSocket, 15s without
+    
     const interval = setInterval(() => {
-      fetchData();
-      console.log("Data fetched on interval");
-    }, 15 * 1000);
+      if (mapRef.current) {
+        fetchData();
+        console.log(`Data fetched on interval (${websocketConnected ? 'WebSocket' : 'polling'} mode)`);
+      }
+    }, pollInterval);
 
     return () => clearInterval(interval);
-  }, [fetchData]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [websocketConnected]); // Adjust interval based on WebSocket connection
 
   return null;
 };
@@ -136,6 +177,9 @@ const Home = () => {
   const [showHeatmap, setShowHeatmap] = useState(false);
   const [historyModalOpen, setHistoryModalOpen] = useState(false);
   const [selectedAircraft, setSelectedAircraft] = useState(null);
+  const [websocketEnabled] = useState(true); // WebSocket enabled by default (reserved for future toggle)
+  const [websocketConnected, setWebsocketConnected] = useState(false);
+  const fetchDataRef = useRef(null); // Ref to expose fetchData from MapEventsHandler
 
   const contextValue = useContext(PlaneContext);
   const searchLatlng = contextValue ? contextValue.searchLatlng : userPosition;
@@ -330,11 +374,22 @@ const Home = () => {
   };
 
   // Fetch flight plan route when toggle is enabled and aircraft is selected
+  // Use a ref to track if we've already fetched for this aircraft to prevent re-fetching
+  const fetchedRouteForAircraftRef = React.useRef(new Set());
+  
   useEffect(() => {
     if (showFlightPlanRoute && selectedAircraft?.icao24) {
+      const aircraftKey = selectedAircraft.icao24;
+      
+      // Skip if we've already fetched for this aircraft in this toggle session
+      if (fetchedRouteForAircraftRef.current.has(`${aircraftKey}-${showFlightPlanRoute}`)) {
+        return;
+      }
+      
       // Use setTimeout to avoid running during render
       const timer = setTimeout(() => {
-        const plane = planes.find(p => p.icao24 === selectedAircraft.icao24);
+        // Find plane in current planes list
+        const plane = planes.find(p => p.icao24 === aircraftKey);
         if (plane) {
           // Only fetch if we don't already have it or if it's not available (to retry)
           const existingRoute = flightPlanRoutesRef.current[plane.icao24];
@@ -342,11 +397,17 @@ const Home = () => {
           
           if (!existingRoute || (existingStatus?.available === false)) {
             fetchFlightPlanRoute(plane);
+            fetchedRouteForAircraftRef.current.add(`${aircraftKey}-${showFlightPlanRoute}`);
           }
         }
       }, 0);
       
       return () => clearTimeout(timer);
+    }
+    
+    // Reset fetched set when toggle changes
+    if (!showFlightPlanRoute) {
+      fetchedRouteForAircraftRef.current.clear();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showFlightPlanRoute, selectedAircraft?.icao24]); // Only depend on these to prevent infinite loops
@@ -811,8 +872,60 @@ const Home = () => {
             setStarlink={setStarlink}
             setAirports={setAirports}
             showAirports={showAirports}
+            websocketConnected={websocketConnected}
+            fetchDataRef={fetchDataRef}
           />
           <MapFlyToHandler searchLatlng={searchLatlng} isFullscreen={isFullscreen} />
+          <WebSocketHandler
+            enabled={websocketEnabled}
+            onConnectionChange={({ connected, error }) => {
+              setWebsocketConnected(connected);
+              if (error && !connected) {
+                console.warn('WebSocket connection failed, falling back to polling');
+              }
+            }}
+            onAircraftUpdate={(update) => {
+              // Handle WebSocket updates - trigger immediate refresh on data updates
+              if (update.type === 'refresh_required') {
+                // Global update signal - immediately fetch fresh data using MapEventsHandler's fetchData
+                console.log('WebSocket: Global update signal received, refreshing aircraft positions now');
+                
+                // Use the fetchData function from MapEventsHandler if available
+                if (fetchDataRef.current) {
+                  fetchDataRef.current();
+                  console.log('WebSocket: Triggered immediate refresh via fetchData');
+                } else {
+                  // Fallback: fetch directly if ref not available yet
+                  const mapElement = document.querySelector('.leaflet-container');
+                  if (mapElement && mapElement.__map__) {
+                    const map = mapElement.__map__;
+                    const bounds = map.getBounds();
+                    const wrapBounds = map.wrapLatLngBounds(bounds);
+                    
+                    axios.get(
+                      `${API_URL}/api/area/${wrapBounds._southWest.lat}/${wrapBounds._southWest.lng}/${wrapBounds._northEast.lat}/${wrapBounds._northEast.lng}`
+                    ).then((res) => {
+                      if (res.data) {
+                        setPlanes(res.data);
+                        console.log(`WebSocket: Refreshed ${res.data.length} aircraft positions (fallback)`);
+                      }
+                    }).catch((err) => {
+                      console.error('Error refreshing aircraft data via WebSocket:', err);
+                    });
+                  }
+                }
+              } else if (update.type === 'full' || update.type === 'incremental') {
+                // Handle full or incremental updates
+                console.log('WebSocket update received:', update.type, 'aircraft count:', Array.isArray(update.data) ? update.data.length : 'N/A');
+                
+                // If we get a full update with aircraft data, use it directly
+                if (update.type === 'full' && Array.isArray(update.data)) {
+                  setPlanes(update.data);
+                  console.log('WebSocket: Applied full aircraft update');
+                }
+              }
+            }}
+          />
           <TileLayer
             attribution='&copy; <a href="http://osm.org/copyright">OpenStreetMap</a> contributors'
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
