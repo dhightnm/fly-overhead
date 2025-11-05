@@ -254,14 +254,16 @@ const Home = () => {
     }
   };
 
-  // Fetch route for a single aircraft (on-demand when user clicks)
-  const fetchRouteForAircraft = useCallback(async (plane) => {
+  // Fetch route for a single aircraft (on-demand when user clicks or hovers)
+  const fetchRouteForAircraft = useCallback(async (plane, isPrefetch = false) => {
     // Skip if we already have the route
     if (routes[plane.icao24]) {
       return routes[plane.icao24];
     }
 
-    console.log(`Fetching route for ${plane.callsign || plane.icao24} (user-initiated)`);
+    if (!isPrefetch) {
+      console.log(`Fetching route for ${plane.callsign || plane.icao24} (user-initiated)`);
+    }
 
     try {
       const res = await axios.get(`${API_URL}/api/route/${plane.callsign || plane.icao24}`, {
@@ -504,13 +506,20 @@ const Home = () => {
           key={plane.id} 
           plane={plane} 
           route={routes[plane.icao24]}
-          onMarkerClick={async () => {
-            await fetchRouteForAircraft(plane);
-            await fetchFlightPlanRoute(plane);
-            setSelectedAircraft({
-              icao24: plane.icao24,
-              callsign: plane.callsign || 'N/A',
-            });
+          onMarkerClick={async (isPrefetch = false) => {
+            // Set selected aircraft immediately with available data (optimistic UI)
+            if (!isPrefetch) {
+              setSelectedAircraft({
+                icao24: plane.icao24,
+                callsign: plane.callsign || 'N/A',
+              });
+            }
+            
+            // Fetch both routes in parallel for faster loading
+            await Promise.all([
+              fetchRouteForAircraft(plane, isPrefetch),
+              fetchFlightPlanRoute(plane)
+            ]);
           }}
         />;
       }

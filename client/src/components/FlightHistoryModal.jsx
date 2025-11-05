@@ -1,8 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import axios from 'axios';
 import { useAuth } from '../contexts/AuthContext';
 import PremiumModal from './PremiumModal';
-import { API_URL } from '../config';
+import { historyService, aircraftService } from '../services';
 import './FlightHistoryModal.css';
 
 const FlightHistoryModal = ({ icao24, callsign, isOpen, onClose }) => {
@@ -19,21 +18,19 @@ const FlightHistoryModal = ({ icao24, callsign, isOpen, onClose }) => {
     
     try {
       // Fetch both history and route in parallel
-      const [historyRes, routeRes] = await Promise.allSettled([
-        axios.get(`${API_URL}/api/history/${icao24}`),
-        axios.get(`${API_URL}/api/route/${callsign || icao24}`, {
-          params: { icao24, callsign },
-        }),
+      const [historyData, routeData] = await Promise.allSettled([
+        historyService.getFlightHistory(icao24),
+        aircraftService.getRoute(icao24, callsign),
       ]);
 
-      if (historyRes.status === 'fulfilled') {
-        setHistory(historyRes.value.data);
+      if (historyData.status === 'fulfilled') {
+        setHistory(historyData.value);
       } else {
         throw new Error('Failed to fetch history');
       }
 
-      if (routeRes.status === 'fulfilled' && routeRes.value.data) {
-        setRoute(routeRes.value.data);
+      if (routeData.status === 'fulfilled') {
+        setRoute(routeData.value);
       }
     } catch (err) {
       console.error('Error fetching flight history:', err);

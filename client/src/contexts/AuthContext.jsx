@@ -1,6 +1,5 @@
 import React, { createContext, useState, useContext, useEffect } from 'react';
-import axios from 'axios';
-import { API_URL } from '../config';
+import { authService } from '../services';
 
 const AuthContext = createContext();
 
@@ -19,7 +18,7 @@ export const AuthProvider = ({ children }) => {
 
   useEffect(() => {
     if (token) {
-      axios.defaults.headers.common.Authorization = `Bearer ${token}`;
+      authService.setToken(token);
       fetchUser();
     } else {
       setLoading(false);
@@ -29,8 +28,8 @@ export const AuthProvider = ({ children }) => {
 
   const fetchUser = async () => {
     try {
-      const response = await axios.get(`${API_URL}/api/auth/me`);
-      setUser(response.data);
+      const userData = await authService.getCurrentUser();
+      setUser(userData);
       setLoading(false);
     } catch (error) {
       console.error('Failed to fetch user', error);
@@ -40,16 +39,10 @@ export const AuthProvider = ({ children }) => {
 
   const login = async (email, password) => {
     try {
-      const response = await axios.post(`${API_URL}/api/auth/login`, {
-        email,
-        password,
-      });
-      
-      const { token: newToken, user: userData } = response.data;
-      localStorage.setItem('token', newToken);
+      const { token: newToken, user: userData } = await authService.login({ email, password });
+      authService.setToken(newToken);
       setToken(newToken);
       setUser(userData);
-      axios.defaults.headers.common.Authorization = `Bearer ${newToken}`;
       return { success: true };
     } catch (error) {
       return {
@@ -61,17 +54,10 @@ export const AuthProvider = ({ children }) => {
 
   const signup = async (email, password, name) => {
     try {
-      const response = await axios.post(`${API_URL}/api/auth/register`, {
-        email,
-        password,
-        name,
-      });
-      
-      const { token: newToken, user: userData } = response.data;
-      localStorage.setItem('token', newToken);
+      const { token: newToken, user: userData } = await authService.signup({ email, password, name });
+      authService.setToken(newToken);
       setToken(newToken);
       setUser(userData);
-      axios.defaults.headers.common.Authorization = `Bearer ${newToken}`;
       return { success: true };
     } catch (error) {
       return {
@@ -82,10 +68,9 @@ export const AuthProvider = ({ children }) => {
   };
 
   const logout = () => {
-    localStorage.removeItem('token');
+    authService.logout();
     setToken(null);
     setUser(null);
-    delete axios.defaults.headers.common.Authorization;
   };
 
   const isPremium = () => {
