@@ -99,6 +99,15 @@ const PlaneMarker = ({ plane, route, onMarkerClick }) => {
           if (onMarkerClick) {
             onMarkerClick();
           }
+        },
+        mouseover: () => {
+          // Prefetch route data on hover for instant loading when clicked
+          if (onMarkerClick && !route) {
+            // Trigger prefetch in background (non-blocking)
+            onMarkerClick(true).catch(() => {
+              // Silently fail - user hasn't clicked yet, so errors don't matter
+            });
+          }
         }
       }}
     >
@@ -107,7 +116,7 @@ const PlaneMarker = ({ plane, route, onMarkerClick }) => {
           <div><strong>Callsign:</strong> <span>{callsign || 'N/A'}</span></div>
           <div><strong>ICAO24:</strong> <span>{icao24 || 'N/A'}</span></div>
           <div><strong>Aircraft:</strong> <span>{getAircraftDisplayType(plane, route)}</span></div>
-          {route && (() => {
+          {route ? (() => {
             const departureCode = route.departureAirport?.icao || route.departureAirport?.iata || route.departureAirport?.name;
             const arrivalCode = route.arrivalAirport?.icao || route.arrivalAirport?.iata || route.arrivalAirport?.name;
 
@@ -124,7 +133,11 @@ const PlaneMarker = ({ plane, route, onMarkerClick }) => {
               );
             }
             return null;
-          })()}
+          })() : (
+            <div className="popup-loading">
+              <span className="loading-spinner">⏳</span> Loading route details...
+            </div>
+          )}
           <div><strong>Altitude:</strong> <span>{baro_altitude ? Math.round(baro_altitude * 3.281) + 'ft' : 'N/A'}</span></div>
           <div><strong>Speed:</strong> <span>{velocity ? Math.round(velocity * 1.944) + 'kts' : 'N/A'}</span></div>
           <div><strong>Heading:</strong> <span>{true_track ? Math.round(true_track) : 'N/A'}</span></div>

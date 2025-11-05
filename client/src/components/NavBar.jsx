@@ -1,8 +1,7 @@
 import React, { useState, useContext, useRef, useEffect } from 'react';
 import { PlaneContext } from '../contexts/PlaneContext';
 import { useAuth } from '../contexts/AuthContext';
-import axios from 'axios';
-import { API_URL } from '../config';
+import { aircraftService } from '../services';
 import LoginModal from './LoginModal';
 import SignupModal from './SignupModal';
 import PremiumModal from './PremiumModal';
@@ -39,11 +38,10 @@ const NavBar = () => {
     setSearchStatus('searching');
     
     try {
-      const res = await axios.get(`${API_URL}/api/planes/${encodeURIComponent(search.trim())}`);
-      const planeDetails = res.data;
+      const aircraft = await aircraftService.searchAircraft(search.trim());
       
-      if (planeDetails && planeDetails.latitude && planeDetails.longitude) {
-        setSearchLatlng([planeDetails.latitude, planeDetails.longitude]);
+      if (aircraft && aircraft.latitude && aircraft.longitude) {
+        setSearchLatlng([aircraft.latitude, aircraft.longitude]);
         setSearchStatus('found');
         setTimeout(() => setSearchStatus(null), 3000);
       } else {

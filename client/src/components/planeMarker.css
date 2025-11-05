@@ -32,3 +32,30 @@
     color: #1976d2;
     margin-right: 6px;
 }
+
+.popup-loading {
+    background: #f3f4f6;
+    border-left: 3px solid #9ca3af;
+    padding: 8px;
+    margin: 8px 0;
+    border-radius: 4px;
+    font-size: 12px;
+    color: #6b7280;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.loading-spinner {
+    display: inline-block;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    from {
+        transform: rotate(0deg);
+    }
+    to {
+        transform: rotate(360deg);
+    }
+}
