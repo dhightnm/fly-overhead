@@ -1,0 +1,142 @@
+.premium-modal-content {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-radius: 16px;
+  padding: 40px;
+  width: 90%;
+  max-width: 520px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
+  position: relative;
+  color: white;
+  animation: modalSlideIn 0.3s ease-out;
+}
+
+.premium-header {
+  text-align: center;
+  margin-bottom: 32px;
+}
+
+.premium-badge {
+  display: inline-block;
+  background: rgba(255, 255, 255, 0.2);
+  backdrop-filter: blur(10px);
+  padding: 8px 16px;
+  border-radius: 20px;
+  font-size: 14px;
+  font-weight: 700;
+  margin-bottom: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+.premium-header h2 {
+  margin: 0 0 8px 0;
+  font-size: 32px;
+  font-weight: 700;
+  color: white;
+}
+
+.premium-subtitle {
+  margin: 0;
+  opacity: 0.9;
+  font-size: 16px;
+}
+
+.premium-features {
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(10px);
+  border-radius: 12px;
+  padding: 24px;
+  margin-bottom: 24px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.premium-features h3 {
+  margin: 0 0 16px 0;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.premium-features ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.premium-features li {
+  display: flex;
+  align-items: flex-start;
+  margin-bottom: 12px;
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+.premium-features li:last-child {
+  margin-bottom: 0;
+}
+
+.check-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  background: rgba(255, 255, 255, 0.3);
+  border-radius: 50%;
+  margin-right: 12px;
+  flex-shrink: 0;
+  font-weight: 700;
+  font-size: 12px;
+}
+
+.premium-pricing {
+  text-align: center;
+  margin-bottom: 24px;
+}
+
+.price-card {
+  background: rgba(255, 255, 255, 0.15);
+  backdrop-filter: blur(10px);
+  border-radius: 12px;
+  padding: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.price-amount {
+  font-size: 48px;
+  font-weight: 700;
+  line-height: 1;
+  margin-bottom: 4px;
+}
+
+.price-period {
+  font-size: 16px;
+  opacity: 0.9;
+}
+
+.premium-cta {
+  text-align: center;
+}
+
+.cta-text {
+  margin: 0 0 16px 0;
+  font-size: 15px;
+  opacity: 0.95;
+}
+
+.btn-premium {
+  background: white;
+  color: #667eea;
+  font-weight: 700;
+}
+
+.btn-premium:hover:not(:disabled) {
+  background: #f9fafb;
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
+}
+
+.premium-note {
+  margin-top: 12px;
+  font-size: 12px;
+  opacity: 0.8;
+}
+

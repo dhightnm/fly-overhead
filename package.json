@@ -8,6 +8,7 @@
     "docker:dev:rebuild": "docker compose -f docker-compose.dev.yml down && docker compose -f docker-compose.dev.yml build --no-cache --pull && docker compose -f docker-compose.dev.yml up -d",
     "docker:dev:down": "docker compose -f docker-compose.dev.yml down",
     "docker:dev:restart": "docker compose -f docker-compose.dev.yml restart server",
+    "docker:dev:client:rebuild": "cd client && npm run build && cd .. && docker compose -f docker-compose.dev.yml restart server",
     "docker:prod": "docker compose up -d",
     "docker:prod:build": "docker compose build --no-cache server && docker compose up -d",
     "docker:prod:down": "docker compose down",

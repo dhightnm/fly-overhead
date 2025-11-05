@@ -17,16 +17,18 @@
   font-size: 14px;
   font-weight: 600;
   cursor: pointer;
-  background: rgba(255, 255, 255, 0.95);
-  border: 2px solid #2c3e50;
-  border-radius: 6px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
   transition: all 0.2s;
+  color: #374151;
 }
 
 .fullscreen-button:hover {
-  background: white;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  background: #f9fafb;
+  border-color: #3b82f6;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 
 .sidebar-toggle {
@@ -36,22 +38,23 @@
   right: 10px;
   width: 40px;
   height: 40px;
-  background: rgba(44, 62, 80, 0.95);
-  color: white;
-  border: none;
-  border-radius: 6px 0 0 6px;
+  background: white;
+  color: #374151;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
   cursor: pointer;
   font-size: 20px;
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
   transition: all 0.3s;
 }
 
 .sidebar-toggle:hover {
-  background: rgba(44, 62, 80, 1);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  background: #f9fafb;
+  border-color: #3b82f6;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 
 /* Aircraft Sidebar */
@@ -60,22 +63,34 @@
   right: 0;
   top: 0;
   width: 360px;
+  max-width: 100vw;
   height: 100vh;
   background: white;
   z-index: 10000;
   box-shadow: -2px 0 10px rgba(0, 0, 0, 0.1);
   transition: transform 0.3s ease;
   overflow-y: auto;
+  overflow-x: hidden;
   transform: translateX(0);
+  box-sizing: border-box;
 }
 
 .aircraft-sidebar.closed {
-  transform: translateX(360px);
+  transform: translateX(100%);
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  width: 0 !important;
+  overflow: hidden;
+  padding: 0 !important;
+  margin: 0 !important;
+  border: none !important;
+  box-shadow: none !important;
 }
 
 .sidebar-header {
   padding: 20px;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%);
   color: white;
   border-bottom: 1px solid rgba(255, 255, 255, 0.2);
 }
@@ -230,7 +245,7 @@
   width: 100%;
   margin-top: 12px;
   padding: 10px;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%);
   color: white;
   border: none;
   border-radius: 6px;
@@ -242,7 +257,7 @@
 
 .view-history-btn:hover {
   transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
 }
 
 .view-history-btn:active {
@@ -296,6 +311,7 @@
   width: 100vw !important;
   height: 100vh !important;
   z-index: 999 !important;
+  transition: width 0.3s ease, margin-right 0.3s ease;
 }
 
 .map-regular .leaflet-container,
@@ -310,12 +326,19 @@
   width: calc(100vw - 360px) !important;
 }
 
+/* Ensure map expands to full width when sidebar is closed */
+.aircraft-sidebar.closed ~ .map-fullscreen {
+  margin-right: 0;
+  width: 100vw !important;
+}
+
 /* Site info section (only shown when not fullscreen) */
 .site-info {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
-  padding: 40px 60px;
+  background: #ffffff;
+  color: #111827;
+  padding: 60px 40px;
   margin-top: 0;
+  border-top: 1px solid #e5e7eb;
 }
 
 .info-content {
@@ -324,59 +347,63 @@
 }
 
 .info-content h2 {
-  font-size: 36px;
-  margin: 0 0 10px 0;
+  font-size: 32px;
+  margin: 0 0 12px 0;
   text-align: center;
+  font-weight: 700;
+  color: #111827;
 }
 
 .info-content > p {
   text-align: center;
-  font-size: 18px;
-  opacity: 0.95;
-  margin: 0 0 40px 0;
+  font-size: 16px;
+  color: #6b7280;
+  margin: 0 0 48px 0;
 }
 
 .info-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  gap: 30px;
-  margin-bottom: 30px;
+  gap: 24px;
+  margin-bottom: 40px;
 }
 
 .info-card {
-  background: rgba(255, 255, 255, 0.15);
-  backdrop-filter: blur(10px);
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: white;
+  border: 1px solid #e5e7eb;
   border-radius: 12px;
-  padding: 25px;
+  padding: 28px;
   transition: all 0.3s;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 }
 
 .info-card:hover {
-  background: rgba(255, 255, 255, 0.2);
-  transform: translateY(-5px);
-  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
+  border-color: #3b82f6;
+  transform: translateY(-4px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
 }
 
 .info-card h3 {
   margin: 0 0 12px 0;
-  font-size: 24px;
+  font-size: 20px;
+  font-weight: 600;
+  color: #111827;
 }
 
 .info-card p {
   margin: 0;
-  opacity: 0.9;
+  color: #6b7280;
   line-height: 1.6;
-  font-size: 15px;
+  font-size: 14px;
 }
 
 .info-footer {
   text-align: center;
-  opacity: 0.8;
+  color: #9ca3af;
   font-size: 13px;
-  border-top: 1px solid rgba(255, 255, 255, 0.2);
-  padding-top: 20px;
-  margin-top: 20px;
+  border-top: 1px solid #e5e7eb;
+  padding-top: 24px;
+  margin-top: 32px;
 }
 
 .info-footer p {
@@ -397,15 +424,11 @@
 }
 
 .home-container:not(.fullscreen-active) .aircraft-sidebar {
-  position: absolute;
+  position: fixed;
   right: 0;
   top: 0;
-  height: 500px;
-}
-
-/* Hide sidebar in non-fullscreen mode by default */
-.home-container:not(.fullscreen-active) .aircraft-sidebar {
-  display: none;
+  height: 100vh;
+  /* Sidebar should span full viewport height in non-fullscreen mode */
 }
 
 /* Show sidebar when toggled in non-fullscreen mode */
@@ -451,6 +474,19 @@
   margin-left: 8px;
   font-size: 14px;
   cursor: help;
+}
+
+.premium-badge-small {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%);
+  color: white;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 10px;
+  font-weight: 700;
+  margin-left: 8px;
 }
 
 .route-unavailable-message {
@@ -619,6 +655,46 @@
 
 /* Responsive adjustments */
 @media (max-width: 768px) {
+  /* Mobile: Sidebar should be full width when open - use 100% to avoid scrollbar width issues */
+  .aircraft-sidebar {
+    width: 100% !important;
+    max-width: 100% !important;
+    right: 0 !important;
+    left: 0 !important;
+  }
+
+  .aircraft-sidebar.open {
+    box-shadow: none;
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+
+  /* Mobile: Ensure closed sidebar is completely hidden and doesn't create white bar */
+  .aircraft-sidebar.closed {
+    width: 0 !important;
+    min-width: 0 !important;
+    max-width: 0 !important;
+    transform: translateX(100%);
+    visibility: hidden;
+    opacity: 0;
+    pointer-events: none;
+    overflow: hidden;
+    padding: 0 !important;
+    margin: 0 !important;
+    border: none !important;
+    box-shadow: none !important;
+  }
+
+  /* Ensure map takes full width when sidebar is closed on mobile */
+  .aircraft-sidebar.closed ~ .map-fullscreen,
+  .home-container:not(.fullscreen-active) .aircraft-sidebar.closed ~ .map-regular {
+    width: 100% !important;
+    margin-right: 0 !important;
+    left: 0 !important;
+  }
+
+  /* When sidebar is open on mobile, sidebar covers map with z-index (map stays in DOM for bounds) */
+
   .airport-controls {
     padding: 10px 12px;
   }
