@@ -1,7 +1,7 @@
 import './App.css';
 import React from 'react';
 import {BrowserRouter, Switch, Route} from 'react-router-dom';
-import Home from './components/Home';
+import Home from './pages/Home/Home';
 import NavBar from './components/NavBar';
 import { PlaneProvider } from './contexts/PlaneContext';
 import { AuthProvider } from './contexts/AuthContext';
