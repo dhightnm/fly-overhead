@@ -37,13 +37,17 @@ class HistoryService {
     try {
       const history = await this.getAircraftHistory(icao24, startTime, endTime);
 
-      // Format for map visualization
+      // Format for map visualization with all available fields
       const flightPath = history.map((point) => ({
         lat: point.latitude,
         lng: point.longitude,
         altitude: point.baro_altitude,
+        geoAltitude: point.geo_altitude,
         velocity: point.velocity,
         heading: point.true_track,
+        verticalRate: point.vertical_rate,
+        squawk: point.squawk,
+        onGround: point.on_ground,
         timestamp: point.created_at,
       }));
 

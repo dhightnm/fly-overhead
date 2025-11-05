@@ -7,11 +7,13 @@ import AirportMarker from './AirportMarker';
 import HeatmapLayer from './HeatmapLayer';
 import FlightPlanRouteOverlay from './FlightPlanRouteOverlay';
 import { PlaneContext } from '../contexts/PlaneContext';
+import { useAuth } from '../contexts/AuthContext';
 import MapFlyToHandler from './MapFlyToHandler';
+import MapResizeHandler from './MapResizeHandler';
 import FlightHistoryModal from './FlightHistoryModal';
 import WebSocketHandler from './WebSocketHandler';
+import PremiumModal from './PremiumModal';
 import { API_URL } from '../config';
-// Import your CSS
 import './home.css';
 
 const MapEventsHandler = ({ setUserPosition, setPlanes, setStarlink, setAirports, showAirports, websocketConnected, fetchDataRef }) => {
@@ -46,12 +48,26 @@ const MapEventsHandler = ({ setUserPosition, setPlanes, setStarlink, setAirports
         `${API_URL}/api/area/${wrapBounds._southWest.lat}/${wrapBounds._southWest.lng}/${wrapBounds._northEast.lat}/${wrapBounds._northEast.lng}`
       );
         if (res.data) {
-          setPlanes(res.data);
+          // Merge/update planes instead of replacing to preserve state when sidebar covers map
+          setPlanes((prevPlanes) => {
+            // Create a map of existing planes by icao24 for quick lookup
+            const existingPlanesMap = new Map(prevPlanes.map(p => [p.icao24, p]));
+            // Merge new data with existing, keeping routes and other metadata
+            const mergedPlanes = res.data.map(newPlane => {
+              const existing = existingPlanesMap.get(newPlane.icao24);
+              return existing ? { ...existing, ...newPlane } : newPlane;
+            });
+            // Add any existing planes not in the new data (within bounds) to preserve them
+            const newPlanesMap = new Map(res.data.map(p => [p.icao24, true]));
+            const preservedPlanes = prevPlanes.filter(p => !newPlanesMap.has(p.icao24));
+            return [...mergedPlanes, ...preservedPlanes];
+          });
       } else {
         console.log('no planes found');
       }
     } catch (error) {
       console.error('Error fetching plane data:', error);
+      // Don't clear planes on error - preserve existing state
     }
 
     // Fetch airports if enabled
@@ -144,6 +160,7 @@ const MapEventsHandler = ({ setUserPosition, setPlanes, setStarlink, setAirports
 };
 
 const Home = () => {
+  const { isPremium } = useAuth();
   const [planes, setPlanes] = useState([]);
   const [routes, setRoutes] = useState({}); // Map of icao24 -> route data
   const [flightPlanRoutes, setFlightPlanRoutes] = useState({}); // Map of icao24 -> flight plan route waypoints
@@ -156,6 +173,7 @@ const Home = () => {
   const [sidebarOpen, setSidebarOpen] = useState(true); // Sidebar open by default
   const [sidebarSearch, setSidebarSearch] = useState('');
   const [airportSearch, setAirportSearch] = useState('');
+  const [showPremiumModal, setShowPremiumModal] = useState(false);
   const [airportSearchResults, setAirportSearchResults] = useState([]);
   const [searchStatus, setSearchStatus] = useState(null);
   const [showAirports, setShowAirports] = useState(true); // Default ON
@@ -178,6 +196,23 @@ const Home = () => {
 
   const handleToggleSidebar = () => {
     setSidebarOpen(!sidebarOpen);
+    // Force Leaflet map to resize after sidebar animation
+    setTimeout(() => {
+      // Trigger a resize event which Leaflet listens to
+      window.dispatchEvent(new Event('resize'));
+      
+      // Also directly invalidate any Leaflet map instances
+      const mapContainers = document.querySelectorAll('.leaflet-container');
+      mapContainers.forEach((container) => {
+        // Access the map instance through the container's internal reference
+        if (container._leaflet && container._leaflet.map) {
+          container._leaflet.map.invalidateSize();
+        }
+        // Alternative method: trigger resize on the container
+        const resizeEvent = new Event('resize');
+        container.dispatchEvent(resizeEvent);
+      });
+    }, 350); // Wait for CSS transition to complete (0.3s + buffer)
   };
 
   const handleSidebarSearch = async () => {
@@ -559,13 +594,17 @@ const Home = () => {
                 type="checkbox"
                 checked={showFlightPlanRoute}
                 onChange={(e) => {
+                  if (!isPremium()) {
+                    setShowPremiumModal(true);
+                    return;
+                  }
                   setShowFlightPlanRoute(e.target.checked);
-                  // Route will be fetched automatically when aircraft is selected
                 }}
                 disabled={!selectedAircraft}
               />
               <span className="toggle-text">
                 Show Flight Plan Route
+                {!isPremium() && <span className="premium-badge-small">⭐ Premium</span>}
                 {selectedAircraft && routeAvailabilityStatus[selectedAircraft.icao24]?.available === false && (
                   <span className="route-warning" title={routeAvailabilityStatus[selectedAircraft.icao24]?.message}>
                     ⚠️
@@ -863,6 +902,7 @@ const Home = () => {
             fetchDataRef={fetchDataRef}
           />
           <MapFlyToHandler searchLatlng={searchLatlng} isFullscreen={isFullscreen} />
+          <MapResizeHandler sidebarOpen={sidebarOpen} />
           <WebSocketHandler
             enabled={websocketEnabled}
             onConnectionChange={({ connected, error }) => {
@@ -893,7 +933,17 @@ const Home = () => {
                       `${API_URL}/api/area/${wrapBounds._southWest.lat}/${wrapBounds._southWest.lng}/${wrapBounds._northEast.lat}/${wrapBounds._northEast.lng}`
                     ).then((res) => {
                       if (res.data) {
-                        setPlanes(res.data);
+                        // Merge planes instead of replacing to preserve state
+                        setPlanes((prevPlanes) => {
+                          const existingPlanesMap = new Map(prevPlanes.map(p => [p.icao24, p]));
+                          const mergedPlanes = res.data.map(newPlane => {
+                            const existing = existingPlanesMap.get(newPlane.icao24);
+                            return existing ? { ...existing, ...newPlane } : newPlane;
+                          });
+                          const newPlanesMap = new Map(res.data.map(p => [p.icao24, true]));
+                          const preservedPlanes = prevPlanes.filter(p => !newPlanesMap.has(p.icao24));
+                          return [...mergedPlanes, ...preservedPlanes];
+                        });
                         console.log(`WebSocket: Refreshed ${res.data.length} aircraft positions (fallback)`);
                       }
                     }).catch((err) => {
@@ -905,10 +955,19 @@ const Home = () => {
                 // Handle full or incremental updates
                 console.log('WebSocket update received:', update.type, 'aircraft count:', Array.isArray(update.data) ? update.data.length : 'N/A');
                 
-                // If we get a full update with aircraft data, use it directly
+                // If we get a full update with aircraft data, merge it to preserve state
                 if (update.type === 'full' && Array.isArray(update.data)) {
-                  setPlanes(update.data);
-                  console.log('WebSocket: Applied full aircraft update');
+                  setPlanes((prevPlanes) => {
+                    const existingPlanesMap = new Map(prevPlanes.map(p => [p.icao24, p]));
+                    const mergedPlanes = update.data.map(newPlane => {
+                      const existing = existingPlanesMap.get(newPlane.icao24);
+                      return existing ? { ...existing, ...newPlane } : newPlane;
+                    });
+                    const newPlanesMap = new Map(update.data.map(p => [p.icao24, true]));
+                    const preservedPlanes = prevPlanes.filter(p => !newPlanesMap.has(p.icao24));
+                    return [...mergedPlanes, ...preservedPlanes];
+                  });
+                  console.log('WebSocket: Applied full aircraft update (merged)');
                 }
               }
             }}
@@ -1007,6 +1066,11 @@ const Home = () => {
         callsign={selectedAircraft?.callsign}
         isOpen={historyModalOpen}
         onClose={() => setHistoryModalOpen(false)}
+      />
+
+      <PremiumModal
+        isOpen={showPremiumModal}
+        onClose={() => setShowPremiumModal(false)}
       />
     </div>
   );

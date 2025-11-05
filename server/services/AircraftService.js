@@ -170,6 +170,7 @@ class AircraftService {
       await postgresRepository.createMainTable();
       await postgresRepository.createHistoryTable();
       await postgresRepository.createFlightRoutesTable();
+      await postgresRepository.createUsersTable();
       logger.info('Database initialized successfully');
     } catch (error) {
       logger.error('Error initializing database', { error: error.message });

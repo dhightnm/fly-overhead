@@ -53,6 +53,7 @@ app.use(requestLogger);
 app.use(express.static(path.join(__dirname, 'client/build')));
 
 // API Routes
+app.use('/api/auth', require('./routes/auth.routes'));
 app.use('/api', require('./routes/aircraft.routes'));
 app.use('/api', require('./routes/health.routes'));
 

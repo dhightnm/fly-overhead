@@ -1433,6 +1433,70 @@ class PostgresRepository {
     `;
     return this.db.one(query);
   }
+
+  /**
+   * Create users table
+   */
+  async createUsersTable() {
+    const query = `
+      CREATE TABLE IF NOT EXISTS users (
+        id SERIAL PRIMARY KEY,
+        email TEXT NOT NULL UNIQUE,
+        password TEXT NOT NULL,
+        name TEXT NOT NULL,
+        is_premium BOOLEAN DEFAULT false,
+        premium_expires_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+      );
+      
+      CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+    `;
+    await this.db.query(query);
+    logger.info('Users table created or already exists');
+  }
+
+  /**
+   * Get user by email
+   */
+  async getUserByEmail(email) {
+    const query = 'SELECT * FROM users WHERE email = $1';
+    return this.db.oneOrNone(query, [email]);
+  }
+
+  /**
+   * Get user by ID
+   */
+  async getUserById(id) {
+    const query = 'SELECT id, email, name, is_premium, premium_expires_at, created_at FROM users WHERE id = $1';
+    return this.db.oneOrNone(query, [id]);
+  }
+
+  /**
+   * Create new user
+   */
+  async createUser(userData) {
+    const { email, password, name, isPremium } = userData;
+    const query = `
+      INSERT INTO users (email, password, name, is_premium)
+      VALUES ($1, $2, $3, $4)
+      RETURNING id, email, name, is_premium, created_at
+    `;
+    return this.db.one(query, [email, password, name, isPremium || false]);
+  }
+
+  /**
+   * Update user premium status
+   */
+  async updateUserPremiumStatus(userId, isPremium, expiresAt = null) {
+    const query = `
+      UPDATE users 
+      SET is_premium = $1, premium_expires_at = $2, updated_at = CURRENT_TIMESTAMP
+      WHERE id = $3
+      RETURNING id, email, name, is_premium, premium_expires_at
+    `;
+    return this.db.one(query, [isPremium, expiresAt, userId]);
+  }
 }
 
 module.exports = new PostgresRepository();
