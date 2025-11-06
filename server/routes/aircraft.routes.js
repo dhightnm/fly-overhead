@@ -13,7 +13,7 @@ const cache = new NodeCache({ stdTTL: 60, maxKeys: 100 });
 
 // Enhanced cache for bounding box queries (shorter TTL for freshness)
 const boundsCache = new NodeCache({ 
-  stdTTL: 15, // 15 second cache (half of typical polling interval)
+  stdTTL: 5, // 5 second cache for faster updates on zoom/pan
   maxKeys: 1000, // Cache up to 1000 different bounding boxes
   checkperiod: 60, // Check for expired keys every minute
 });

@@ -103,6 +103,62 @@ class AircraftService {
   // eslint-disable-next-line class-methods-use-this
   async getAircraftByIdentifier(identifier) {
     try {
+      // First, try to get live data from OpenSky for this specific aircraft
+      logger.info(`Searching for aircraft: ${identifier} (checking live OpenSky first)`);
+      
+      try {
+        const liveStates = await openSkyService.getAllStates();
+        
+        if (liveStates && liveStates.states) {
+          // Search for the aircraft by ICAO24 or callsign in live data
+          const normalizedIdentifier = identifier.trim().toUpperCase();
+          const matchingState = liveStates.states.find(state => {
+            const icao24 = state[0] ? state[0].trim().toLowerCase() : '';
+            const callsign = state[1] ? state[1].trim().toUpperCase() : '';
+            
+            return icao24 === identifier.toLowerCase() || callsign === normalizedIdentifier;
+          });
+          
+          if (matchingState) {
+            // Found live data - use it!
+            const liveAircraft = {
+              icao24: matchingState[0] ? matchingState[0].trim() : null,
+              callsign: matchingState[1] ? matchingState[1].trim() : null,
+              origin_country: matchingState[2],
+              time_position: matchingState[3],
+              last_contact: matchingState[4],
+              longitude: matchingState[5],
+              latitude: matchingState[6],
+              baro_altitude: matchingState[7],
+              on_ground: matchingState[8],
+              velocity: matchingState[9],
+              true_track: matchingState[10],
+              vertical_rate: matchingState[11],
+              sensors: matchingState[12],
+              geo_altitude: matchingState[13],
+              squawk: matchingState[14],
+              spi: matchingState[15],
+              position_source: matchingState[16],
+              category: matchingState[17] || null,
+            };
+            
+            logger.info(`Found LIVE aircraft data for ${identifier} from OpenSky`, {
+              icao24: liveAircraft.icao24,
+              callsign: liveAircraft.callsign,
+              position: [liveAircraft.latitude, liveAircraft.longitude],
+              category: liveAircraft.category,
+            });
+            
+            return liveAircraft;
+          }
+        }
+      } catch (openSkyError) {
+        logger.warn(`OpenSky live search failed for ${identifier}, falling back to database`, {
+          error: openSkyError.message,
+        });
+      }
+      
+      // Fall back to database (old data)
       const results = await postgresRepository.findAircraftByIdentifier(identifier);
 
       if (results.length === 0) {
@@ -112,7 +168,7 @@ class AircraftService {
 
       const aircraft = results[0];
 
-      logger.info(`Found aircraft for identifier: ${identifier}`);
+      logger.info(`Found aircraft in DATABASE for identifier: ${identifier} (may be stale)`);
       return aircraft;
     } catch (error) {
       logger.error('Error in getAircraftByIdentifier', {
