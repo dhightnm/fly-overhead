@@ -5,6 +5,7 @@ import { useEffect, useCallback, useRef } from 'react';
 import { useMapEvents as useLeafletMapEvents } from 'react-leaflet';
 import type { Map as LeafletMap } from 'leaflet';
 import { aircraftService } from '../services';
+import { mergePlaneRecords } from '../utils/aircraftMerge';
 import type { Aircraft, StarlinkSatellite } from '../types';
 import type { AirportSearchResult } from '../types';
 
@@ -66,18 +67,39 @@ export const useMapDataFetcher = ({
       );
 
       if (aircraft) {
-        // Merge/update planes instead of replacing to preserve state when sidebar covers map
+        // Smart merge: only preserve recent planes, avoid accumulation
         setPlanes((prevPlanes) => {
-          // Create a map of existing planes by icao24 for quick lookup
+          const currentTime = Math.floor(Date.now() / 1000);
+          const maxAge = 5 * 60; // 5 minutes
+          
+          const normalizedAircraft = aircraft.map((plane) => ({
+            ...plane,
+            source: plane.source ?? 'database',
+            predicted: plane.predicted === true,
+          }));
+
           const existingPlanesMap = new Map(prevPlanes.map((p) => [p.icao24, p]));
-          // Merge new data with existing, keeping routes and other metadata
-          const mergedPlanes = aircraft.map((newPlane) => {
+          const newPlanesMap = new Map(normalizedAircraft.map((p) => [p.icao24, p]));
+          
+          // Merge new data with existing metadata
+          const mergedPlanes = normalizedAircraft.map((newPlane) => {
             const existing = existingPlanesMap.get(newPlane.icao24);
-            return existing ? { ...existing, ...newPlane } : newPlane;
+            return mergePlaneRecords(existing, newPlane);
           });
-          // Add any existing planes not in the new data (within bounds) to preserve them
-          const newPlanesMap = new Map(aircraft.map((p) => [p.icao24, true]));
-          const preservedPlanes = prevPlanes.filter((p) => !newPlanesMap.has(p.icao24));
+          
+          // Only preserve planes that:
+          // 1. Are NOT in the new data
+          // 2. Are less than 5 minutes old
+          // 3. OR have valid position data
+          const preservedPlanes = prevPlanes.filter((p) => {
+            if (newPlanesMap.has(p.icao24)) return false; // Already in new data
+            
+            const isRecent = !p.last_contact || (currentTime - p.last_contact) <= maxAge;
+            const hasPosition = p.latitude !== undefined && p.longitude !== undefined;
+            
+            return isRecent && hasPosition;
+          });
+          
           return [...mergedPlanes, ...preservedPlanes];
         });
       }

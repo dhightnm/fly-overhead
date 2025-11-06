@@ -315,6 +315,16 @@ class TrajectoryPredictionService {
         return aircraft;
       }
 
+      // Skip prediction for rotorcraft/helicopters (OpenSky category 7)
+      if (aircraft.category === 7) {
+        return aircraft;
+      }
+
+      // Skip prediction if velocity extremely low (< 50 m/s ~ 97 kts)
+      if (aircraft.velocity !== null && aircraft.velocity !== undefined && aircraft.velocity < 50) {
+        return aircraft;
+      }
+
       // Get route data from cache or database
       const cacheKey = aircraft.callsign || aircraft.icao24;
       let route = await postgresRepository.getCachedRoute(cacheKey);
@@ -417,6 +427,27 @@ class TrajectoryPredictionService {
       }
 
       // Predict position
+      const hasSameAirportRoute = route
+        && route.departureAirport?.icao
+        && route.arrivalAirport?.icao
+        && route.departureAirport.icao === route.arrivalAirport.icao;
+
+      const flightStatus = route?.flightStatus ? String(route.flightStatus).toLowerCase() : null;
+      const progressPercent = route?.progressPercent;
+      const routeAircraftDescriptor = (route?.aircraft?.type || route?.aircraft?.model || '').toString().toLowerCase();
+      const isRouteRotorcraft = /^(b0[0-9]|bk[0-9]|h[0-9]|ec[0-9]|as[0-9])/.test(routeAircraftDescriptor)
+        || routeAircraftDescriptor.includes('heli')
+        || routeAircraftDescriptor.includes('rotor')
+        || routeAircraftDescriptor.includes('jetranger')
+        || routeAircraftDescriptor.includes('longranger');
+
+      if (hasSameAirportRoute
+        || flightStatus === 'arrived'
+        || (typeof progressPercent === 'number' && progressPercent >= 100)
+        || isRouteRotorcraft) {
+        return aircraft;
+      }
+
       const predicted = this.predictPosition(aircraft, route, elapsedSeconds);
 
       if (predicted) {

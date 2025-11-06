@@ -13,33 +13,23 @@ const MapFlyToHandler = ({ searchLatlng, isFullscreen }) => {
       // Force map to recalculate size first
       map.invalidateSize();
       
-      // Wait for size recalculation
+      // Wait for size recalculation, then fly smoothly without second jump
       setTimeout(() => {
-        // In non-fullscreen mode, we need to pan to shift the view up
         if (!isFullscreen) {
           // Calculate a slight offset north to account for UI elements
           const offsetLat = searchLatlng[0] + 0.003; // Small northward shift
           map.flyTo([offsetLat, searchLatlng[1]], 13, {
-            duration: 1.5,
+            duration: 1.0,
             animate: true
           });
-          
-          // After animation, fine-tune the position
-          setTimeout(() => {
-            map.setView([offsetLat, searchLatlng[1]], 13);
-          }, 1600);
         } else {
           // Fullscreen mode - normal centering
           map.flyTo(searchLatlng, 13, {
-            duration: 1.5,
+            duration: 1.0,
             animate: true
           });
-          
-          setTimeout(() => {
-            map.setView(searchLatlng, 13);
-          }, 1600);
         }
-      }, 100);
+      }, 50);
       
       previousSearchLatlng.current = searchLatlng;
     }

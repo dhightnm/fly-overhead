@@ -14,7 +14,10 @@ class AircraftService {
     const response = await api.get<Aircraft[]>(
       `/api/area/${southWest.lat}/${southWest.lng}/${northEast.lat}/${northEast.lng}`
     );
-    return response.data;
+    return response.data.map((plane) => ({
+      ...plane,
+      source: plane.source ?? 'database',
+    }));
   }
 
   /**

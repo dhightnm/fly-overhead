@@ -3,6 +3,7 @@
  */
 import { useState, useCallback } from 'react';
 import { aircraftService } from '../services';
+import { mergePlaneRecords } from '../utils/aircraftMerge';
 import type { Aircraft } from '../types';
 
 interface UseAircraftDataReturn {
@@ -10,6 +11,7 @@ interface UseAircraftDataReturn {
   setPlanes: React.Dispatch<React.SetStateAction<Aircraft[]>>;
   searchAircraft: (query: string) => Promise<Aircraft | null>;
   updateAircraftCategory: (icao24: string, category: number) => void;
+  upsertPlane: (plane: Aircraft) => void;
 }
 
 export const useAircraftData = (): UseAircraftDataReturn => {
@@ -35,11 +37,33 @@ export const useAircraftData = (): UseAircraftDataReturn => {
     );
   }, []);
 
+  const upsertPlane = useCallback((plane: Aircraft) => {
+    if (!plane || !plane.icao24) {
+      return;
+    }
+
+    setPlanes((prevPlanes) => {
+      const existingIndex = prevPlanes.findIndex((p) => p.icao24 === plane.icao24);
+      if (existingIndex === -1) {
+        return [...prevPlanes, plane];
+      }
+
+      const existing = prevPlanes[existingIndex];
+      const updated = mergePlaneRecords(existing, plane);
+      return [
+        ...prevPlanes.slice(0, existingIndex),
+        updated,
+        ...prevPlanes.slice(existingIndex + 1),
+      ];
+    });
+  }, []);
+
   return {
     planes,
     setPlanes,
     searchAircraft,
     updateAircraftCategory,
+    upsertPlane,
   };
 };
 

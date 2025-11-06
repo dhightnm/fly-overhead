@@ -1,5 +1,5 @@
-import React, { useState, useContext, useEffect, useCallback, useRef } from 'react';
-import { MapContainer, Marker, Popup, TileLayer } from 'react-leaflet';
+import React, { useState, useContext, useEffect, useCallback, useRef, useMemo } from 'react';
+import { MapContainer, TileLayer } from 'react-leaflet';
 import PlaneMarker from '../../components/PlaneMarker';
 import SatMarker from '../../components/SatMarker';
 import AirportMarker from '../../components/AirportMarker';
@@ -16,15 +16,19 @@ import MapDataFetcher from './MapDataFetcher';
 import { useRouteData } from '../../hooks/useRouteData';
 import { useAircraftData } from '../../hooks/useAircraftData';
 import { aircraftService } from '../../services';
-import type { Aircraft, StarlinkSatellite } from '../../types';
+import { mergePlaneRecords } from '../../utils/aircraftMerge';
+import type { Aircraft, StarlinkSatellite, Route } from '../../types';
 import type { AirportSearchResult } from '../../types';
 import './Home.css';
+import { inferAircraftCategory } from '../../utils/aircraft';
+
+const MOVING_VELOCITY_THRESHOLD = 2; // knots
 
 const Home: React.FC = () => {
   const { isPremium } = useAuth();
   
   // Use hooks for data management
-  const { planes, setPlanes, searchAircraft: searchAircraftInHook, updateAircraftCategory } = useAircraftData();
+  const { planes, setPlanes, searchAircraft: searchAircraftInHook, updateAircraftCategory, upsertPlane } = useAircraftData();
   const { routes, flightPlanRoutes, routeAvailabilityStatus, fetchRouteForAircraft, fetchFlightPlanRoute } = useRouteData();
   
   const [showFlightPlanRoute, setShowFlightPlanRoute] = useState(false);
@@ -36,6 +40,7 @@ const Home: React.FC = () => {
   const [sidebarSearch, setSidebarSearch] = useState('');
   const [airportSearch, setAirportSearch] = useState('');
   const [showPremiumModal, setShowPremiumModal] = useState(false);
+  const [highlightedAircraftIcao24, setHighlightedAircraftIcao24] = useState<string | null>(null);
   const [airportSearchResults, setAirportSearchResults] = useState<AirportSearchResult[]>([]);
   const [searchStatus, setSearchStatus] = useState<'searching' | 'found' | 'not-found' | null>(null);
   const [showAirports, setShowAirports] = useState(true);
@@ -47,10 +52,102 @@ const Home: React.FC = () => {
   const [websocketEnabled] = useState(true);
   const [websocketConnected, setWebsocketConnected] = useState(false);
   const fetchDataRef = useRef<(() => Promise<void>) | null>(null);
+  const [manualPlanes, setManualPlanes] = useState<Record<string, Aircraft>>({});
 
   const contextValue = useContext(PlaneContext);
   const searchLatlng = contextValue ? contextValue.searchLatlng : userPosition;
   const position = searchLatlng || [35.104795500039565, -106.62620902061464];
+
+  const normalizeAircraft = useCallback((aircraft: Aircraft): Aircraft => {
+    const toNumber = (value: any) =>
+      value === null || value === undefined || value === '' ? value : Number(value);
+
+    return {
+      ...aircraft,
+      latitude: toNumber(aircraft.latitude) ?? aircraft.latitude,
+      longitude: toNumber(aircraft.longitude) ?? aircraft.longitude,
+      baro_altitude: toNumber(aircraft.baro_altitude) ?? aircraft.baro_altitude,
+      geo_altitude: toNumber((aircraft as any).geo_altitude) ?? (aircraft as any).geo_altitude,
+      velocity: toNumber(aircraft.velocity) ?? 0,
+      true_track: toNumber(aircraft.true_track) ?? aircraft.true_track,
+      vertical_rate: toNumber(aircraft.vertical_rate) ?? aircraft.vertical_rate,
+      last_contact: aircraft.last_contact || Math.floor(Date.now() / 1000),
+      category: aircraft.category ?? inferAircraftCategory(aircraft) ?? aircraft.category,
+      predicted: aircraft.predicted === true,
+      prediction_confidence: aircraft.prediction_confidence,
+    } as Aircraft;
+  }, []);
+
+  // Unified smart merge with age-based cleanup
+  const mergedPlanes = useMemo(() => {
+    if ((!planes || planes.length === 0) && Object.keys(manualPlanes).length === 0) {
+      return [] as Aircraft[];
+    }
+
+    const planeMap = new Map<string, Aircraft>();
+    const currentTime = Math.floor(Date.now() / 1000);
+    const maxAge = 5 * 60; // 5 minutes for cleanup
+
+    // Add live planes
+    planes.forEach((plane) => {
+      if (plane?.icao24) {
+        planeMap.set(plane.icao24, plane);
+      }
+    });
+
+    // Merge manual planes (from search), preserving them if recent or selected/highlighted
+    Object.values(manualPlanes).forEach((plane) => {
+      if (plane?.icao24) {
+        const isRecent = !plane.last_contact || (currentTime - plane.last_contact) <= maxAge;
+        const isSelected = selectedAircraft?.icao24 === plane.icao24;
+        const isHighlighted = highlightedAircraftIcao24 === plane.icao24;
+        
+        // Only keep manual planes that are recent OR actively selected/highlighted
+        if (isRecent || isSelected || isHighlighted) {
+          const existing = planeMap.get(plane.icao24);
+          planeMap.set(plane.icao24, existing ? { ...existing, ...plane } : plane);
+        }
+      }
+    });
+
+    return Array.from(planeMap.values());
+  }, [planes, manualPlanes, selectedAircraft?.icao24, highlightedAircraftIcao24]);
+
+  const visiblePlaneEntries = useMemo(() => {
+    if (!mergedPlanes || mergedPlanes.length === 0) {
+      return [] as Array<{ plane: Aircraft; route?: Route; derivedCategory?: number }>;
+    }
+
+    const currentTime = Math.floor(Date.now() / 1000);
+    const maxAge = 10 * 60;
+
+    const entries: Array<{ plane: Aircraft; route?: Route; derivedCategory?: number }> = [];
+
+    mergedPlanes.forEach((plane) => {
+      if (!plane || plane.latitude === undefined || plane.longitude === undefined) {
+        return;
+      }
+
+      const route = routes[plane.icao24];
+      const derivedCategory = inferAircraftCategory(plane, route);
+      const isRotorcraft = derivedCategory === 7 || plane.category === 7;
+
+      const isRecent = !plane.last_contact || (currentTime - plane.last_contact) <= maxAge;
+      const isSelected = selectedAircraft?.icao24 === plane.icao24;
+      const isHighlighted = highlightedAircraftIcao24 === plane.icao24;
+      const isManuallyAdded = manualPlanes[plane.icao24] !== undefined;
+
+      // Always show: selected, highlighted, manually searched, or rotorcraft
+      // Otherwise only show if recent
+      if (!isRecent && !isSelected && !isHighlighted && !isRotorcraft && !isManuallyAdded) {
+        return;
+      }
+
+      entries.push({ plane, route, derivedCategory });
+    });
+
+    return entries;
+  }, [mergedPlanes, routes, selectedAircraft?.icao24, highlightedAircraftIcao24, manualPlanes]);
 
   // Keep refs in sync with state for flight plan routes
   const flightPlanRoutesRef = useRef<Record<string, any>>({});
@@ -95,16 +192,80 @@ const Home: React.FC = () => {
       const aircraft = await searchAircraftInHook(sidebarSearch.trim());
       
       if (aircraft && aircraft.latitude && aircraft.longitude) {
-        contextValue.setSearchLatlng([aircraft.latitude, aircraft.longitude]);
+        const normalizedPlane = normalizeAircraft(aircraft);
+        const now = Math.floor(Date.now() / 1000);
+        const manualPlane: Aircraft = {
+          ...normalizedPlane,
+          last_contact: now,
+          predicted: false,
+          prediction_confidence: undefined,
+          source: 'manual',
+        };
+
+        upsertPlane(manualPlane);
+        if (manualPlane.icao24) {
+          setManualPlanes((prev) => ({
+            ...prev,
+            [manualPlane.icao24]: manualPlane,
+          }));
+        }
+        contextValue.setSearchLatlng([manualPlane.latitude, manualPlane.longitude]);
+        if (manualPlane.icao24) {
+          setHighlightedAircraftIcao24(manualPlane.icao24);
+          setSelectedAircraft({
+            icao24: manualPlane.icao24,
+            callsign: manualPlane.callsign || 'N/A',
+          });
+          
+          // Immediately fetch route data to get category and route info
+          fetchRouteForAircraftWithCategoryUpdate(manualPlane).then((routeData) => {
+            if (routeData && routeData.aircraftCategory !== undefined && routeData.aircraftCategory !== null) {
+              const updatedCategory = routeData.aircraftCategory;
+              
+              // Update in main planes state
+              setPlanes((prevPlanes) =>
+                prevPlanes.map((p) =>
+                  p.icao24 === manualPlane.icao24 ? { ...p, category: updatedCategory } : p
+                )
+              );
+              
+              // Update in manualPlanes
+              setManualPlanes((prev) => {
+                const existingManual = prev[manualPlane.icao24];
+                if (!existingManual) {
+                  return prev;
+                }
+                return {
+                  ...prev,
+                  [manualPlane.icao24]: {
+                    ...existingManual,
+                    category: updatedCategory,
+                    predicted: false,
+                    prediction_confidence: undefined,
+                  },
+                };
+              });
+            }
+          }).catch((err) => {
+            console.error('Error fetching route for searched aircraft:', err);
+          });
+          
+          // Also prefetch flight plan route
+          fetchFlightPlanRoute(manualPlane).catch((err) => {
+            console.error('Error fetching flight plan for searched aircraft:', err);
+          });
+        }
         setSearchStatus('found');
         setSidebarSearch('');
         setTimeout(() => setSearchStatus(null), 3000);
       } else {
+        setHighlightedAircraftIcao24(null);
         setSearchStatus('not-found');
         setTimeout(() => setSearchStatus(null), 3000);
       }
     } catch (err) {
       console.error("Error searching for aircraft:", err);
+      setHighlightedAircraftIcao24(null);
       setSearchStatus('not-found');
       setTimeout(() => setSearchStatus(null), 3000);
     }
@@ -133,14 +294,42 @@ const Home: React.FC = () => {
   }, [fetchRouteForAircraft, updateAircraftCategory]);
 
   const handleViewHistory = async (plane: Aircraft) => {
-    await fetchRouteForAircraftWithCategoryUpdate(plane);
-    await fetchFlightPlanRoute(plane);
-    
+    // Immediately set selection and highlight
     setSelectedAircraft({
       icao24: plane.icao24,
       callsign: plane.callsign || 'N/A',
     });
+    setHighlightedAircraftIcao24(plane.icao24);
     setHistoryModalOpen(true);
+
+    // Fetch route data in parallel
+    const [routeData] = await Promise.all([
+      fetchRouteForAircraftWithCategoryUpdate(plane),
+      fetchFlightPlanRoute(plane),
+    ]);
+
+    // Update category in both planes state and manualPlanes if we got route data
+    if (routeData && routeData.aircraftCategory !== undefined && routeData.aircraftCategory !== null) {
+      const updatedCategory = routeData.aircraftCategory;
+      
+      // Update in main planes state
+      setPlanes((prevPlanes) =>
+        prevPlanes.map((p) =>
+          p.icao24 === plane.icao24 ? { ...p, category: updatedCategory } : p
+        )
+      );
+      
+      // Update in manualPlanes if it exists there
+      setManualPlanes((prev) => {
+        if (prev[plane.icao24]) {
+          return {
+            ...prev,
+            [plane.icao24]: { ...prev[plane.icao24], category: updatedCategory },
+          };
+        }
+        return prev;
+      });
+    }
   };
 
   // Fetch flight plan route when toggle is enabled and aircraft is selected
@@ -155,7 +344,7 @@ const Home: React.FC = () => {
       }
       
       const timer = setTimeout(() => {
-        const plane = planes.find(p => p.icao24 === aircraftKey);
+        const plane = mergedPlanes.find(p => p.icao24 === aircraftKey);
         if (plane) {
           const existingRoute = flightPlanRoutesRef.current[plane.icao24];
           const existingStatus = routeAvailabilityStatusRef.current[plane.icao24];
@@ -174,7 +363,7 @@ const Home: React.FC = () => {
       fetchedRouteForAircraftRef.current.clear();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showFlightPlanRoute, selectedAircraft?.icao24, planes, fetchFlightPlanRoute]);
+  }, [showFlightPlanRoute, selectedAircraft?.icao24, mergedPlanes, fetchFlightPlanRoute]);
 
   const handleAirportSearch = async () => {
     if (!airportSearch.trim() || airportSearch.trim().length < 2) {
@@ -222,39 +411,38 @@ const Home: React.FC = () => {
   }, [airportSearch]);
 
   const renderPlanes = () => {
-    if (!planes || planes.length === 0) {
+    if (!visiblePlaneEntries || visiblePlaneEntries.length === 0) {
       return <p>No planes to display.</p>;
     }
 
-    const currentTime = Math.floor(Date.now() / 1000);
-    const maxAge = 10 * 60;
+    return visiblePlaneEntries.map(({ plane, route, derivedCategory }) => {
+      const isSelected = selectedAircraft?.icao24 === plane.icao24;
+      const isHighlighted = highlightedAircraftIcao24 === plane.icao24;
 
-    return planes.map((plane: Aircraft) => {
-      if (plane.last_contact && (currentTime - plane.last_contact) > maxAge) {
-        return null;
-      }
-      
-      if (plane.velocity > 2) {
-        return <PlaneMarker 
-          key={plane.id || plane.icao24} 
-          plane={plane} 
-          route={routes[plane.icao24]}
-          onMarkerClick={async (isPrefetch = false) => {
-            if (!isPrefetch) {
-              setSelectedAircraft({
-                icao24: plane.icao24,
-                callsign: plane.callsign || 'N/A',
-              });
-            }
-            
-            await Promise.all([
-              fetchRouteForAircraftWithCategoryUpdate(plane, isPrefetch),
-              fetchFlightPlanRoute(plane)
-            ]);
-          }}
-        />;
-      }
-      return null;
+      return (
+      <PlaneMarker
+        key={plane.icao24}
+        plane={plane}
+        route={route}
+        categoryOverride={derivedCategory}
+        isSelected={isSelected}
+        isHighlighted={isHighlighted}
+        onMarkerClick={async (isPrefetch = false) => {
+          if (!isPrefetch) {
+            setSelectedAircraft({
+              icao24: plane.icao24,
+              callsign: plane.callsign || 'N/A',
+            });
+            setHighlightedAircraftIcao24(plane.icao24);
+          }
+
+          await Promise.all([
+            fetchRouteForAircraftWithCategoryUpdate(plane, isPrefetch),
+            fetchFlightPlanRoute(plane),
+          ]);
+        }}
+      />
+      );
     });
   };
 
@@ -284,7 +472,7 @@ const Home: React.FC = () => {
       <div className={`aircraft-sidebar ${sidebarOpen ? 'open' : 'closed'}`}>
         <div className="sidebar-header">
           <h2>Aircraft on Screen</h2>
-          <p className="aircraft-count">{planes.filter(p => p.velocity > 2).length} active</p>
+          <p className="aircraft-count">{visiblePlaneEntries.length} in view</p>
         </div>
         
         <div className="sidebar-search">
@@ -527,13 +715,8 @@ const Home: React.FC = () => {
         )}
 
         <div className="aircraft-list">
-          {planes.filter(p => {
-            const currentTime = Math.floor(Date.now() / 1000);
-            const maxAge = 10 * 60;
-            const isRecent = !p.last_contact || (currentTime - p.last_contact) <= maxAge;
-            return p.velocity > 2 && isRecent;
-          }).map((plane: Aircraft) => (
-            <div key={plane.id || plane.icao24} className="aircraft-item">
+          {visiblePlaneEntries.map(({ plane }) => (
+            <div key={plane.icao24} className="aircraft-item">
               <div className="aircraft-header">
                 <span className="aircraft-callsign">{plane.callsign || 'N/A'}</span>
                 <span className="aircraft-icao">{plane.icao24}</span>
@@ -564,7 +747,7 @@ const Home: React.FC = () => {
               </div>
             </div>
           ))}
-          {planes.filter(p => p.velocity > 2).length === 0 && (
+          {visiblePlaneEntries.length === 0 && (
             <p className="no-aircraft">No aircraft in view</p>
           )}
         </div>
@@ -616,13 +799,24 @@ const Home: React.FC = () => {
                     }).then((aircraft) => {
                       if (aircraft) {
                         setPlanes((prevPlanes) => {
+                          const currentTime = Math.floor(Date.now() / 1000);
+                          const maxAge = 5 * 60;
+                          
                           const existingPlanesMap = new Map(prevPlanes.map(p => [p.icao24, p]));
+                          const newPlanesMap = new Map(aircraft.map(p => [p.icao24, p]));
+                          
                           const mergedPlanes = aircraft.map(newPlane => {
                             const existing = existingPlanesMap.get(newPlane.icao24);
-                            return existing ? { ...existing, ...newPlane } : newPlane;
+                            return mergePlaneRecords(existing, newPlane);
                           });
-                          const newPlanesMap = new Map(aircraft.map(p => [p.icao24, true]));
-                          const preservedPlanes = prevPlanes.filter(p => !newPlanesMap.has(p.icao24));
+                          
+                          const preservedPlanes = prevPlanes.filter(p => {
+                            if (newPlanesMap.has(p.icao24)) return false;
+                            const isRecent = !p.last_contact || (currentTime - p.last_contact) <= maxAge;
+                            const hasPosition = p.latitude !== undefined && p.longitude !== undefined;
+                            return isRecent && hasPosition;
+                          });
+                          
                           return [...mergedPlanes, ...preservedPlanes];
                         });
                         console.log(`WebSocket: Refreshed ${aircraft.length} aircraft positions (fallback)`);
@@ -637,13 +831,30 @@ const Home: React.FC = () => {
                 
                 if (update.type === 'full' && Array.isArray(update.data)) {
                   setPlanes((prevPlanes) => {
+                    const currentTime = Math.floor(Date.now() / 1000);
+                    const maxAge = 5 * 60;
+                    
+                    const normalizedUpdate = update.data.map((plane: Aircraft) => ({
+                      ...plane,
+                      source: plane.source ?? (update.type === 'full' ? 'websocket' : 'database'),
+                      predicted: plane.predicted === true,
+                    }));
+
                     const existingPlanesMap = new Map(prevPlanes.map(p => [p.icao24, p]));
-                    const mergedPlanes = update.data.map((newPlane: Aircraft) => {
+                    const newPlanesMap = new Map(normalizedUpdate.map(p => [p.icao24, p]));
+
+                    const mergedPlanes = normalizedUpdate.map(newPlane => {
                       const existing = existingPlanesMap.get(newPlane.icao24);
-                      return existing ? { ...existing, ...newPlane } : newPlane;
+                      return mergePlaneRecords(existing, newPlane);
                     });
-                    const newPlanesMap = new Map(update.data.map((p: Aircraft) => [p.icao24, true]));
-                    const preservedPlanes = prevPlanes.filter(p => !newPlanesMap.has(p.icao24));
+                    
+                    const preservedPlanes = prevPlanes.filter(p => {
+                      if (newPlanesMap.has(p.icao24)) return false;
+                      const isRecent = !p.last_contact || (currentTime - p.last_contact) <= maxAge;
+                      const hasPosition = p.latitude !== undefined && p.longitude !== undefined;
+                      return isRecent && hasPosition;
+                    });
+                    
                     return [...mergedPlanes, ...preservedPlanes];
                   });
                   console.log('WebSocket: Applied full aircraft update (merged)');
@@ -655,11 +866,6 @@ const Home: React.FC = () => {
             attribution='&copy; <a href="http://osm.org/copyright">OpenStreetMap</a> contributors'
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           />
-          <Marker position={position}>
-            <Popup>
-              A pretty CSS3 popup. <br /> Easily customizable.
-            </Popup>
-          </Marker>
           {renderStarlink()}
           {renderPlanes()}
           {showAirports && airports
@@ -671,12 +877,12 @@ const Home: React.FC = () => {
                 onAirportClick={handleAirportSelect}
               />
             ))}
-        {showHeatmap && planes.length > 0 && (
+        {showHeatmap && mergedPlanes.length > 0 && (
           <HeatmapLayer
-            points={planes.filter(plane => {
+            points={mergedPlanes.filter(plane => {
               const currentTime = Math.floor(Date.now() / 1000);
               const maxAge = 10 * 60;
-              return plane.velocity > 2 && (!plane.last_contact || (currentTime - plane.last_contact) <= maxAge);
+              return (plane.velocity ?? 0) > MOVING_VELOCITY_THRESHOLD && (!plane.last_contact || (currentTime - plane.last_contact) <= maxAge);
             }).map(plane => ({
               latitude: plane.latitude,
               longitude: plane.longitude,

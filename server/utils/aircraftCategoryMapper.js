@@ -92,9 +92,13 @@ const CATEGORY_PATTERNS = {
     /rotorcraft/i,
     /^AS[0-9]{3}$/, // Airbus helicopters
     /^EC[0-9]{3}$/, // Eurocopter
-    /^BK[0-9]{3}$/, // Bell
+    /^BK[0-9]{3}$/, // Bell (BK designation)
+    /^B[0-9]{2}$/, // Bell (B06, B12, etc.)
+    /^B[0-9]{3}$/, // Bell (B206, B407, etc.)
     /^R44$/, // Robinson R44
     /^R66$/, // Robinson R66
+    /jetranger/i, // Bell JetRanger
+    /longranger/i, // Bell LongRanger
   ],
 
   // Category 8: Glider

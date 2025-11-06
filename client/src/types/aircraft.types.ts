@@ -17,6 +17,17 @@ export interface Aircraft {
   category?: number | null;
   last_contact?: number | null;
   id?: string;
+  type?: string | null;
+  typecode?: string | null;
+  type_code?: string | null;
+  aircraft_type?: string | null;
+  aircraft_model?: string | null;
+  model?: string | null;
+  manufacturer?: string | null;
+  description?: string | null;
+  source?: 'manual' | 'live' | 'websocket' | 'database' | string;
+  predicted?: boolean;
+  prediction_confidence?: number;
 }
 
 export interface Airport {
