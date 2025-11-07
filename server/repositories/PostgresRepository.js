@@ -3,6 +3,7 @@ const crypto = require('crypto');
 const config = require('../config');
 const logger = require('../utils/logger');
 const PostGISService = require('../services/PostGISService');
+const { mapAircraftType } = require('../utils/aircraftCategoryMapper');
 
 /**
  * Repository pattern for PostgreSQL data access
@@ -140,11 +141,19 @@ class PostgresRepository {
         ) THEN
           ALTER TABLE flight_routes_cache ADD COLUMN source TEXT;
         END IF;
+        -- Add aircraft_type column if it doesn't exist
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns 
+          WHERE table_name='flight_routes_cache' AND column_name='aircraft_type'
+        ) THEN
+          ALTER TABLE flight_routes_cache ADD COLUMN aircraft_type TEXT;
+        END IF;
       END $$;
       
       CREATE INDEX IF NOT EXISTS idx_routes_cache_key ON flight_routes_cache(cache_key);
       CREATE INDEX IF NOT EXISTS idx_routes_icao24 ON flight_routes_cache(icao24);
       CREATE INDEX IF NOT EXISTS idx_routes_callsign ON flight_routes_cache(callsign);
+      CREATE INDEX IF NOT EXISTS idx_routes_cache_aircraft_type ON flight_routes_cache(aircraft_type);
     `;
     await this.db.query(cacheQuery);
 
@@ -495,24 +504,39 @@ class PostgresRepository {
     // Try PostGIS spatial query first (faster with GIST spatial index on large datasets)
     // ST_Contains with ST_MakeEnvelope handles bounding box queries efficiently
     // Falls back to BETWEEN if geom is NULL (for backwards compatibility)
+    // LEFT JOIN with flight_routes_cache to get route data immediately (no API call needed)
     const query = `
-      SELECT * 
-      FROM aircraft_states
-      WHERE last_contact >= $1
+      SELECT 
+        a.*,
+        c.departure_iata,
+        c.departure_icao,
+        c.departure_name,
+        c.arrival_iata,
+        c.arrival_icao,
+        c.arrival_name,
+        c.aircraft_type,
+        c.source as route_source,
+        c.created_at as route_created_at
+      FROM aircraft_states a
+      LEFT JOIN flight_routes_cache c ON (
+        (c.cache_key = a.callsign AND a.callsign IS NOT NULL AND a.callsign != '')
+        OR c.cache_key = a.icao24
+      )
+      WHERE a.last_contact >= $1
         AND (
           -- Use PostGIS spatial query when geom is available (preferred, uses spatial index)
-          (geom IS NOT NULL 
+          (a.geom IS NOT NULL 
            AND ST_Contains(
              ST_MakeEnvelope($4, $2, $5, $3, 4326), -- lonmin, latmin, lonmax, latmax
-             geom
+             a.geom
            ))
           OR
           -- Fallback to BETWEEN when geom is NULL (backwards compatibility)
-          (geom IS NULL
-           AND latitude BETWEEN $2 AND $3
-           AND longitude BETWEEN $4 AND $5)
+          (a.geom IS NULL
+           AND a.latitude BETWEEN $2 AND $3
+           AND a.longitude BETWEEN $4 AND $5)
         )
-      ORDER BY last_contact DESC
+      ORDER BY a.last_contact DESC
     `;
     return this.db.manyOrNone(query, [recentContactThreshold, latmin, latmax, lonmin, lonmax]);
   }
@@ -611,9 +635,9 @@ class PostgresRepository {
           cache_key, callsign, icao24,
           departure_iata, departure_icao, departure_name,
           arrival_iata, arrival_icao, arrival_name,
-          source
+          source, aircraft_type
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
         ON CONFLICT (cache_key) DO UPDATE SET
           last_used = CURRENT_TIMESTAMP,
           departure_iata = EXCLUDED.departure_iata,
@@ -622,14 +646,18 @@ class PostgresRepository {
           arrival_iata = EXCLUDED.arrival_iata,
           arrival_icao = EXCLUDED.arrival_icao,
           arrival_name = EXCLUDED.arrival_name,
-          source = EXCLUDED.source;
+          source = EXCLUDED.source,
+          aircraft_type = EXCLUDED.aircraft_type;
       `;
 
       const sourceValue = routeData.source || null;
+      const aircraftType = routeData.aircraft?.type || routeData.aircraft_type || null;
+      
       logger.info('About to insert route with source value', {
         cacheKey,
         sourceValue,
         sourceType: typeof sourceValue,
+        aircraftType,
       });
 
       await this.db.query(query, [
@@ -643,7 +671,24 @@ class PostgresRepository {
         routeData.arrivalAirport?.icao || null,
         routeData.arrivalAirport?.name || null,
         sourceValue, // Use explicit variable instead of inline
+        aircraftType,
       ]);
+
+      // Update aircraft category if we have aircraft_type (Option 3: Store category)
+      // This ensures icons are correct on load even without route data
+      if (routeData.icao24 && aircraftType) {
+        const aircraftInfo = mapAircraftType(aircraftType);
+        if (aircraftInfo.category !== null) {
+          // Update asynchronously to not block route caching
+          this.updateAircraftCategory(routeData.icao24, aircraftInfo.category)
+            .catch((err) => {
+              logger.debug('Failed to update aircraft category when caching route', {
+                icao24: routeData.icao24,
+                error: err.message,
+              });
+            });
+        }
+      }
 
       logger.info('Route cached successfully', { cacheKey, source: sourceValue });
     } catch (error) {
@@ -669,7 +714,7 @@ class PostgresRepository {
       SELECT 
         departure_iata, departure_icao, departure_name,
         arrival_iata, arrival_icao, arrival_name,
-        source,
+        source, aircraft_type,
         created_at
       FROM flight_routes_cache
       WHERE cache_key = $1
@@ -706,6 +751,9 @@ class PostgresRepository {
         name: result.arrival_name,
       },
       source: result.source,
+      aircraft: result.aircraft_type ? {
+        type: result.aircraft_type,
+      } : undefined,
     };
   }
 
@@ -1438,7 +1486,8 @@ class PostgresRepository {
    * Create users table
    */
   async createUsersTable() {
-    const query = `
+    // First, create the table if it doesn't exist (without google_id initially for compatibility)
+    const createTableQuery = `
       CREATE TABLE IF NOT EXISTS users (
         id SERIAL PRIMARY KEY,
         email TEXT NOT NULL UNIQUE,
@@ -1452,7 +1501,59 @@ class PostgresRepository {
       
       CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
     `;
-    await this.db.query(query);
+    await this.db.query(createTableQuery);
+    
+    // Now run migrations to add google_id support
+    try {
+      // Check if google_id column exists
+      const columnCheck = await this.db.oneOrNone(`
+        SELECT column_name 
+        FROM information_schema.columns 
+        WHERE table_name = 'users' AND column_name = 'google_id'
+      `);
+      
+      if (!columnCheck) {
+        logger.info('Adding google_id column to users table');
+        // Make password nullable first (in case it's NOT NULL)
+        await this.db.query(`
+          ALTER TABLE users 
+          ALTER COLUMN password DROP NOT NULL;
+        `);
+        
+        // Add google_id column
+        await this.db.query(`
+          ALTER TABLE users 
+          ADD COLUMN google_id TEXT UNIQUE;
+        `);
+        
+        // Create index
+        await this.db.query(`
+          CREATE INDEX IF NOT EXISTS idx_users_google_id ON users(google_id);
+        `);
+        
+        // Add constraint
+        await this.db.query(`
+          DO $$
+          BEGIN
+            IF NOT EXISTS (
+              SELECT 1 FROM pg_constraint WHERE conname = 'password_or_google'
+            ) THEN
+              ALTER TABLE users ADD CONSTRAINT password_or_google 
+              CHECK (password IS NOT NULL OR google_id IS NOT NULL);
+            END IF;
+          END $$;
+        `);
+        
+        logger.info('Successfully migrated users table to support Google OAuth');
+      } else {
+        logger.info('Users table already has google_id column');
+      }
+    } catch (error) {
+      logger.error('Error migrating users table for Google OAuth', { error: error.message });
+      // Don't throw - allow server to continue, but log the error
+      // The migration can be run manually if needed
+    }
+    
     logger.info('Users table created or already exists');
   }
 
@@ -1462,6 +1563,14 @@ class PostgresRepository {
   async getUserByEmail(email) {
     const query = 'SELECT * FROM users WHERE email = $1';
     return this.db.oneOrNone(query, [email]);
+  }
+
+  /**
+   * Get user by Google ID
+   */
+  async getUserByGoogleId(googleId) {
+    const query = 'SELECT * FROM users WHERE google_id = $1';
+    return this.db.oneOrNone(query, [googleId]);
   }
 
   /**
@@ -1476,13 +1585,55 @@ class PostgresRepository {
    * Create new user
    */
   async createUser(userData) {
-    const { email, password, name, isPremium } = userData;
+    const { email, password, name, isPremium, googleId } = userData;
     const query = `
-      INSERT INTO users (email, password, name, is_premium)
-      VALUES ($1, $2, $3, $4)
+      INSERT INTO users (email, password, name, is_premium, google_id)
+      VALUES ($1, $2, $3, $4, $5)
       RETURNING id, email, name, is_premium, created_at
     `;
-    return this.db.one(query, [email, password, name, isPremium || false]);
+    return this.db.one(query, [email, password || null, name, isPremium || false, googleId || null]);
+  }
+
+  /**
+   * Create or update user from Google OAuth
+   */
+  async createOrUpdateGoogleUser(googleProfile) {
+    const { id: googleId, email, name, picture } = googleProfile;
+    
+    // Check if user exists by Google ID
+    let user = await this.getUserByGoogleId(googleId);
+    
+    if (user) {
+      // Update existing user
+      const query = `
+        UPDATE users 
+        SET email = $1, name = $2, updated_at = CURRENT_TIMESTAMP
+        WHERE google_id = $3
+        RETURNING id, email, name, is_premium, created_at
+      `;
+      return this.db.one(query, [email, name, googleId]);
+    }
+    
+    // Check if user exists by email (account linking)
+    user = await this.getUserByEmail(email);
+    if (user) {
+      // Link Google account to existing user
+      const query = `
+        UPDATE users 
+        SET google_id = $1, updated_at = CURRENT_TIMESTAMP
+        WHERE email = $2
+        RETURNING id, email, name, is_premium, created_at
+      `;
+      return this.db.one(query, [googleId, email]);
+    }
+    
+    // Create new user
+    return this.createUser({
+      email,
+      name,
+      googleId,
+      isPremium: false,
+    });
   }
 
   /**

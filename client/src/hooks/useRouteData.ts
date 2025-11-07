@@ -11,6 +11,7 @@ interface UseRouteDataReturn {
   routeAvailabilityStatus: Record<string, RouteAvailabilityStatus>;
   fetchRouteForAircraft: (plane: Aircraft, isPrefetch?: boolean) => Promise<Route | null>;
   fetchFlightPlanRoute: (plane: Aircraft) => Promise<FlightPlanRoute | null>;
+  setRoute: (icao24: string, route: Route) => void; // Expose setter for preloaded routes
 }
 
 export const useRouteData = (): UseRouteDataReturn => {
@@ -129,12 +130,24 @@ export const useRouteData = (): UseRouteDataReturn => {
     []
   );
 
+  // Set route data (for preloaded routes from aircraft response)
+  const setRoute = useCallback((icao24: string, route: Route) => {
+    setRoutes((prev) => {
+      // Only set if not already present (don't overwrite user-fetched routes)
+      if (!prev[icao24]) {
+        return { ...prev, [icao24]: route };
+      }
+      return prev;
+    });
+  }, []);
+
   return {
     routes,
     flightPlanRoutes,
     routeAvailabilityStatus,
     fetchRouteForAircraft,
     fetchFlightPlanRoute,
+    setRoute,
   };
 };
 

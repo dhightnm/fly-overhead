@@ -66,7 +66,13 @@ interface PlaneMarkerProps {
 }
 
 function getIconForPlane(plane: Aircraft, route?: Route, categoryOverride?: number) {
-  const derivedCategory = categoryOverride ?? inferAircraftCategory(plane, route);
+  // Priority order for category:
+  // 1. categoryOverride (from inferAircraftCategory)
+  // 2. route.aircraft?.category (from backend, most reliable)
+  // 3. plane.category (from aircraft_states, may be unreliable)
+  // 4. default
+  const routeCategory = route?.aircraft?.category;
+  const derivedCategory = categoryOverride ?? routeCategory ?? inferAircraftCategory(plane, route);
   const categoryKey = derivedCategory ?? plane.category ?? 'default';
   const iconFile = CATEGORY_ICON_MAP[categoryKey] || CATEGORY_ICON_MAP.default;
   return L.icon({
@@ -82,12 +88,19 @@ function getCategoryLabel(plane: Aircraft) {
 }
 
 function getAircraftDisplayType(plane: Aircraft, route?: Route) {
+  // If we have both model and type from route, show "Model - Type" format
+  if (route?.aircraft?.model && route?.aircraft?.type) {
+    return `${route.aircraft.model} - ${route.aircraft.type}`;
+  }
+  // If we only have model, show model
   if (route?.aircraft?.model) {
     return route.aircraft.model;
   }
+  // If we only have type (ICAO code), show it
   if (route?.aircraft?.type) {
     return route.aircraft.type;
   }
+  // Fallback to category label
   return getCategoryLabel(plane);
 }
 

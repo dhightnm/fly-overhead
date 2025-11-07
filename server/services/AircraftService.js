@@ -5,6 +5,7 @@ const trajectoryPredictionService = require('./TrajectoryPredictionService');
 const webSocketService = require('./WebSocketService');
 const config = require('../config');
 const logger = require('../utils/logger');
+const { mapAircraftType } = require('../utils/aircraftCategoryMapper');
 
 /**
  * Business logic layer for aircraft operations
@@ -180,8 +181,79 @@ class AircraftService {
   }
 
   /**
+   * Enrich aircraft data with route information and model/type
+   * Takes raw database result (with JOINed route data) and formats it for frontend
+   */
+  // eslint-disable-next-line class-methods-use-this
+  _enrichAircraftWithRoute(aircraft) {
+    const enriched = { ...aircraft };
+
+    // Extract route data if available
+    const hasRouteData = aircraft.departure_icao || aircraft.departure_iata 
+      || aircraft.arrival_icao || aircraft.arrival_iata 
+      || aircraft.aircraft_type;
+
+    if (hasRouteData) {
+      // Build route object
+      enriched.route = {
+        departureAirport: (aircraft.departure_icao || aircraft.departure_iata) ? {
+          icao: aircraft.departure_icao || null,
+          iata: aircraft.departure_iata || null,
+          name: aircraft.departure_name || null,
+        } : null,
+        arrivalAirport: (aircraft.arrival_icao || aircraft.arrival_iata) ? {
+          icao: aircraft.arrival_icao || null,
+          iata: aircraft.arrival_iata || null,
+          name: aircraft.arrival_name || null,
+        } : null,
+        source: aircraft.route_source || null,
+      };
+
+      // Enrich with aircraft model/type if aircraft_type is available
+      if (aircraft.aircraft_type) {
+        const aircraftInfo = mapAircraftType(aircraft.aircraft_type);
+        enriched.route.aircraft = {
+          type: aircraftInfo.type, // Display type (e.g., "Heavy", "Plane") - matches frontend expectation
+          model: aircraftInfo.model, // Human-readable model (e.g., "737-800")
+          category: aircraftInfo.category, // Category code for icon selection
+        };
+
+        // Update category in aircraft if not set or unreliable (0)
+        // This ensures icons are correct on load
+        if (aircraftInfo.category !== null 
+          && (enriched.category === null || enriched.category === 0)) {
+          enriched.category = aircraftInfo.category;
+          
+          // Update category in database asynchronously (don't block response)
+          postgresRepository.updateAircraftCategory(enriched.icao24, aircraftInfo.category)
+            .catch((err) => {
+              logger.debug('Failed to update aircraft category', {
+                icao24: enriched.icao24,
+                error: err.message,
+              });
+            });
+        }
+      }
+    }
+
+    // Clean up route-specific fields from main aircraft object
+    delete enriched.departure_iata;
+    delete enriched.departure_icao;
+    delete enriched.departure_name;
+    delete enriched.arrival_iata;
+    delete enriched.arrival_icao;
+    delete enriched.arrival_name;
+    delete enriched.aircraft_type;
+    delete enriched.route_source;
+    delete enriched.route_created_at;
+
+    return enriched;
+  }
+
+  /**
    * Get aircraft within geographical bounds (with trajectory prediction)
    * Uses route data to extrapolate positions between real API updates
+   * Now includes route data from cache (no API call needed if cached)
    */
   // eslint-disable-next-line class-methods-use-this
   async getAircraftInBounds(latmin, lonmin, latmax, lonmax) {
@@ -197,11 +269,24 @@ class AircraftService {
         tenMinutesAgo,
       );
 
-      const enhanced = await trajectoryPredictionService.enhanceAircraftWithPredictions(results);
+      // Enrich with route data and model/type
+      const enrichedWithRoutes = results.map((aircraft) => 
+        this._enrichAircraftWithRoute(aircraft)
+      );
+
+      const enhanced = await trajectoryPredictionService.enhanceAircraftWithPredictions(
+        enrichedWithRoutes
+      );
 
       const predictedCount = enhanced.filter(a => a.predicted).length;
+      const routesCount = enhanced.filter(a => a.route).length;
+      
       if (predictedCount > 0) {
         logger.debug(`Applied trajectory predictions to ${predictedCount}/${enhanced.length} aircraft`);
+      }
+      
+      if (routesCount > 0) {
+        logger.info(`Included route data for ${routesCount}/${enhanced.length} aircraft (from cache)`);
       }
 
       logger.info(`Returning ${enhanced.length} aircraft still flying`);

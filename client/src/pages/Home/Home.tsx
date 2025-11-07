@@ -29,7 +29,23 @@ const Home: React.FC = () => {
   
   // Use hooks for data management
   const { planes, setPlanes, searchAircraft: searchAircraftInHook, updateAircraftCategory, upsertPlane } = useAircraftData();
-  const { routes, flightPlanRoutes, routeAvailabilityStatus, fetchRouteForAircraft, fetchFlightPlanRoute } = useRouteData();
+  const { routes, flightPlanRoutes, routeAvailabilityStatus, fetchRouteForAircraft, fetchFlightPlanRoute, setRoute } = useRouteData();
+  
+  // Extract route data from aircraft responses and store in routes state
+  // This ensures route data is available immediately without API calls
+  useEffect(() => {
+    planes.forEach((plane) => {
+      if (plane.route && plane.icao24) {
+        // Store route data from aircraft response in routes state
+        // This makes it available for other components that use routes state
+        setRoute(plane.icao24, {
+          ...plane.route,
+          icao24: plane.icao24,
+          callsign: plane.callsign || null,
+        });
+      }
+    });
+  }, [planes, setRoute]);
   
   const [showFlightPlanRoute, setShowFlightPlanRoute] = useState(false);
   const [starlink, setStarlink] = useState<StarlinkSatellite[]>([]);
@@ -128,7 +144,8 @@ const Home: React.FC = () => {
         return;
       }
 
-      const route = routes[plane.icao24];
+      // Use route from aircraft response (preloaded) if available, otherwise use routes state
+      const route = plane.route || routes[plane.icao24];
       const derivedCategory = inferAircraftCategory(plane, route);
       const isRotorcraft = derivedCategory === 7 || plane.category === 7;
 

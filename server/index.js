@@ -49,8 +49,18 @@ app.use(cors({
 app.use(express.json());
 app.use(requestLogger);
 
-// Serve static files from React build
-app.use(express.static(path.join(__dirname, 'client/build')));
+// Serve static files from React build (if build directory exists)
+const buildPath = path.join(__dirname, 'client/build');
+const fs = require('fs');
+const buildExists = fs.existsSync(buildPath);
+
+if (buildExists) {
+  app.use(express.static(buildPath));
+  logger.info('Serving static files from React build');
+} else {
+  logger.warn('React build directory not found. Static file serving disabled.');
+  logger.warn('Run "npm run build" in the client directory to create the build.');
+}
 
 // API Routes
 app.use('/api/auth', require('./routes/auth.routes'));
@@ -60,7 +70,15 @@ app.use('/api', require('./routes/health.routes'));
 // Catch-all handler: send back React's index.html for client-side routing
 // This must be AFTER API routes and BEFORE error handler
 app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, 'client/build/index.html'));
+  // Only serve index.html if build exists, otherwise return 404
+  if (buildExists) {
+    res.sendFile(path.join(__dirname, 'client/build/index.html'));
+  } else {
+    res.status(404).json({ 
+      error: 'Frontend build not found. Please build the client application.',
+      message: 'Run "npm run build" in the client directory.'
+    });
+  }
 });
 
 // Error handling (must be last)

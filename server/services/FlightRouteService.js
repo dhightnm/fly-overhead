@@ -3,6 +3,7 @@ const config = require('../config');
 const logger = require('../utils/logger');
 const postgresRepository = require('../repositories/PostgresRepository');
 const openSkyService = require('./OpenSkyService');
+const { mapAircraftType } = require('../utils/aircraftCategoryMapper');
 
 /**
  * Service for fetching flight route information (departure/arrival airports)
@@ -120,15 +121,15 @@ class FlightRouteService {
     if (!allowExpensiveApis && this.cache.has(cacheKey)) {
       logger.info('Route cache HIT (in-memory) - skipping API call', { cacheKey, icao24, callsign });
       const cachedRoute = this.cache.get(cacheKey);
-      // Try to get aircraft data from route history if available
-      if (!cachedRoute.aircraft) {
-        const routeHistory = await postgresRepository.getLatestRouteHistory(icao24, callsign);
-        if (routeHistory?.aircraft_type || routeHistory?.aircraft_model) {
-          cachedRoute.aircraft = {
-            type: routeHistory.aircraft_type || null,
-            model: routeHistory.aircraft_model || routeHistory.aircraft_type || null,
-          };
-        }
+      // Enrich with model/type if we have aircraft_type
+      if (cachedRoute.aircraft?.type) {
+        const aircraftInfo = mapAircraftType(cachedRoute.aircraft.type);
+        cachedRoute.aircraft = {
+          ...cachedRoute.aircraft,
+          model: aircraftInfo.model,
+          type: aircraftInfo.type,
+          category: aircraftInfo.category,
+        };
       }
       return cachedRoute;
     }
@@ -137,12 +138,14 @@ class FlightRouteService {
     if (!allowExpensiveApis) {
       const cachedRoute = await postgresRepository.getCachedRoute(cacheKey);
       if (cachedRoute) {
-        // Try to get aircraft data from route history if available
-        const routeHistory = await postgresRepository.getLatestRouteHistory(icao24, callsign);
-        if (routeHistory?.aircraft_type || routeHistory?.aircraft_model) {
+        // Enrich with model/type if we have aircraft_type from cache
+        if (cachedRoute.aircraft?.type) {
+          const aircraftInfo = mapAircraftType(cachedRoute.aircraft.type);
           cachedRoute.aircraft = {
-            type: routeHistory.aircraft_type || null,
-            model: routeHistory.aircraft_model || routeHistory.aircraft_type || null,
+            ...cachedRoute.aircraft,
+            model: aircraftInfo.model,
+            type: aircraftInfo.type,
+            category: aircraftInfo.category,
           };
         }
         
@@ -237,9 +240,21 @@ class FlightRouteService {
               arrival: mostRecentRoute.arrivalAirport?.icao || mostRecentRoute.arrivalAirport?.iata,
             });
 
+            // Enrich with model/type if we have aircraft_type
+            let enrichedRoute = { ...mostRecentRoute };
+            if (mostRecentRoute.aircraft?.type) {
+              const aircraftInfo = mapAircraftType(mostRecentRoute.aircraft.type);
+              enrichedRoute.aircraft = {
+                ...mostRecentRoute.aircraft,
+                model: aircraftInfo.model,
+                type: aircraftInfo.type,
+                category: aircraftInfo.category,
+              };
+            }
+
             // Store most recent in cache (fast lookup)
             await this.cacheRoute(cacheKey, {
-              ...mostRecentRoute,
+              ...enrichedRoute,
               callsign,
               icao24,
               source: 'flightaware',
@@ -275,7 +290,7 @@ class FlightRouteService {
               }
             }
 
-            return { ...mostRecentRoute, source: 'flightaware' };
+            return { ...enrichedRoute, source: 'flightaware' };
           }
         }
         logger.info('FlightAware returned no route data', { icao24, callsign });
@@ -318,9 +333,22 @@ class FlightRouteService {
             departure: route.departureAirport?.icao || route.departureAirport?.iata,
             arrival: route.arrivalAirport?.icao || route.arrivalAirport?.iata,
           });
+          
+          // Enrich with model/type if we have aircraft_type
+          let enrichedRoute = { ...route };
+          if (route.aircraft?.type) {
+            const aircraftInfo = mapAircraftType(route.aircraft.type);
+            enrichedRoute.aircraft = {
+              ...route.aircraft,
+              model: aircraftInfo.model,
+              type: aircraftInfo.type,
+              category: aircraftInfo.category,
+            };
+          }
+          
           // Store in cache (fast lookup for most recent)
           await this.cacheRoute(cacheKey, {
-            ...route,
+            ...enrichedRoute,
             callsign,
             icao24,
             source: 'aviationstack',
@@ -336,7 +364,7 @@ class FlightRouteService {
             });
           }
 
-          return { ...route, source: 'aviationstack' };
+          return { ...enrichedRoute, source: 'aviationstack' };
         }
         logger.info('AviationStack returned no route data (limited coverage)', { icao24, callsign });
         // Continue to inference
