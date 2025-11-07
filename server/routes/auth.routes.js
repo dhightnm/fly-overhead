@@ -1,6 +1,7 @@
 const router = require('express').Router();
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
+const axios = require('axios');
 const postgresRepository = require('../repositories/PostgresRepository');
 const logger = require('../utils/logger');
 
@@ -106,6 +107,114 @@ router.post('/login', async (req, res, next) => {
     });
   } catch (error) {
     logger.error('Login error', { error: error.message });
+    next(error);
+  }
+});
+
+/**
+ * Google OAuth login - handles authorization code exchange
+ */
+router.post('/google', async (req, res, next) => {
+  try {
+    const { code, credential } = req.body;
+
+    const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
+    const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
+    
+    if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET) {
+      logger.error('Google OAuth credentials not configured');
+      return res.status(500).json({ error: 'Google OAuth not configured' });
+    }
+
+    let googleUser;
+
+    // If credential (ID token) is provided, verify it directly
+    if (credential) {
+      try {
+        const response = await axios.get(`https://oauth2.googleapis.com/tokeninfo?id_token=${credential}`);
+        googleUser = response.data;
+
+        // Verify the token is for our app
+        if (googleUser.aud !== GOOGLE_CLIENT_ID) {
+          return res.status(401).json({ error: 'Invalid Google token' });
+        }
+      } catch (error) {
+        logger.error('Google token verification failed', { error: error.message });
+        return res.status(401).json({ error: 'Invalid Google token' });
+      }
+    } 
+    // If authorization code is provided, exchange it for tokens
+    else if (code) {
+      try {
+        // For @react-oauth/google with auth-code flow, determine the correct redirect URI
+        // The library uses 'postmessage' internally, but Google Cloud Console requires actual URLs
+        // Try 'postmessage' first (if registered), otherwise use the actual URL based on environment
+        let redirectUri = process.env.GOOGLE_REDIRECT_URI || 'postmessage';
+        
+        // If 'postmessage' doesn't work, fall back to actual URLs based on environment
+        // You can override this in your .env file if needed
+        if (!redirectUri || redirectUri === 'postmessage') {
+          // Try postmessage first (works if registered in Google Cloud Console)
+          redirectUri = 'postmessage';
+        }
+        
+        // Exchange authorization code for tokens
+        const tokenResponse = await axios.post('https://oauth2.googleapis.com/token', {
+          code,
+          client_id: GOOGLE_CLIENT_ID,
+          client_secret: GOOGLE_CLIENT_SECRET,
+          redirect_uri: redirectUri,
+          grant_type: 'authorization_code',
+        });
+
+        const { id_token } = tokenResponse.data;
+
+        // Verify ID token
+        const verifyResponse = await axios.get(`https://oauth2.googleapis.com/tokeninfo?id_token=${id_token}`);
+        googleUser = verifyResponse.data;
+
+        if (googleUser.aud !== GOOGLE_CLIENT_ID) {
+          return res.status(401).json({ error: 'Invalid Google token' });
+        }
+      } catch (error) {
+        logger.error('Google code exchange failed', { error: error.message });
+        return res.status(401).json({ error: 'Failed to exchange authorization code' });
+      }
+    } else {
+      return res.status(400).json({ error: 'Google credential or code is required' });
+    }
+
+    // Extract user info from Google profile
+    const googleProfile = {
+      id: googleUser.sub,
+      email: googleUser.email,
+      name: googleUser.name || googleUser.email.split('@')[0],
+      picture: googleUser.picture,
+    };
+
+    // Create or update user in database
+    const user = await postgresRepository.createOrUpdateGoogleUser(googleProfile);
+
+    // Generate JWT token
+    const token = jwt.sign(
+      { userId: user.id, email: user.email },
+      JWT_SECRET,
+      { expiresIn: JWT_EXPIRES_IN }
+    );
+
+    logger.info('User logged in with Google', { email: user.email, userId: user.id });
+
+    res.json({
+      token,
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        isPremium: user.is_premium,
+      },
+    });
+  } catch (error) {
+    logger.error('Google OAuth error', { error: error.message });
     next(error);
   }
 });

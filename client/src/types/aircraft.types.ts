@@ -28,6 +28,7 @@ export interface Aircraft {
   source?: 'manual' | 'live' | 'websocket' | 'database' | string;
   predicted?: boolean;
   prediction_confidence?: number;
+  route?: Route | null; // Route data included from backend (if cached)
 }
 
 export interface Airport {
@@ -49,6 +50,7 @@ export interface Route {
   aircraft?: {
     model?: string | null;
     type?: string | null;
+    category?: number | null;
   } | null;
   aircraftCategory?: number | null;
   source?: string;

@@ -67,6 +67,21 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  const loginWithGoogle = async (code) => {
+    try {
+      const { token: newToken, user: userData } = await authService.loginWithGoogle(code);
+      authService.setToken(newToken);
+      setToken(newToken);
+      setUser(userData);
+      return { success: true };
+    } catch (error) {
+      return {
+        success: false,
+        error: error.response?.data?.error || 'Google login failed',
+      };
+    }
+  };
+
   const logout = () => {
     authService.logout();
     setToken(null);
@@ -82,6 +97,7 @@ export const AuthProvider = ({ children }) => {
     loading,
     login,
     signup,
+    loginWithGoogle,
     logout,
     isPremium,
     isAuthenticated: !!user,

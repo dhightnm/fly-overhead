@@ -58,6 +58,14 @@ class AuthService {
   isAuthenticated(): boolean {
     return !!this.getToken();
   }
+
+  /**
+   * Login with Google OAuth
+   */
+  async loginWithGoogle(code: string): Promise<LoginResponse> {
+    const response = await api.post<LoginResponse>('/api/auth/google', { code });
+    return response.data;
+  }
 }
 
 export const authService = new AuthService();
