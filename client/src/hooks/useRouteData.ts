@@ -9,7 +9,8 @@ interface UseRouteDataReturn {
   routes: Record<string, Route>;
   flightPlanRoutes: Record<string, FlightPlanRoute>;
   routeAvailabilityStatus: Record<string, RouteAvailabilityStatus>;
-  fetchRouteForAircraft: (plane: Aircraft, isPrefetch?: boolean) => Promise<Route | null>;
+  loadingRoutes: Set<string>;
+  fetchRouteForAircraft: (plane: Aircraft, isPrefetch?: boolean, forceRefresh?: boolean) => Promise<Route | null>;
   fetchFlightPlanRoute: (plane: Aircraft) => Promise<FlightPlanRoute | null>;
   setRoute: (icao24: string, route: Route) => void; // Expose setter for preloaded routes
 }
@@ -20,6 +21,7 @@ export const useRouteData = (): UseRouteDataReturn => {
   const [routeAvailabilityStatus, setRouteAvailabilityStatus] = useState<
     Record<string, RouteAvailabilityStatus>
   >({});
+  const [loadingRoutes, setLoadingRoutes] = useState<Set<string>>(new Set());
 
   // Track which routes are currently being fetched to prevent duplicate requests
   const fetchingRoutes = useRef(new Set<string>());
@@ -37,23 +39,49 @@ export const useRouteData = (): UseRouteDataReturn => {
 
   // Fetch route for a single aircraft (on-demand when user clicks or hovers)
   const fetchRouteForAircraft = useCallback(
-    async (plane: Aircraft, isPrefetch = false): Promise<Route | null> => {
-      // Skip if we already have the route
-      if (routes[plane.icao24]) {
+    async (plane: Aircraft, isPrefetch = false, forceRefresh = false): Promise<Route | null> => {
+      // Return cached route if available and not forcing refresh
+      if (!forceRefresh && routes[plane.icao24]) {
+        console.log(`Using cached route for ${plane.callsign || plane.icao24}`);
         return routes[plane.icao24];
       }
 
+      // Skip if already fetching (return cached if available, otherwise null)
+      if (fetchingRoutes.current.has(plane.icao24)) {
+        return routes[plane.icao24] || null;
+      }
+
+      // Mark as loading
+      fetchingRoutes.current.add(plane.icao24);
       if (!isPrefetch) {
+        setLoadingRoutes((prev) => new Set(prev).add(plane.icao24));
         console.log(`Fetching route for ${plane.callsign || plane.icao24} (user-initiated)`);
       }
 
       try {
+        // Add a small delay to ensure loading state is visible
+        // This helps users see the loading animation even for fast API calls
+        if (!isPrefetch) {
+          await new Promise((resolve) => setTimeout(resolve, 100));
+        }
+        
         const routeData = await aircraftService.getRoute(plane.icao24, plane.callsign);
+        // Cache the route data
         setRoutes((prev) => ({ ...prev, [plane.icao24]: routeData }));
+        console.log(`Cached route for ${plane.callsign || plane.icao24}`);
         return routeData;
       } catch (error) {
         console.error(`Failed to fetch route for ${plane.callsign || plane.icao24}:`, error);
         return null;
+      } finally {
+        fetchingRoutes.current.delete(plane.icao24);
+        if (!isPrefetch) {
+          setLoadingRoutes((prev) => {
+            const next = new Set(prev);
+            next.delete(plane.icao24);
+            return next;
+          });
+        }
       }
     },
     [routes]
@@ -145,6 +173,7 @@ export const useRouteData = (): UseRouteDataReturn => {
     routes,
     flightPlanRoutes,
     routeAvailabilityStatus,
+    loadingRoutes,
     fetchRouteForAircraft,
     fetchFlightPlanRoute,
     setRoute,

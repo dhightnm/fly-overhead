@@ -521,6 +521,7 @@ class PostgresRepository {
       LEFT JOIN flight_routes_cache c ON (
         (c.cache_key = a.callsign AND a.callsign IS NOT NULL AND a.callsign != '')
         OR c.cache_key = a.icao24
+        OR (c.cache_key = a.icao24 AND a.callsign IS NULL)
       )
       WHERE a.last_contact >= $1
         AND (
@@ -651,13 +652,19 @@ class PostgresRepository {
       `;
 
       const sourceValue = routeData.source || null;
-      const aircraftType = routeData.aircraft?.type || routeData.aircraft_type || null;
+      // Prefer model over type - "A321" is more useful than "Plane"
+      const aircraftType = routeData.aircraft?.model 
+        || routeData.aircraft?.type 
+        || routeData.aircraft_type 
+        || null;
       
       logger.info('About to insert route with source value', {
         cacheKey,
         sourceValue,
         sourceType: typeof sourceValue,
         aircraftType,
+        hasModel: !!routeData.aircraft?.model,
+        hasType: !!routeData.aircraft?.type,
       });
 
       await this.db.query(query, [
@@ -712,6 +719,7 @@ class PostgresRepository {
     // This allows re-fetching when in-flight aircraft land
     const query = `
       SELECT 
+        callsign,
         departure_iata, departure_icao, departure_name,
         arrival_iata, arrival_icao, arrival_name,
         source, aircraft_type,
@@ -776,6 +784,36 @@ class PostgresRepository {
     `;
 
     const result = await this.db.oneOrNone(query, [callsign, departureIcao]);
+
+    if (!result) return null;
+
+    return {
+      departure_iata: result.departure_iata,
+      departure_icao: result.departure_icao,
+      departure_name: result.departure_name,
+      arrival_iata: result.arrival_iata,
+      arrival_icao: result.arrival_icao,
+      arrival_name: result.arrival_name,
+      source: result.source,
+      created_at: result.created_at,
+    };
+  }
+
+  async findHistoricalRouteByIcao24(icao24, departureIcao) {
+    const query = `
+      SELECT 
+        departure_iata, departure_icao, departure_name,
+        arrival_iata, arrival_icao, arrival_name,
+        source,
+        created_at
+      FROM flight_routes_history
+      WHERE LOWER(TRIM(icao24)) = LOWER($1)
+        AND (UPPER(departure_icao) = UPPER($2) OR UPPER(departure_iata) = UPPER($2))
+      ORDER BY created_at DESC
+      LIMIT 1
+    `;
+
+    const result = await this.db.oneOrNone(query, [icao24, departureIcao]);
 
     if (!result) return null;
 
@@ -1483,6 +1521,146 @@ class PostgresRepository {
   }
 
   /**
+   * Create feeders table
+   */
+  async createFeedersTable() {
+    const query = `
+      CREATE TABLE IF NOT EXISTS feeders (
+        id SERIAL PRIMARY KEY,
+        feeder_id TEXT UNIQUE NOT NULL,
+        api_key_hash TEXT NOT NULL,
+        name TEXT,
+        location GEOGRAPHY(POINT, 4326),
+        status TEXT DEFAULT 'active',
+        metadata JSONB DEFAULT '{}',
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW(),
+        last_seen_at TIMESTAMPTZ,
+        CONSTRAINT status_check CHECK (status IN ('active', 'inactive', 'suspended'))
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_feeders_status ON feeders(status);
+      CREATE INDEX IF NOT EXISTS idx_feeders_location ON feeders USING GIST(location);
+      CREATE INDEX IF NOT EXISTS idx_feeders_last_seen ON feeders(last_seen_at);
+      CREATE INDEX IF NOT EXISTS idx_feeders_feeder_id ON feeders(feeder_id);
+    `;
+    await this.db.query(query);
+    logger.info('Feeders table created or already exists');
+  }
+
+  /**
+   * Create feeder_stats table
+   */
+  async createFeederStatsTable() {
+    const query = `
+      CREATE TABLE IF NOT EXISTS feeder_stats (
+        id SERIAL PRIMARY KEY,
+        feeder_id TEXT NOT NULL REFERENCES feeders(feeder_id) ON DELETE CASCADE,
+        date DATE NOT NULL,
+        messages_received BIGINT DEFAULT 0,
+        unique_aircraft INT DEFAULT 0,
+        data_quality_score FLOAT,
+        avg_latency_ms FLOAT,
+        error_count INT DEFAULT 0,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        UNIQUE(feeder_id, date)
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_feeder_stats_date ON feeder_stats(date);
+      CREATE INDEX IF NOT EXISTS idx_feeder_stats_feeder_id ON feeder_stats(feeder_id);
+    `;
+    await this.db.query(query);
+    logger.info('Feeder stats table created or already exists');
+  }
+
+  /**
+   * Add feeder columns to aircraft_states table
+   */
+  async addFeederColumnsToAircraftStates() {
+    const query = `
+      DO $$
+      BEGIN
+        -- Add data_source column
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='aircraft_states' AND column_name='data_source'
+        ) THEN
+          ALTER TABLE aircraft_states ADD COLUMN data_source TEXT DEFAULT 'opensky';
+        END IF;
+
+        -- Add feeder_id column
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='aircraft_states' AND column_name='feeder_id'
+        ) THEN
+          ALTER TABLE aircraft_states ADD COLUMN feeder_id TEXT REFERENCES feeders(feeder_id);
+        END IF;
+
+        -- Add source_priority column
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='aircraft_states' AND column_name='source_priority'
+        ) THEN
+          ALTER TABLE aircraft_states ADD COLUMN source_priority INT DEFAULT 10;
+        END IF;
+
+        -- Add ingestion_timestamp column
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='aircraft_states' AND column_name='ingestion_timestamp'
+        ) THEN
+          ALTER TABLE aircraft_states ADD COLUMN ingestion_timestamp TIMESTAMPTZ DEFAULT NOW();
+        END IF;
+      END $$;
+
+      CREATE INDEX IF NOT EXISTS idx_aircraft_states_feeder_id ON aircraft_states(feeder_id);
+      CREATE INDEX IF NOT EXISTS idx_aircraft_states_data_source ON aircraft_states(data_source);
+      CREATE INDEX IF NOT EXISTS idx_aircraft_states_source_priority ON aircraft_states(source_priority);
+    `;
+    await this.db.query(query);
+    logger.info('Feeder columns added to aircraft_states table');
+  }
+
+  /**
+   * Add feeder columns to aircraft_states_history table
+   */
+  async addFeederColumnsToAircraftStatesHistory() {
+    const query = `
+      DO $$
+      BEGIN
+        -- Add data_source column
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='aircraft_states_history' AND column_name='data_source'
+        ) THEN
+          ALTER TABLE aircraft_states_history ADD COLUMN data_source TEXT DEFAULT 'opensky';
+        END IF;
+
+        -- Add feeder_id column
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='aircraft_states_history' AND column_name='feeder_id'
+        ) THEN
+          ALTER TABLE aircraft_states_history ADD COLUMN feeder_id TEXT REFERENCES feeders(feeder_id);
+        END IF;
+
+        -- Add source_priority column
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='aircraft_states_history' AND column_name='source_priority'
+        ) THEN
+          ALTER TABLE aircraft_states_history ADD COLUMN source_priority INT DEFAULT 10;
+        END IF;
+      END $$;
+
+      CREATE INDEX IF NOT EXISTS idx_aircraft_states_history_feeder_id ON aircraft_states_history(feeder_id);
+      CREATE INDEX IF NOT EXISTS idx_aircraft_states_history_data_source ON aircraft_states_history(data_source);
+    `;
+    await this.db.query(query);
+    logger.info('Feeder columns added to aircraft_states_history table');
+  }
+
+  /**
    * Create users table
    */
   async createUsersTable() {
@@ -1647,6 +1825,150 @@ class PostgresRepository {
       RETURNING id, email, name, is_premium, premium_expires_at
     `;
     return this.db.one(query, [isPremium, expiresAt, userId]);
+  }
+
+  /**
+   * Get feeder by feeder_id
+   */
+  async getFeederById(feederId) {
+    const query = `
+      SELECT * FROM feeders WHERE feeder_id = $1
+    `;
+    return this.db.oneOrNone(query, [feederId]);
+  }
+
+  /**
+   * Register a new feeder
+   */
+  async registerFeeder(feederData) {
+    const {
+      feeder_id, api_key_hash, name, latitude, longitude, metadata,
+    } = feederData;
+
+    // Use ST_SetSRID with ST_MakePoint for safe parameterized queries
+    const query = (latitude !== null && latitude !== undefined && longitude !== null && longitude !== undefined)
+      ? `
+        INSERT INTO feeders (feeder_id, api_key_hash, name, location, metadata)
+        VALUES ($1, $2, $3, ST_SetSRID(ST_MakePoint($4, $5), 4326)::geography, $6)
+        RETURNING *
+      `
+      : `
+        INSERT INTO feeders (feeder_id, api_key_hash, name, location, metadata)
+        VALUES ($1, $2, $3, NULL, $4)
+        RETURNING *
+      `;
+
+    const params = (latitude !== null && latitude !== undefined && longitude !== null && longitude !== undefined)
+      ? [feeder_id, api_key_hash, name || null, longitude, latitude, metadata || {}]
+      : [feeder_id, api_key_hash, name || null, metadata || {}];
+
+    return this.db.one(query, params);
+  }
+
+  /**
+   * Update feeder last seen timestamp
+   */
+  async updateFeederLastSeen(feederId) {
+    const query = `
+      UPDATE feeders
+      SET last_seen_at = NOW()
+      WHERE feeder_id = $1
+    `;
+    await this.db.query(query, [feederId]);
+  }
+
+  /**
+   * Upsert feeder statistics
+   */
+  async upsertFeederStats(feederId, messagesReceived, uniqueAircraft) {
+    const query = `
+      INSERT INTO feeder_stats (feeder_id, date, messages_received, unique_aircraft)
+      VALUES ($1, CURRENT_DATE, $2, $3)
+      ON CONFLICT (feeder_id, date)
+      DO UPDATE SET
+        messages_received = feeder_stats.messages_received + $2,
+        unique_aircraft = GREATEST(feeder_stats.unique_aircraft, $3)
+    `;
+    await this.db.query(query, [feederId, messagesReceived, uniqueAircraft]);
+  }
+
+  /**
+   * Upsert aircraft state with priority-based logic
+   * Only updates if new priority is higher or equal to existing priority
+   */
+  async upsertAircraftStateWithPriority(state, feederId, ingestionTimestamp, dataSource = 'opensky', sourcePriority = 30) {
+    // Insert into history first
+    // Priority: Lower number = higher priority
+    // Feeder: 10 (high priority - local data, don't overwrite)
+    // OpenSky: 30 (default, lower priority - can be overridden by feeder)
+    const historyState = [
+      state[0], state[1], state[2], state[3], state[4],
+      state[5], state[6], state[7], state[8], state[9],
+      state[10], state[11], state[12], state[13], state[14],
+      state[15], state[16], state[17],
+      dataSource, // data_source
+      feederId, // feeder_id
+      sourcePriority, // source_priority
+    ];
+
+    const insertHistoryQuery = `
+      INSERT INTO aircraft_states_history (
+        icao24, callsign, origin_country, time_position, last_contact,
+        longitude, latitude, baro_altitude, on_ground, velocity,
+        true_track, vertical_rate, sensors, geo_altitude, squawk,
+        spi, position_source, category, data_source, feeder_id, source_priority
+      )
+      VALUES($1, TRIM($2), $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21);
+    `;
+    await this.db.query(insertHistoryQuery, historyState);
+
+    // Main table upsert with priority check
+    const upsertQuery = `
+      INSERT INTO aircraft_states(
+        icao24, callsign, origin_country, time_position, last_contact,
+        longitude, latitude, baro_altitude, on_ground, velocity,
+        true_track, vertical_rate, sensors, geo_altitude, squawk,
+        spi, position_source, category, created_at, data_source, feeder_id, source_priority, ingestion_timestamp
+      )
+      VALUES($1, TRIM($2), $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23)
+      ON CONFLICT(icao24) DO UPDATE SET
+        -- Always accept non-null/non-empty callsign, otherwise keep existing
+        callsign = COALESCE(NULLIF(TRIM(EXCLUDED.callsign), ''), aircraft_states.callsign),
+        origin_country = CASE WHEN EXCLUDED.source_priority <= COALESCE(aircraft_states.source_priority, 99) THEN EXCLUDED.origin_country ELSE aircraft_states.origin_country END,
+        time_position = CASE WHEN EXCLUDED.source_priority <= COALESCE(aircraft_states.source_priority, 99) THEN EXCLUDED.time_position ELSE aircraft_states.time_position END,
+        last_contact = CASE WHEN EXCLUDED.source_priority <= COALESCE(aircraft_states.source_priority, 99) THEN EXCLUDED.last_contact ELSE aircraft_states.last_contact END,
+        longitude = CASE WHEN EXCLUDED.source_priority <= COALESCE(aircraft_states.source_priority, 99) THEN EXCLUDED.longitude ELSE aircraft_states.longitude END,
+        latitude = CASE WHEN EXCLUDED.source_priority <= COALESCE(aircraft_states.source_priority, 99) THEN EXCLUDED.latitude ELSE aircraft_states.latitude END,
+        baro_altitude = CASE WHEN EXCLUDED.source_priority <= COALESCE(aircraft_states.source_priority, 99) THEN EXCLUDED.baro_altitude ELSE aircraft_states.baro_altitude END,
+        on_ground = CASE WHEN EXCLUDED.source_priority <= COALESCE(aircraft_states.source_priority, 99) THEN EXCLUDED.on_ground ELSE aircraft_states.on_ground END,
+        velocity = CASE WHEN EXCLUDED.source_priority <= COALESCE(aircraft_states.source_priority, 99) THEN EXCLUDED.velocity ELSE aircraft_states.velocity END,
+        true_track = CASE WHEN EXCLUDED.source_priority <= COALESCE(aircraft_states.source_priority, 99) THEN EXCLUDED.true_track ELSE aircraft_states.true_track END,
+        vertical_rate = CASE WHEN EXCLUDED.source_priority <= COALESCE(aircraft_states.source_priority, 99) THEN EXCLUDED.vertical_rate ELSE aircraft_states.vertical_rate END,
+        sensors = CASE WHEN EXCLUDED.source_priority <= COALESCE(aircraft_states.source_priority, 99) THEN EXCLUDED.sensors ELSE aircraft_states.sensors END,
+        geo_altitude = CASE WHEN EXCLUDED.source_priority <= COALESCE(aircraft_states.source_priority, 99) THEN EXCLUDED.geo_altitude ELSE aircraft_states.geo_altitude END,
+        squawk = CASE WHEN EXCLUDED.source_priority <= COALESCE(aircraft_states.source_priority, 99) THEN EXCLUDED.squawk ELSE aircraft_states.squawk END,
+        spi = CASE WHEN EXCLUDED.source_priority <= COALESCE(aircraft_states.source_priority, 99) THEN EXCLUDED.spi ELSE aircraft_states.spi END,
+        position_source = CASE WHEN EXCLUDED.source_priority <= COALESCE(aircraft_states.source_priority, 99) THEN EXCLUDED.position_source ELSE aircraft_states.position_source END,
+        category = CASE WHEN EXCLUDED.source_priority <= COALESCE(aircraft_states.source_priority, 99) THEN EXCLUDED.category ELSE aircraft_states.category END,
+        data_source = CASE WHEN EXCLUDED.source_priority <= COALESCE(aircraft_states.source_priority, 99) THEN EXCLUDED.data_source ELSE aircraft_states.data_source END,
+        feeder_id = CASE WHEN EXCLUDED.source_priority <= COALESCE(aircraft_states.source_priority, 99) THEN EXCLUDED.feeder_id ELSE aircraft_states.feeder_id END,
+        source_priority = CASE WHEN EXCLUDED.source_priority <= COALESCE(aircraft_states.source_priority, 99) THEN EXCLUDED.source_priority ELSE aircraft_states.source_priority END,
+        ingestion_timestamp = CASE WHEN EXCLUDED.source_priority <= COALESCE(aircraft_states.source_priority, 99) THEN EXCLUDED.ingestion_timestamp ELSE aircraft_states.ingestion_timestamp END;
+    `;
+
+    const stateArray = [
+      state[0], state[1], state[2], state[3], state[4],
+      state[5], state[6], state[7], state[8], state[9],
+      state[10], state[11], state[12], state[13], state[14],
+      state[15], state[16], state[17],
+      state[18] ? new Date(state[18]) : new Date(), // created_at
+      dataSource, // data_source
+      feederId, // feeder_id
+      sourcePriority, // source_priority
+      ingestionTimestamp, // ingestion_timestamp
+    ];
+
+    await this.db.query(upsertQuery, stateArray);
   }
 }
 

@@ -9,7 +9,13 @@ const requestLogger = (req, res, next) => {
 
   res.on('finish', () => {
     const duration = Date.now() - start;
-    logger.info('HTTP Request', {
+    
+    // Use debug level for frequent/noisy endpoints (but NOT feeder endpoints - we want to see those)
+    const isAreaEndpoint = req.path.startsWith('/area/') || req.path.startsWith('/airports/bounds/');
+    const isStarlinkEndpoint = req.path.startsWith('/starlink/');
+    const logLevel = (isAreaEndpoint || isStarlinkEndpoint) ? 'debug' : 'info';
+    
+    logger[logLevel]('HTTP Request', {
       method: req.method,
       path: req.path,
       statusCode: res.statusCode,

@@ -66,6 +66,7 @@ if (buildExists) {
 app.use('/api/auth', require('./routes/auth.routes'));
 app.use('/api', require('./routes/aircraft.routes'));
 app.use('/api', require('./routes/health.routes'));
+app.use('/api', require('./routes/feeder.routes'));
 
 // Catch-all handler: send back React's index.html for client-side routing
 // This must be AFTER API routes and BEFORE error handler
@@ -90,11 +91,17 @@ async function startServer() {
 
     logger.info('Starting server with integrated background jobs');
     
+    // Initial fetch from OpenSky
     aircraftService.fetchAndUpdateAllAircraft().catch((err) => {
       logger.error('Error in initial aircraft fetch', { error: err.message });
     });
-    aircraftService.populateInitialData();
+    
+    // Disabled: populateInitialData() causes excessive OpenSky API calls on startup
+    // and often fails due to rate limiting. Aircraft data is populated by the
+    // periodic fetch (every 2 minutes) and user-initiated bounded queries instead.
+    // aircraftService.populateInitialData();
 
+    // Periodic OpenSky fetch
     setInterval(() => {
       aircraftService.fetchAndUpdateAllAircraft().catch((err) => {
         logger.error('Error in periodic aircraft fetch', { error: err.message });
@@ -103,6 +110,8 @@ async function startServer() {
 
     backgroundRouteService.start();
 
+    // Background backfill jobs use FlightAware (not OpenSky)
+    // to preserve OpenSky quota for real-time aircraft tracking
     backgroundRouteService.backfillFlightHistorySample();
     const todayStr = new Date().toISOString().split('T')[0];
     backgroundRouteService.backfillFlightsInRange('2025-10-27', todayStr, 50);
@@ -154,6 +163,17 @@ process.on('SIGINT', () => {
   logger.info('SIGINT received, shutting down gracefully');
   backgroundRouteService.stop();
   process.exit(0);
+});
+
+// Handle uncaught exceptions
+process.on('uncaughtException', (error) => {
+  logger.error('Uncaught Exception', { error: error.message, stack: error.stack });
+  // Don't exit immediately, let the server try to recover
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  logger.error('Unhandled Rejection', { reason, promise });
+  // Don't exit immediately, let the server try to recover
 });
 
 // Start the server

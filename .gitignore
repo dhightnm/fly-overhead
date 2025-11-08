@@ -40,7 +40,9 @@ coverage/
 
 # Database backups (keep local, don't commit)
 *.sql
+*.sql.gz
 *.dump
+backups/
 
 # AWS
 .aws/

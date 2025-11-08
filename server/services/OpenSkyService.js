@@ -114,7 +114,7 @@ class OpenSkyService {
         logger.debug('Invalid request to OpenSky (likely current flight)', { icao24, begin, end });
         return [];
       }
-      logger.warn('Error fetching flights by aircraft from OpenSky', {
+      logger.debug('Error fetching flights by aircraft from OpenSky (rate limited)', {
         icao24,
         error: error.message,
       });

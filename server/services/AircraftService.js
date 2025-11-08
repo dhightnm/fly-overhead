@@ -35,7 +35,9 @@ class AircraftService {
         const batch = data.states.slice(i, i + BATCH_SIZE);
         const batchPromises = batch.map((state) => {
           const preparedState = openSkyService.prepareStateForDatabase(state);
-          return postgresRepository.upsertAircraftState(preparedState);
+          // Use priority system: OpenSky has priority 30 (lower = higher priority)
+          // Feeder has priority 10 (high priority), so feeder data is preferred
+          return postgresRepository.upsertAircraftStateWithPriority(preparedState, null, new Date(), 'opensky', 30);
         });
 
         await Promise.all(batchPromises);
@@ -66,11 +68,13 @@ class AircraftService {
 
   /**
    * Fetch and update aircraft for specific bounding box
+   * Uses OpenSky API for geographic bounds queries
    */
   // eslint-disable-next-line class-methods-use-this
   async fetchAndUpdateAircraftInBounds(boundingBox) {
     try {
       logger.info('Fetching aircraft in bounding box', { boundingBox });
+
       const data = await openSkyService.getStatesInBounds(boundingBox);
 
       if (!data.states || data.states.length === 0) {
@@ -78,15 +82,17 @@ class AircraftService {
         return [];
       }
 
-      logger.info(`Processing ${data.states.length} aircraft in bounds`);
+      logger.info(`Processing ${data.states.length} aircraft in bounds from OpenSky`);
 
       const statePromises = data.states.map((state) => {
         const preparedState = openSkyService.prepareStateForDatabase(state);
-        return postgresRepository.upsertAircraftState(preparedState);
+        // Use priority system: OpenSky has priority 30 (lower = higher priority)
+        // Feeder has priority 10 (high priority), so feeder data is preferred
+        return postgresRepository.upsertAircraftStateWithPriority(preparedState, null, new Date(), 'opensky', 30);
       });
 
       await Promise.all(statePromises);
-      logger.info('Database updated with bounded aircraft');
+      logger.info('Database updated with bounded aircraft from OpenSky');
 
       return data.states;
     } catch (error) {
@@ -104,62 +110,10 @@ class AircraftService {
   // eslint-disable-next-line class-methods-use-this
   async getAircraftByIdentifier(identifier) {
     try {
-      // First, try to get live data from OpenSky for this specific aircraft
-      logger.info(`Searching for aircraft: ${identifier} (checking live OpenSky first)`);
+      logger.info(`Searching for aircraft: ${identifier} (checking database)`);
       
-      try {
-        const liveStates = await openSkyService.getAllStates();
-        
-        if (liveStates && liveStates.states) {
-          // Search for the aircraft by ICAO24 or callsign in live data
-          const normalizedIdentifier = identifier.trim().toUpperCase();
-          const matchingState = liveStates.states.find(state => {
-            const icao24 = state[0] ? state[0].trim().toLowerCase() : '';
-            const callsign = state[1] ? state[1].trim().toUpperCase() : '';
-            
-            return icao24 === identifier.toLowerCase() || callsign === normalizedIdentifier;
-          });
-          
-          if (matchingState) {
-            // Found live data - use it!
-            const liveAircraft = {
-              icao24: matchingState[0] ? matchingState[0].trim() : null,
-              callsign: matchingState[1] ? matchingState[1].trim() : null,
-              origin_country: matchingState[2],
-              time_position: matchingState[3],
-              last_contact: matchingState[4],
-              longitude: matchingState[5],
-              latitude: matchingState[6],
-              baro_altitude: matchingState[7],
-              on_ground: matchingState[8],
-              velocity: matchingState[9],
-              true_track: matchingState[10],
-              vertical_rate: matchingState[11],
-              sensors: matchingState[12],
-              geo_altitude: matchingState[13],
-              squawk: matchingState[14],
-              spi: matchingState[15],
-              position_source: matchingState[16],
-              category: matchingState[17] || null,
-            };
-            
-            logger.info(`Found LIVE aircraft data for ${identifier} from OpenSky`, {
-              icao24: liveAircraft.icao24,
-              callsign: liveAircraft.callsign,
-              position: [liveAircraft.latitude, liveAircraft.longitude],
-              category: liveAircraft.category,
-            });
-            
-            return liveAircraft;
-          }
-        }
-      } catch (openSkyError) {
-        logger.warn(`OpenSky live search failed for ${identifier}, falling back to database`, {
-          error: openSkyError.message,
-        });
-      }
-      
-      // Fall back to database (old data)
+      // Query database directly instead of calling OpenSky getAllStates()
+      // This avoids fetching 6000+ aircraft just to find one
       const results = await postgresRepository.findAircraftByIdentifier(identifier);
 
       if (results.length === 0) {
@@ -168,8 +122,12 @@ class AircraftService {
       }
 
       const aircraft = results[0];
-
-      logger.info(`Found aircraft in DATABASE for identifier: ${identifier} (may be stale)`);
+      logger.info(`Found aircraft in database for identifier: ${identifier}`, {
+        icao24: aircraft.icao24,
+        callsign: aircraft.callsign,
+        last_contact: aircraft.last_contact,
+      });
+      
       return aircraft;
     } catch (error) {
       logger.error('Error in getAircraftByIdentifier', {
@@ -189,8 +147,8 @@ class AircraftService {
     const enriched = { ...aircraft };
 
     // Extract route data if available
-    const hasRouteData = aircraft.departure_icao || aircraft.departure_iata 
-      || aircraft.arrival_icao || aircraft.arrival_iata 
+    const hasRouteData = aircraft.departure_icao || aircraft.departure_iata
+      || aircraft.arrival_icao || aircraft.arrival_iata
       || aircraft.aircraft_type;
 
     if (hasRouteData) {
@@ -220,10 +178,10 @@ class AircraftService {
 
         // Update category in aircraft if not set or unreliable (0)
         // This ensures icons are correct on load
-        if (aircraftInfo.category !== null 
+        if (aircraftInfo.category !== null
           && (enriched.category === null || enriched.category === 0)) {
           enriched.category = aircraftInfo.category;
-          
+
           // Update category in database asynchronously (don't block response)
           postgresRepository.updateAircraftCategory(enriched.icao24, aircraftInfo.category)
             .catch((err) => {
@@ -234,6 +192,16 @@ class AircraftService {
             });
         }
       }
+    }
+
+    // Also check flight_routes_cache for callsign if aircraft doesn't have one
+    // This uses the route data that was fetched when user clicked on the plane
+    if (!enriched.callsign && enriched.icao24) {
+      // The route data is already JOINed in the query, but we need to check if there's a cached route
+      // with a callsign. This will be handled by the frontend route fetching, but we can also
+      // enrich here if the route cache has callsign data
+      // Note: The route cache JOIN already provides this, but we need to check the cache table
+      // For now, the frontend will fetch route on click which will populate callsign
     }
 
     // Clean up route-specific fields from main aircraft object
@@ -249,6 +217,7 @@ class AircraftService {
 
     return enriched;
   }
+
 
   /**
    * Get aircraft within geographical bounds (with trajectory prediction)
@@ -312,6 +281,11 @@ class AircraftService {
       await postgresRepository.createHistoryTable();
       await postgresRepository.createFlightRoutesTable();
       await postgresRepository.createUsersTable();
+      // Feeder service tables
+      await postgresRepository.createFeedersTable();
+      await postgresRepository.createFeederStatsTable();
+      await postgresRepository.addFeederColumnsToAircraftStates();
+      await postgresRepository.addFeederColumnsToAircraftStatesHistory();
       logger.info('Database initialized successfully');
     } catch (error) {
       logger.error('Error initializing database', { error: error.message });
