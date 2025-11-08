@@ -1893,6 +1893,53 @@ class PostgresRepository {
   }
 
   /**
+   * Get feeder by API key (validates the key hash)
+   * @param {string} apiKey - The API key to validate
+   * @returns {Promise<Object|null>} Feeder data or null if not found/invalid
+   */
+  async getFeederByApiKey(apiKey) {
+    try {
+      const bcrypt = require('bcryptjs');
+      
+      // Get all active feeders (you may want to optimize this with an index)
+      const query = `
+        SELECT id, feeder_id, api_key_hash, name, status,
+               ST_Y(location::geometry) as latitude,
+               ST_X(location::geometry) as longitude,
+               created_at, updated_at, last_seen_at
+        FROM feeders
+        WHERE status IN ('active', 'inactive', 'suspended');
+      `;
+      
+      const feeders = await this.db.manyOrNone(query);
+
+      // Check each feeder's API key hash
+      for (const feeder of feeders) {
+        const isValid = await bcrypt.compare(apiKey, feeder.api_key_hash);
+        if (isValid) {
+          return {
+            id: feeder.id,
+            feeder_id: feeder.feeder_id,
+            api_key_hash: feeder.api_key_hash,
+            name: feeder.name,
+            status: feeder.status,
+            latitude: feeder.latitude,
+            longitude: feeder.longitude,
+            created_at: feeder.created_at,
+            updated_at: feeder.updated_at,
+            last_seen_at: feeder.last_seen_at,
+          };
+        }
+      }
+
+      return null;
+    } catch (error) {
+      logger.error('Error getting feeder by API key', { error: error.message });
+      throw error;
+    }
+  }
+
+  /**
    * Upsert aircraft state with priority-based logic
    * Only updates if new priority is higher or equal to existing priority
    */

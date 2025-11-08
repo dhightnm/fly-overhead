@@ -1,10 +1,11 @@
 const axios = require('axios');
 const config = require('../config');
 const logger = require('../utils/logger');
+const rateLimitManager = require('./RateLimitManager');
 
 /**
  * Service for interacting with OpenSky Network API
- * Handles all external API communication
+ * Handles all external API communication with rate limit awareness
  */
 class OpenSkyService {
   constructor() {
@@ -28,6 +29,15 @@ class OpenSkyService {
    * Fetch all aircraft states
    */
   async getAllStates() {
+    // Check if we're rate limited
+    if (rateLimitManager.isRateLimited()) {
+      const secondsRemaining = rateLimitManager.getSecondsUntilRetry();
+      const error = new Error(`OpenSky API rate limited. Retry in ${secondsRemaining} seconds.`);
+      error.rateLimited = true;
+      error.retryAfter = secondsRemaining;
+      throw error;
+    }
+
     try {
       const response = await axios.get(`${this.baseUrl}/states/all`, {
         params: {
@@ -35,6 +45,10 @@ class OpenSkyService {
         },
         headers: this.getAuthHeader(),
       });
+      
+      // Record successful request
+      rateLimitManager.recordSuccess();
+      
       // Log sample state structure if available (use info level for visibility)
       if (response.data.states && response.data.states.length > 0) {
         const sample = response.data.states[0];
@@ -47,6 +61,21 @@ class OpenSkyService {
       }
       return response.data;
     } catch (error) {
+      // Handle rate limiting
+      if (error.response && error.response.status === 429) {
+        const retryAfter = error.response.headers['x-rate-limit-retry-after-seconds'];
+        rateLimitManager.recordRateLimit(retryAfter ? parseInt(retryAfter, 10) : null);
+        
+        const rateLimitError = new Error('OpenSky API rate limited');
+        rateLimitError.rateLimited = true;
+        rateLimitError.retryAfter = retryAfter || rateLimitManager.getSecondsUntilRetry();
+        logger.error('OpenSky rate limit detected', {
+          retryAfter: rateLimitError.retryAfter,
+          retryAt: new Date(Date.now() + rateLimitError.retryAfter * 1000).toISOString(),
+        });
+        throw rateLimitError;
+      }
+      
       logger.error('Error fetching all states from OpenSky', { error: error.message });
       throw error;
     }
@@ -58,6 +87,15 @@ class OpenSkyService {
   async getStatesInBounds({
     lamin, lomin, lamax, lomax,
   }) {
+    // Check if we're rate limited
+    if (rateLimitManager.isRateLimited()) {
+      const secondsRemaining = rateLimitManager.getSecondsUntilRetry();
+      const error = new Error(`OpenSky API rate limited. Retry in ${secondsRemaining} seconds.`);
+      error.rateLimited = true;
+      error.retryAfter = secondsRemaining;
+      throw error;
+    }
+
     try {
       const response = await axios.get(`${this.baseUrl}/states/all`, {
         params: {
@@ -66,8 +104,27 @@ class OpenSkyService {
         },
         headers: this.getAuthHeader(),
       });
+      
+      // Record successful request
+      rateLimitManager.recordSuccess();
+      
       return response.data;
     } catch (error) {
+      // Handle rate limiting
+      if (error.response && error.response.status === 429) {
+        const retryAfter = error.response.headers['x-rate-limit-retry-after-seconds'];
+        rateLimitManager.recordRateLimit(retryAfter ? parseInt(retryAfter, 10) : null);
+        
+        const rateLimitError = new Error('OpenSky API rate limited');
+        rateLimitError.rateLimited = true;
+        rateLimitError.retryAfter = retryAfter || rateLimitManager.getSecondsUntilRetry();
+        logger.error('OpenSky rate limit detected (bounded query)', {
+          bounds: { lamin, lomin, lamax, lomax },
+          retryAfter: rateLimitError.retryAfter,
+        });
+        throw rateLimitError;
+      }
+      
       logger.error('Error fetching bounded states from OpenSky', {
         bounds: {
           lamin, lomin, lamax, lomax,

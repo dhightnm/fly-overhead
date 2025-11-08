@@ -32,6 +32,11 @@ export interface Aircraft {
   predicted?: boolean;
   prediction_confidence?: number;
   route?: Route | null; // Route data included from backend (if cached)
+  
+  // Development mode fields (when rate limited)
+  isStale?: boolean; // True if data is older than normal threshold
+  staleReason?: 'rate_limited' | string; // Why the data is stale
+  ageMinutes?: number; // How old the data is in minutes
 }
 
 export interface Airport {

@@ -1,5 +1,7 @@
 const express = require('express');
 const postgresRepository = require('../repositories/PostgresRepository');
+const rateLimitManager = require('../services/RateLimitManager');
+const webSocketService = require('../services/WebSocketService');
 const logger = require('../utils/logger');
 
 const router = express.Router();
@@ -54,11 +56,27 @@ router.get('/ready', async (req, res) => {
       });
     }
 
+    // Get rate limit status
+    const rateLimitStatus = rateLimitManager.getStatus();
+    
+    // Get WebSocket connection count
+    const io = webSocketService.getIO();
+    const connectedClients = io ? io.sockets.sockets.size : 0;
+
     res.status(200).json({
       status: 'ready',
       timestamp: new Date().toISOString(),
       database: 'connected',
       tables: 'initialized',
+      opensky: {
+        rateLimited: rateLimitStatus.isRateLimited,
+        blockedUntil: rateLimitStatus.blockedUntil,
+        secondsUntilRetry: rateLimitStatus.secondsUntilRetry,
+        consecutiveFailures: rateLimitStatus.consecutiveFailures,
+      },
+      websocket: {
+        connectedClients,
+      },
     });
   } catch (error) {
     logger.error('Readiness check failed', { error: error.message });
@@ -68,6 +86,25 @@ router.get('/ready', async (req, res) => {
       error: error.message,
     });
   }
+});
+
+/**
+ * OpenSky rate limit status endpoint
+ */
+router.get('/opensky-status', (req, res) => {
+  const rateLimitStatus = rateLimitManager.getStatus();
+  const io = webSocketService.getIO();
+  const connectedClients = io ? io.sockets.sockets.size : 0;
+  
+  res.json({
+    timestamp: new Date().toISOString(),
+    rateLimited: rateLimitStatus.isRateLimited,
+    blockedUntil: rateLimitStatus.blockedUntil,
+    secondsUntilRetry: rateLimitStatus.secondsUntilRetry,
+    consecutiveFailures: rateLimitStatus.consecutiveFailures,
+    connectedClients,
+    willFetchOnNextInterval: connectedClients > 0 && !rateLimitStatus.isRateLimited,
+  });
 });
 
 module.exports = router;

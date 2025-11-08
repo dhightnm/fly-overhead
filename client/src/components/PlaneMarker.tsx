@@ -125,9 +125,14 @@ const PlaneMarker: React.FC<PlaneMarkerProps> = ({
     return null;
   }
 
-  const { latitude, longitude, callsign, icao24, baro_altitude, velocity, true_track } = plane;
+  const { latitude, longitude, callsign, icao24, baro_altitude, velocity, true_track, isStale, ageMinutes } = plane;
   const zIndexOffset = isSelected ? 1000 : isHighlighted ? 800 : 0;
-  const opacity = isSelected || isHighlighted ? 1 : 0.95;
+  
+  // Reduce opacity for stale aircraft in dev mode
+  let opacity = isSelected || isHighlighted ? 1 : 0.95;
+  if (isStale) {
+    opacity = isSelected || isHighlighted ? 0.7 : 0.5;
+  }
 
   return (
     <Marker
@@ -155,6 +160,19 @@ const PlaneMarker: React.FC<PlaneMarkerProps> = ({
     >
       <Popup>
         <div className="plane-popup">
+          {isStale && (
+            <div style={{ 
+              backgroundColor: '#fff3cd', 
+              color: '#856404', 
+              padding: '4px 8px', 
+              marginBottom: '8px', 
+              borderRadius: '4px',
+              fontSize: '11px',
+              fontWeight: 'bold'
+            }}>
+              ⚠️ STALE DATA ({ageMinutes}min old) - Rate Limited
+            </div>
+          )}
           <div>
             <strong>Callsign:</strong> <span>{route?.callsign || callsign || 'N/A'}</span>
             {plane.data_source === 'feeder' && (
