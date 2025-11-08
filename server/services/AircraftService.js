@@ -7,6 +7,7 @@ const rateLimitManager = require('./RateLimitManager');
 const config = require('../config');
 const logger = require('../utils/logger');
 const { mapAircraftType } = require('../utils/aircraftCategoryMapper');
+const registrationResolver = require('./RegistrationResolver');
 
 /**
  * Business logic layer for aircraft operations
@@ -212,9 +213,33 @@ class AircraftService {
               });
             });
         }
+
+        // Persist our classification fields (non-blocking, confidence-gated)
+        postgresRepository.updateAircraftClassification(enriched.icao24, {
+          ourCategory: aircraftInfo.category ?? null,
+          ourTypecode: aircraft.aircraft_type ?? null,
+          ourModel: aircraftInfo.model ?? null,
+          source: 'route',
+          confidence: 90,
+          version: 1,
+        }).catch((err) => {
+          logger.debug('Failed to update aircraft classification', {
+            icao24: enriched.icao24,
+            error: err.message,
+          });
+        });
       }
     }
 
+    // Fallback: use our persisted classification if category is missing/unreliable
+    if ((enriched.category === null || enriched.category === 0 || enriched.category === undefined)
+      && (aircraft.our_category !== null && aircraft.our_category !== undefined)) {
+      enriched.category = aircraft.our_category;
+    }
+
+    if (aircraft.registration && !enriched.registration) {
+      enriched.registration = aircraft.registration;
+    }
     // Also check flight_routes_cache for callsign if aircraft doesn't have one
     // This uses the route data that was fetched when user clicked on the plane
     if (!enriched.callsign && enriched.icao24) {
@@ -349,6 +374,16 @@ class AircraftService {
       await postgresRepository.createFeederStatsTable();
       await postgresRepository.addFeederColumnsToAircraftStates();
       await postgresRepository.addFeederColumnsToAircraftStatesHistory();
+      // Fly Overhead classification schema
+      await postgresRepository.addClassificationColumnsToAircraftStates();
+      await postgresRepository.addClassificationColumnsToAircraftStatesHistory();
+      await postgresRepository.createFlyOverheadRegistrationTables();
+      try {
+        const backfillResult = await registrationResolver.backfillFromHistory(500);
+        logger.info('Initial registration backfill completed', backfillResult);
+      } catch (backfillError) {
+        logger.warn('Initial registration backfill failed', { error: backfillError.message });
+      }
       logger.info('Database initialized successfully');
     } catch (error) {
       logger.error('Error initializing database', { error: error.message });

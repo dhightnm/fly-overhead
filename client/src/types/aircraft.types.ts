@@ -32,6 +32,12 @@ export interface Aircraft {
   predicted?: boolean;
   prediction_confidence?: number;
   route?: Route | null; // Route data included from backend (if cached)
+  our_category?: number | null;
+  our_typecode?: string | null;
+  our_model?: string | null;
+  classification_source?: string | null;
+  classification_confidence?: number | null;
+  registration?: string | null;
   
   // Development mode fields (when rate limited)
   isStale?: boolean; // True if data is older than normal threshold

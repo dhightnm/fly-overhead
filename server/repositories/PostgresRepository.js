@@ -4,6 +4,7 @@ const config = require('../config');
 const logger = require('../utils/logger');
 const PostGISService = require('../services/PostGISService');
 const { mapAircraftType } = require('../utils/aircraftCategoryMapper');
+const { normalizeRegistration } = require('../utils/registration');
 
 /**
  * Repository pattern for PostgreSQL data access
@@ -15,6 +16,106 @@ class PostgresRepository {
     this.db = pgp(connectionString);
     this.postgis = new PostGISService(this.db);
     this.initConnection();
+  }
+
+  /**
+   * Upsert registration history record (maintain first_seen/last_seen)
+   */
+  async upsertRegistrationHistory(registration, icao24, source = null) {
+    const normalizedReg = normalizeRegistration(registration);
+    if (!normalizedReg || !icao24) return;
+    const query = `
+      INSERT INTO fly_overhead_registration_history (
+        registration, icao24, first_seen, last_seen, source
+      ) VALUES ($1, $2, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, $3)
+      ON CONFLICT (registration, icao24) DO UPDATE SET
+        last_seen = CURRENT_TIMESTAMP,
+        source = COALESCE(EXCLUDED.source, fly_overhead_registration_history.source)
+    `;
+    await this.db.query(query, [normalizedReg, icao24, source]);
+  }
+
+  /**
+   * Upsert into fly_overhead_registration_catalog
+   */
+  async upsertRegistrationCatalog(registration, icao24, {
+    ourTypecode = null,
+    ourModel = null,
+    ourCategory = null,
+    source = null,
+    confidence = null,
+  } = {}) {
+    const normalizedReg = normalizeRegistration(registration);
+    if (!normalizedReg) return;
+    const query = `
+      INSERT INTO fly_overhead_registration_catalog (
+        registration, icao24, our_typecode, our_model, our_category, source, confidence, updated_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, CURRENT_TIMESTAMP)
+      ON CONFLICT (registration) DO UPDATE SET
+        icao24 = COALESCE(EXCLUDED.icao24, fly_overhead_registration_catalog.icao24),
+        our_typecode = COALESCE(EXCLUDED.our_typecode, fly_overhead_registration_catalog.our_typecode),
+        our_model = COALESCE(EXCLUDED.our_model, fly_overhead_registration_catalog.our_model),
+        our_category = COALESCE(EXCLUDED.our_category, fly_overhead_registration_catalog.our_category),
+        source = COALESCE(EXCLUDED.source, fly_overhead_registration_catalog.source),
+        confidence = GREATEST(COALESCE(EXCLUDED.confidence, 0), COALESCE(fly_overhead_registration_catalog.confidence, 0)),
+        updated_at = CURRENT_TIMESTAMP
+    `;
+    const icao24Norm = icao24 ? String(icao24).toLowerCase() : null;
+    await this.db.query(query, [normalizedReg, icao24Norm, ourTypecode, ourModel, ourCategory, source, confidence]);
+  }
+
+  /**
+   * Get registration catalog entry by registration
+   */
+  async getRegistrationCatalogEntry(registration) {
+    const normalizedReg = normalizeRegistration(registration);
+    if (!normalizedReg) return null;
+    const query = `
+      SELECT registration, icao24, our_typecode, our_model, our_category, source, confidence, updated_at
+      FROM fly_overhead_registration_catalog
+      WHERE registration = $1
+    `;
+    return this.db.oneOrNone(query, [normalizedReg]);
+  }
+
+  /**
+   * Get most recent registration catalog entry by ICAO24
+   */
+  async getRegistrationCatalogByIcao24(icao24) {
+    if (!icao24) return null;
+    const query = `
+      SELECT registration, icao24, our_typecode, our_model, our_category, source, confidence, updated_at
+      FROM fly_overhead_registration_catalog
+      WHERE icao24 = $1
+      ORDER BY updated_at DESC
+      LIMIT 1
+    `;
+    return this.db.oneOrNone(query, [String(icao24).toLowerCase()]);
+  }
+
+  /**
+   * Get latest distinct registration records from flight_routes_history for backfill
+   */
+  async getDistinctRegistrationsFromHistory(limit = 500) {
+    const query = `
+      WITH latest AS (
+        SELECT DISTINCT ON (registration)
+          registration,
+          LOWER(icao24) AS icao24,
+          aircraft_type,
+          aircraft_model,
+          source,
+          created_at
+        FROM flight_routes_history
+        WHERE registration IS NOT NULL
+          AND TRIM(registration) <> ''
+        ORDER BY registration, created_at DESC
+        LIMIT $1
+      )
+      SELECT registration, icao24, aircraft_type, aircraft_model, source, created_at
+      FROM latest
+    `;
+    return this.db.any(query, [limit]);
   }
 
   async initConnection() {
@@ -516,13 +617,15 @@ class PostgresRepository {
         c.arrival_name,
         c.aircraft_type,
         c.source as route_source,
-        c.created_at as route_created_at
+        c.created_at as route_created_at,
+        r.registration as registration
       FROM aircraft_states a
       LEFT JOIN flight_routes_cache c ON (
         (c.cache_key = a.callsign AND a.callsign IS NOT NULL AND a.callsign != '')
         OR c.cache_key = a.icao24
         OR (c.cache_key = a.icao24 AND a.callsign IS NULL)
       )
+      LEFT JOIN fly_overhead_registration_catalog r ON (r.icao24 = LOWER(a.icao24))
       WHERE a.last_contact >= $1
         AND (
           -- Use PostGIS spatial query when geom is available (preferred, uses spatial index)
@@ -694,6 +797,42 @@ class PostgresRepository {
                 error: err.message,
               });
             });
+          // Also persist our classification fields with moderate confidence
+          this.updateAircraftClassification(routeData.icao24, {
+            ourCategory: aircraftInfo.category ?? null,
+            ourTypecode: routeData.aircraft?.type || routeData.aircraft_type || null,
+            ourModel: aircraftInfo.model || routeData.aircraft?.model || null,
+            source: sourceValue || 'route',
+            confidence: 80,
+            version: 1,
+          }).catch((err) => {
+            logger.debug('Failed to persist aircraft classification during route cache', {
+              icao24: routeData.icao24,
+              error: err.message,
+            });
+          });
+        }
+      }
+
+      // Update registration catalog if registration present
+      if (routeData.registration) {
+        const normalizedReg = normalizeRegistration(routeData.registration);
+        if (normalizedReg) {
+          const typeCodeForReg = routeData.aircraft?.type || routeData.aircraft_type || null;
+          const infoForReg = typeCodeForReg ? mapAircraftType(typeCodeForReg) : { category: null, model: null };
+          const icao24Norm = routeData.icao24 ? String(routeData.icao24).toLowerCase() : null;
+
+          await this.upsertRegistrationCatalog(normalizedReg, icao24Norm, {
+            ourTypecode: typeCodeForReg,
+            ourModel: infoForReg.model || routeData.aircraft?.model || null,
+            ourCategory: infoForReg.category ?? null,
+            source: sourceValue || 'route',
+            confidence: typeCodeForReg ? 85 : 60,
+          });
+
+          if (icao24Norm) {
+            await this.upsertRegistrationHistory(normalizedReg, icao24Norm, sourceValue || 'route');
+          }
         }
       }
 
@@ -1077,6 +1216,28 @@ class PostgresRepository {
         routeData.departureDelay || null,
         routeData.arrivalDelay || null,
       ]);
+
+      // After storing history, upsert registration catalog when registration present
+      if (routeData.registration) {
+        const normalizedReg = normalizeRegistration(routeData.registration);
+        if (normalizedReg) {
+          const typeCodeForReg = routeData.aircraft?.type || routeData.aircraft_type || null;
+          const infoForReg = typeCodeForReg ? mapAircraftType(typeCodeForReg) : { category: null, model: null };
+          const icao24Norm = routeData.icao24 ? String(routeData.icao24).toLowerCase() : null;
+
+          await this.upsertRegistrationCatalog(normalizedReg, icao24Norm, {
+            ourTypecode: typeCodeForReg,
+            ourModel: infoForReg.model || routeData.aircraft?.model || null,
+            ourCategory: infoForReg.category ?? null,
+            source: routeData.source || 'history',
+            confidence: typeCodeForReg ? 85 : 60,
+          });
+
+          if (icao24Norm) {
+            await this.upsertRegistrationHistory(normalizedReg, icao24Norm, routeData.source || 'history');
+          }
+        }
+      }
     } catch (error) {
       // Ignore duplicate key errors (expected when same flight already stored)
       if (error.message?.includes('duplicate key') || error.message?.includes('uniq_flight_routes_history_flight_key')) {
@@ -1658,6 +1819,189 @@ class PostgresRepository {
     `;
     await this.db.query(query);
     logger.info('Feeder columns added to aircraft_states_history table');
+  }
+
+  /**
+   * Add Fly Overhead classification columns to aircraft_states table
+   */
+  async addClassificationColumnsToAircraftStates() {
+    const query = `
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='aircraft_states' AND column_name='our_category'
+        ) THEN
+          ALTER TABLE aircraft_states ADD COLUMN our_category INT CHECK (our_category BETWEEN 0 AND 19);
+        END IF;
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='aircraft_states' AND column_name='our_typecode'
+        ) THEN
+          ALTER TABLE aircraft_states ADD COLUMN our_typecode TEXT;
+        END IF;
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='aircraft_states' AND column_name='our_model'
+        ) THEN
+          ALTER TABLE aircraft_states ADD COLUMN our_model TEXT;
+        END IF;
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='aircraft_states' AND column_name='classification_source'
+        ) THEN
+          ALTER TABLE aircraft_states ADD COLUMN classification_source TEXT;
+        END IF;
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='aircraft_states' AND column_name='classification_confidence'
+        ) THEN
+          ALTER TABLE aircraft_states ADD COLUMN classification_confidence INT;
+        END IF;
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='aircraft_states' AND column_name='classification_version'
+        ) THEN
+          ALTER TABLE aircraft_states ADD COLUMN classification_version INT DEFAULT 1;
+        END IF;
+      END $$;
+
+      CREATE INDEX IF NOT EXISTS idx_aircraft_states_our_category ON aircraft_states(our_category);
+      CREATE INDEX IF NOT EXISTS idx_aircraft_states_our_typecode ON aircraft_states(our_typecode);
+    `;
+    await this.db.query(query);
+    logger.info('Classification columns added to aircraft_states table');
+  }
+
+  /**
+   * Add Fly Overhead classification columns to aircraft_states_history table
+   */
+  async addClassificationColumnsToAircraftStatesHistory() {
+    const query = `
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='aircraft_states_history' AND column_name='our_category'
+        ) THEN
+          ALTER TABLE aircraft_states_history ADD COLUMN our_category INT CHECK (our_category BETWEEN 0 AND 19);
+        END IF;
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='aircraft_states_history' AND column_name='our_typecode'
+        ) THEN
+          ALTER TABLE aircraft_states_history ADD COLUMN our_typecode TEXT;
+        END IF;
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='aircraft_states_history' AND column_name='our_model'
+        ) THEN
+          ALTER TABLE aircraft_states_history ADD COLUMN our_model TEXT;
+        END IF;
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='aircraft_states_history' AND column_name='classification_source'
+        ) THEN
+          ALTER TABLE aircraft_states_history ADD COLUMN classification_source TEXT;
+        END IF;
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='aircraft_states_history' AND column_name='classification_confidence'
+        ) THEN
+          ALTER TABLE aircraft_states_history ADD COLUMN classification_confidence INT;
+        END IF;
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='aircraft_states_history' AND column_name='classification_version'
+        ) THEN
+          ALTER TABLE aircraft_states_history ADD COLUMN classification_version INT DEFAULT 1;
+        END IF;
+      END $$;
+
+      CREATE INDEX IF NOT EXISTS idx_aircraft_states_hist_our_category ON aircraft_states_history(our_category);
+      CREATE INDEX IF NOT EXISTS idx_aircraft_states_hist_our_typecode ON aircraft_states_history(our_typecode);
+    `;
+    await this.db.query(query);
+    logger.info('Classification columns added to aircraft_states_history table');
+  }
+
+  /**
+   * Create registration catalog and history tables for enrichment
+   */
+  async createFlyOverheadRegistrationTables() {
+    const query = `
+      CREATE TABLE IF NOT EXISTS fly_overhead_registration_catalog (
+        registration TEXT PRIMARY KEY,
+        icao24 TEXT,
+        our_typecode TEXT,
+        our_model TEXT,
+        our_category INT CHECK (our_category BETWEEN 0 AND 19),
+        source TEXT,
+        confidence INT,
+        updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+      );
+      CREATE INDEX IF NOT EXISTS idx_forc_icao24 ON fly_overhead_registration_catalog(icao24);
+
+      CREATE TABLE IF NOT EXISTS fly_overhead_registration_history (
+        id SERIAL PRIMARY KEY,
+        registration TEXT NOT NULL,
+        icao24 TEXT NOT NULL,
+        first_seen TIMESTAMPTZ,
+        last_seen TIMESTAMPTZ,
+        source TEXT,
+        UNIQUE(registration, icao24)
+      );
+      CREATE INDEX IF NOT EXISTS idx_forh_reg ON fly_overhead_registration_history(registration);
+      CREATE INDEX IF NOT EXISTS idx_forh_icao24 ON fly_overhead_registration_history(icao24);
+    `;
+    await this.db.query(query);
+    logger.info('Fly Overhead registration catalog and history tables created or already exist');
+  }
+
+  /**
+   * Update our classification fields for an aircraft with confidence gating
+   */
+  async updateAircraftClassification(icao24, {
+    ourCategory,
+    ourTypecode,
+    ourModel,
+    source,
+    confidence,
+    version = 1,
+  }) {
+    if (!icao24) return;
+    const query = `
+      UPDATE aircraft_states
+      SET
+        our_category = CASE
+          WHEN classification_confidence IS NULL OR $6 >= classification_confidence
+            THEN COALESCE($2, our_category)
+          ELSE our_category
+        END,
+        our_typecode = CASE
+          WHEN classification_confidence IS NULL OR $6 >= classification_confidence
+            THEN COALESCE($3, our_typecode)
+          ELSE our_typecode
+        END,
+        our_model = CASE
+          WHEN classification_confidence IS NULL OR $6 >= classification_confidence
+            THEN COALESCE($4, our_model)
+          ELSE our_model
+        END,
+        classification_source = CASE
+          WHEN classification_confidence IS NULL OR $6 >= classification_confidence
+            THEN $5
+          ELSE classification_source
+        END,
+        classification_confidence = CASE
+          WHEN classification_confidence IS NULL OR $6 >= classification_confidence
+            THEN $6
+          ELSE classification_confidence
+        END,
+        classification_version = COALESCE($7, classification_version)
+      WHERE icao24 = $1
+    `;
+    await this.db.query(query, [icao24, ourCategory ?? null, ourTypecode ?? null, ourModel ?? null, source ?? null, confidence ?? null, version ?? 1]);
   }
 
   /**

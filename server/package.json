@@ -23,6 +23,7 @@
     "eslint": "^7.30.0",
     "express": "^4.17.1",
     "jsonwebtoken": "^9.0.2",
+    "lru-cache": "^10.1.0",
     "morgan": "^1.10.0",
     "node-cache": "^5.1.2",
     "nodemon": "^2.0.9",

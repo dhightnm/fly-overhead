@@ -154,10 +154,11 @@ const Home: React.FC = () => {
       const isSelected = selectedAircraft?.icao24 === plane.icao24;
       const isHighlighted = highlightedAircraftIcao24 === plane.icao24;
       const isManuallyAdded = manualPlanes[plane.icao24] !== undefined;
+      const isStale = plane.isStale === true; // Explicitly marked as stale by backend (dev mode)
 
-      // Always show: selected, highlighted, manually searched, or rotorcraft
+      // Always show: selected, highlighted, manually searched, rotorcraft, or stale (dev mode)
       // Otherwise only show if recent
-      if (!isRecent && !isSelected && !isHighlighted && !isRotorcraft && !isManuallyAdded) {
+      if (!isRecent && !isSelected && !isHighlighted && !isRotorcraft && !isManuallyAdded && !isStale) {
         return;
       }
 

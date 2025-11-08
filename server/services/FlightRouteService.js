@@ -3,6 +3,7 @@ const config = require('../config');
 const logger = require('../utils/logger');
 const postgresRepository = require('../repositories/PostgresRepository');
 const openSkyService = require('./OpenSkyService');
+const registrationResolver = require('./RegistrationResolver');
 const { mapAircraftType } = require('../utils/aircraftCategoryMapper');
 
 /**
@@ -851,6 +852,50 @@ class FlightRouteService {
       hasCallsign: !!routeData.callsign,
     });
     try {
+      const needsType =
+        !routeData.aircraft?.type
+        || routeData.aircraft?.type === 'Plane'
+        || routeData.aircraft?.type === 'plane';
+      const needsCategory =
+        routeData.aircraft?.category === undefined
+        || routeData.aircraft?.category === null;
+
+      if ((needsType || needsCategory) && (routeData.registration || routeData.icao24)) {
+        try {
+          const resolved = await registrationResolver.resolve({
+            registration: routeData.registration,
+            icao24: routeData.icao24,
+          });
+
+          if (resolved?.ourTypecode || resolved?.ourCategory || resolved?.ourModel) {
+            const mapped = mapAircraftType(resolved.ourTypecode, resolved.ourModel);
+            const inferredCategory = resolved.ourCategory ?? mapped.category ?? null;
+            const inferredModel = resolved.ourModel || mapped.model || routeData.aircraft?.model || null;
+
+            routeData = {
+              ...routeData,
+              aircraft: {
+                ...(routeData.aircraft || {}),
+                type: routeData.aircraft?.type && !needsType ? routeData.aircraft.type : resolved.ourTypecode || routeData.aircraft?.type || null,
+                model: inferredModel,
+                category: !needsCategory && routeData.aircraft?.category !== null && routeData.aircraft?.category !== undefined
+                  ? routeData.aircraft.category
+                  : inferredCategory,
+              },
+            };
+
+            if (!routeData.aircraft_type && routeData.aircraft?.type) {
+              routeData.aircraft_type = routeData.aircraft.type;
+            }
+          }
+        } catch (resolveError) {
+          logger.debug('RegistrationResolver failed during cacheRoute enhancement', {
+            cacheKey,
+            error: resolveError.message,
+          });
+        }
+      }
+
       await postgresRepository.cacheRoute(cacheKey, routeData);
       this.cache.set(cacheKey, routeData);
       logger.info('FlightRouteService.cacheRoute completed', { cacheKey, source: routeData.source });
