@@ -62,6 +62,7 @@ interface PlaneMarkerProps {
   categoryOverride?: number;
   isSelected?: boolean;
   isHighlighted?: boolean;
+  isLoading?: boolean;
   onMarkerClick?: (isPrefetch?: boolean) => Promise<void> | void;
 }
 
@@ -88,16 +89,17 @@ function getCategoryLabel(plane: Aircraft) {
 }
 
 function getAircraftDisplayType(plane: Aircraft, route?: Route) {
-  // If we have both model and type from route, show "Model - Type" format
-  if (route?.aircraft?.model && route?.aircraft?.type) {
-    return `${route.aircraft.model} - ${route.aircraft.type}`;
-  }
-  // If we only have model, show model
+  // If we have model from route, show it (preferred)
   if (route?.aircraft?.model) {
+    // If type is not "Plane" (generic), show "Model - Type"
+    if (route?.aircraft?.type && route.aircraft.type !== 'Plane') {
+      return `${route.aircraft.model} - ${route.aircraft.type}`;
+    }
+    // Otherwise just show model
     return route.aircraft.model;
   }
-  // If we only have type (ICAO code), show it
-  if (route?.aircraft?.type) {
+  // If we only have type (ICAO code), show it (but skip if it's just "Plane")
+  if (route?.aircraft?.type && route.aircraft.type !== 'Plane') {
     return route.aircraft.type;
   }
   // Fallback to category label
@@ -110,6 +112,7 @@ const PlaneMarker: React.FC<PlaneMarkerProps> = ({
   categoryOverride,
   isSelected = false,
   isHighlighted = false,
+  isLoading = false,
   onMarkerClick,
 }) => {
   if (
@@ -153,15 +156,33 @@ const PlaneMarker: React.FC<PlaneMarkerProps> = ({
       <Popup>
         <div className="plane-popup">
           <div>
-            <strong>Callsign:</strong> <span>{callsign || 'N/A'}</span>
+            <strong>Callsign:</strong> <span>{route?.callsign || callsign || 'N/A'}</span>
+            {plane.data_source === 'feeder' && (
+              <span style={{ marginLeft: '8px', color: '#22c55e', fontSize: '12px' }} title="Data from local feeder">
+                🟢 Feeder
+              </span>
+            )}
           </div>
           <div>
             <strong>ICAO24:</strong> <span>{icao24 || 'N/A'}</span>
           </div>
           <div>
-            <strong>Aircraft:</strong> <span>{getAircraftDisplayType(plane, route)}</span>
+            <strong>Aircraft:</strong>{' '}
+            {isLoading || !route ? (
+              <span className="loading-spinner">⏳</span>
+            ) : (
+              <span>{getAircraftDisplayType(plane, route)}</span>
+            )}
           </div>
-          {route ? (
+          {isLoading ? (
+            <div className="popup-loading">
+              <span className="loading-spinner">⏳</span> Loading route details...
+            </div>
+          ) : !route ? (
+            <div className="popup-loading">
+              <span className="loading-spinner">⏳</span> Loading route details...
+            </div>
+          ) : (
             (() => {
               const departureCode =
                 route.departureAirport?.icao ||
@@ -198,10 +219,6 @@ const PlaneMarker: React.FC<PlaneMarkerProps> = ({
               }
               return null;
             })()
-          ) : (
-            <div className="popup-loading">
-              <span className="loading-spinner">⏳</span> Loading route details...
-            </div>
           )}
           <div>
             <strong>Altitude:</strong>{' '}

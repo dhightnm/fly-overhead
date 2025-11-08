@@ -26,6 +26,9 @@ export interface Aircraft {
   manufacturer?: string | null;
   description?: string | null;
   source?: 'manual' | 'live' | 'websocket' | 'database' | string;
+  data_source?: 'opensky' | 'feeder' | 'flightaware' | string; // Data source from backend (opensky, feeder, etc.)
+  feeder_id?: string | null; // Feeder ID if data is from a feeder
+  source_priority?: number | null; // Priority of the data source (lower = higher priority)
   predicted?: boolean;
   prediction_confidence?: number;
   route?: Route | null; // Route data included from backend (if cached)

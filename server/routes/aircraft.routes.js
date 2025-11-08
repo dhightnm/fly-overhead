@@ -126,7 +126,7 @@ router.get('/route/:identifier', async (req, res, next) => {
     // If we're querying route for an aircraft, assume it's CURRENT
     // (because if it's on the map, it's being tracked now)
     // OpenSky routes endpoint only has historical data (previous day+)
-    // Use AviationStack for current flights instead
+    // Use FlightAware for current flights instead
     const isCurrentFlight = true;
 
     logger.info('Fetching route (assumed current - visible/trackable aircraft)', {
@@ -197,7 +197,8 @@ router.get('/area/:latmin/:lonmin/:latmax/:lonmax', async (req, res, next) => {
       return res.json(boundsCache.get(cacheKey));
     }
 
-    // Cache miss - fetch from database
+    // Cache miss - fetch from database only
+    // Note: Fresh data fetching is triggered by frontend on moveend via /api/area/fetch endpoint
     const aircraft = await aircraftService.getAircraftInBounds(
       parseFloat(latmin),
       parseFloat(lonmin),
@@ -214,6 +215,39 @@ router.get('/area/:latmin/:lonmin/:latmax/:lonmax', async (req, res, next) => {
 
     return res.json(aircraft);
   } catch (err) {
+    return next(err);
+  }
+});
+
+/**
+ * Trigger fetch and update aircraft in bounds (called by frontend on moveend)
+ * This fetches from OpenSky/FlightAware and stores in database
+ */
+router.post('/area/fetch/:latmin/:lonmin/:latmax/:lonmax', async (req, res, next) => {
+  const {
+    latmin, lonmin, latmax, lonmax,
+  } = req.params;
+
+  const boundingBox = {
+    lamin: parseFloat(latmin),
+    lomin: parseFloat(lonmin),
+    lamax: parseFloat(latmax),
+    lomax: parseFloat(lonmax),
+  };
+
+  try {
+    // Fetch and update aircraft in bounds (will use FlightAware if OpenSky is rate-limited)
+    await aircraftService.fetchAndUpdateAircraftInBounds(boundingBox);
+    logger.info('Fetched and stored aircraft data for bounding box', {
+      bounds: boundingBox,
+      aircraftCount: 'updated in database',
+    });
+    return res.json({ success: true, message: 'Aircraft data fetched and stored' });
+  } catch (err) {
+    logger.error('Error fetching aircraft data for bounding box', {
+      bounds: boundingBox,
+      error: err.message,
+    });
     return next(err);
   }
 });

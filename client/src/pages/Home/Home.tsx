@@ -29,7 +29,7 @@ const Home: React.FC = () => {
   
   // Use hooks for data management
   const { planes, setPlanes, searchAircraft: searchAircraftInHook, updateAircraftCategory, upsertPlane } = useAircraftData();
-  const { routes, flightPlanRoutes, routeAvailabilityStatus, fetchRouteForAircraft, fetchFlightPlanRoute, setRoute } = useRouteData();
+  const { routes, flightPlanRoutes, routeAvailabilityStatus, loadingRoutes, fetchRouteForAircraft, fetchFlightPlanRoute, setRoute } = useRouteData();
   
   // Extract route data from aircraft responses and store in routes state
   // This ensures route data is available immediately without API calls
@@ -91,6 +91,7 @@ const Home: React.FC = () => {
       category: aircraft.category ?? inferAircraftCategory(aircraft) ?? aircraft.category,
       predicted: aircraft.predicted === true,
       prediction_confidence: aircraft.prediction_confidence,
+      route: aircraft.route, // Preserve route data from backend
     } as Aircraft;
   }, []);
 
@@ -301,7 +302,11 @@ const Home: React.FC = () => {
 
   // Fetch route wrapper to update aircraft category when route is fetched
   const fetchRouteForAircraftWithCategoryUpdate = useCallback(async (plane: Aircraft, isPrefetch = false) => {
-    const route = await fetchRouteForAircraft(plane, isPrefetch);
+    // Always force refresh on actual clicks (not prefetch/hover) to get latest route data
+    // This ensures we get updated callsign, aircraft type, and route info on every click
+    const forceRefresh = !isPrefetch;
+    
+    const route = await fetchRouteForAircraft(plane, isPrefetch, forceRefresh);
     
     if (route?.aircraftCategory !== undefined && route.aircraftCategory !== null) {
       updateAircraftCategory(plane.icao24, route.aircraftCategory);
@@ -435,6 +440,7 @@ const Home: React.FC = () => {
     return visiblePlaneEntries.map(({ plane, route, derivedCategory }) => {
       const isSelected = selectedAircraft?.icao24 === plane.icao24;
       const isHighlighted = highlightedAircraftIcao24 === plane.icao24;
+      const isLoading = loadingRoutes.has(plane.icao24);
 
       return (
       <PlaneMarker
@@ -444,6 +450,7 @@ const Home: React.FC = () => {
         categoryOverride={derivedCategory}
         isSelected={isSelected}
         isHighlighted={isHighlighted}
+        isLoading={isLoading}
         onMarkerClick={async (isPrefetch = false) => {
           if (!isPrefetch) {
             setSelectedAircraft({
@@ -453,6 +460,7 @@ const Home: React.FC = () => {
             setHighlightedAircraftIcao24(plane.icao24);
           }
 
+          // Fetch route (will use cache if already fetched, otherwise fetch from API)
           await Promise.all([
             fetchRouteForAircraftWithCategoryUpdate(plane, isPrefetch),
             fetchFlightPlanRoute(plane),

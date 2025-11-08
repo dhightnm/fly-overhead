@@ -157,13 +157,21 @@ const CATEGORY_PATTERNS = {
   // Category 5: Heavy (widebody)
   heavy: [
     /^B777$/, // Boeing 777
+    /^B77[0-9LWX]$/, // Boeing 777 variants (B772, B773, B77W, B77L)
     /^B787$/, // Boeing 787
+    /^B78[0-9X]$/, // Boeing 787 variants (B788, B789, B78X)
     /^B747$/, // Boeing 747
+    /^B74[0-9]$/, // Boeing 747 variants (B744, B748)
     /^B767$/, // Boeing 767
+    /^B76[0-9]$/, // Boeing 767 variants (B762, B763, B764) - MUST come before helicopter B[0-9]{2} pattern
     /^A330$/, // Airbus A330
+    /^A33[0-9]$/, // Airbus A330 variants (A332, A333, A339)
     /^A340$/, // Airbus A340
+    /^A34[0-9]$/, // Airbus A340 variants (A343, A346)
     /^A350$/, // Airbus A350
+    /^A35[0-9K]$/, // Airbus A350 variants (A359, A35K)
     /^A380$/, // Airbus A380
+    /^A38[0-9]$/, // Airbus A380 variants (A388)
     /^A30[0-9]$/, // A300, A310
     /^MD11$/, // MD11
     /^DC10$/, // DC10
@@ -177,8 +185,14 @@ const CATEGORY_PATTERNS = {
     /^AS[0-9]{3}$/, // Airbus helicopters
     /^EC[0-9]{3}$/, // Eurocopter
     /^BK[0-9]{3}$/, // Bell (BK designation)
-    /^B[0-9]{2}$/, // Bell (B06, B12, etc.)
-    /^B[0-9]{3}$/, // Bell (B206, B407, etc.)
+    // Bell helicopter patterns - must be more specific to avoid matching Boeing codes
+    // Only match B0X, B1X (not B7X which is Boeing 767)
+    /^B0[0-9]$/, // Bell (B06, B07, etc.) - but NOT B76, B77, B78 (Boeing)
+    /^B1[0-9]$/, // Bell (B12, B13, etc.) - but NOT B73, B74, B75 (Boeing)
+    /^B2[0-9]{2}$/, // Bell (B206, B212, etc.) - 3 digits
+    /^B3[0-9]{2}$/, // Bell (B307, etc.) - 3 digits
+    /^B4[0-9]{2}$/, // Bell (B407, B412, etc.) - 3 digits
+    /^B5[0-9]{2}$/, // Bell (B505, etc.) - 3 digits
     /^R44$/, // Robinson R44
     /^R66$/, // Robinson R66
     /jetranger/i, // Bell JetRanger

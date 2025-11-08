@@ -34,12 +34,6 @@ module.exports = {
       baseUrl: 'https://api.n2yo.com/rest/v1',
       apiKey: process.env.N2YO_API_KEY || 'M3FTYY-Q2CLZF-U76MTW-553N',
     },
-    aviationEdge: {
-      // Note: Using AviationStack API (different from Aviation Edge)
-      // The /routes endpoint requires higher subscription - using /flights instead
-      baseUrl: 'https://api.aviationstack.com/v1',
-      apiKey: process.env.AVIATION_EDGE_API_KEY || process.env.AVIATION_STACK_API_KEY,
-    },
     flightAware: {
       baseUrl: 'https://aeroapi.flightaware.com/aeroapi',
       apiKey: process.env.FLIGHTAWARE_API_KEY,
@@ -62,6 +56,6 @@ module.exports = {
   aircraft: {
     updateInterval: 120000, // 2 minutes
     staleRecordThreshold: 2 * 60 * 60 * 1000, // 2 hours
-    recentContactThreshold: 10 * 60, // 10 minutes in seconds
+    recentContactThreshold: 30 * 60, // 30 minutes in seconds (increased to show more aircraft during rate limiting)
   },
 };

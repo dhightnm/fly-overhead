@@ -113,13 +113,9 @@ class BackgroundRouteService {
     let route = null;
     let faRemaining = flightAwareRemaining;
 
-    // Try OpenSky (free, historical data)
-    if (flight.icao24) {
-      try {
-        route = await flightRouteService.fetchRouteFromOpenSky(flight.icao24, false);
-      } catch (e) { /* noop */ }
-      await new Promise((resolve) => setTimeout(resolve, 2000));
-    }
+    // Skip OpenSky in backfill jobs to preserve API quota for real-time tracking
+    // OpenSky is heavily rate-limited and should only be used for live aircraft data
+    // Background jobs use FlightAware instead
 
     // Try FlightAware ($$, best data but rate-limited)
     if (!route && flight.callsign && faRemaining > 0) {
@@ -172,13 +168,6 @@ class BackgroundRouteService {
       }
     } else if (!route && flight.callsign && faRemaining <= 0) {
       logger.debug(`Skipping FlightAware ${logContext} - cap reached`, { callsign: flight.callsign });
-    }
-
-    // Try AviationStack (fallback)
-    if (!route && flight.callsign) {
-      try {
-        route = await flightRouteService.fetchRouteFromAPI(flight.icao24, flight.callsign);
-      } catch (e) { /* noop */ }
     }
 
     return { route, flightAwareRemaining: faRemaining };
