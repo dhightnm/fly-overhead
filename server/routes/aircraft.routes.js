@@ -8,6 +8,7 @@ const flightPlanRouteService = require('../services/FlightPlanRouteService');
 const postgresRepository = require('../repositories/PostgresRepository');
 const logger = require('../utils/logger');
 const { mapAircraftTypeToCategory } = require('../utils/aircraftCategoryMapper');
+const { requireApiKeyAuth } = require('../middlewares/apiKeyAuth');
 
 const cache = new NodeCache({ stdTTL: 60, maxKeys: 100 });
 
@@ -20,8 +21,9 @@ const boundsCache = new NodeCache({
 
 /**
  * Get all aircraft (cached)
+ * Requires API key authentication
  */
-router.get('/area/all', async (req, res, next) => {
+router.get('/area/all', requireApiKeyAuth, async (req, res, next) => {
   const cacheKey = '/area/all';
 
   try {
