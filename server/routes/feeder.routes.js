@@ -313,5 +313,77 @@ router.put('/feeder/last-seen', async (req, res, next) => {
   }
 });
 
-module.exports = router;
+/**
+ * GET /api/feeder/me
+ * Get feeder information (authenticated by API key)
+ */
+router.get('/feeder/me', async (req, res, next) => {
+  try {
+    // Extract API key from Authorization header
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({
+        success: false,
+        error: 'Missing or invalid Authorization header',
+        message: 'Expected format: Authorization: Bearer <api_key>',
+      });
+    }
 
+    const apiKey = authHeader.substring(7); // Remove "Bearer " prefix
+
+    // Validate API key format (should be sk_live_...)
+    if (!apiKey || !apiKey.startsWith('sk_live_') || apiKey.length < 20) {
+      return res.status(401).json({
+        success: false,
+        error: 'Invalid API key format',
+      });
+    }
+
+    // Find feeder by API key
+    const feeder = await postgresRepository.getFeederByApiKey(apiKey);
+
+    if (!feeder) {
+      return res.status(401).json({
+        success: false,
+        error: 'Invalid API key',
+      });
+    }
+
+    // Check feeder status
+    if (feeder.status === 'suspended') {
+      return res.status(403).json({
+        success: false,
+        error: 'Feeder account suspended',
+        message: 'Please contact support for assistance',
+      });
+    }
+
+    if (feeder.status === 'inactive') {
+      return res.status(403).json({
+        success: false,
+        error: 'Feeder account inactive',
+      });
+    }
+
+    // Return feeder information
+    return res.status(200).json({
+      feeder_id: feeder.feeder_id,
+      name: feeder.name || 'Unnamed Feeder',
+      status: feeder.status,
+      location: feeder.latitude && feeder.longitude ? {
+        latitude: feeder.latitude,
+        longitude: feeder.longitude,
+      } : null,
+      created_at: feeder.created_at,
+      last_seen_at: feeder.last_seen_at || null,
+    });
+  } catch (error) {
+    logger.error('Error getting feeder info', { error: error.message });
+    return res.status(500).json({
+      success: false,
+      error: 'Internal server error',
+    });
+  }
+});
+
+module.exports = router;

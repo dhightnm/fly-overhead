@@ -91,20 +91,34 @@ async function startServer() {
 
     logger.info('Starting server with integrated background jobs');
     
-    // Initial fetch from OpenSky
+    // Initial fetch from OpenSky (skip if already rate limited)
     aircraftService.fetchAndUpdateAllAircraft().catch((err) => {
       logger.error('Error in initial aircraft fetch', { error: err.message });
     });
     
     // Disabled: populateInitialData() causes excessive OpenSky API calls on startup
     // and often fails due to rate limiting. Aircraft data is populated by the
-    // periodic fetch (every 2 minutes) and user-initiated bounded queries instead.
+    // periodic fetch (every 10 minutes) and user-initiated bounded queries instead.
     // aircraftService.populateInitialData();
 
-    // Periodic OpenSky fetch
+    // Periodic OpenSky fetch - with optimization to skip when no clients connected
     setInterval(() => {
+      // Check if any WebSocket clients are connected
+      const io = webSocketService.getIO();
+      const hasClients = io && io.sockets.sockets.size > 0;
+      
+      if (!hasClients) {
+        logger.debug('Skipping OpenSky fetch - no clients connected');
+        return;
+      }
+      
+      logger.debug(`Running periodic OpenSky fetch (${io.sockets.sockets.size} clients connected)`);
       aircraftService.fetchAndUpdateAllAircraft().catch((err) => {
-        logger.error('Error in periodic aircraft fetch', { error: err.message });
+        // Error already logged in fetchAndUpdateAllAircraft
+        // Rate limit errors are handled gracefully (no throw)
+        if (!err.rateLimited) {
+          logger.error('Error in periodic aircraft fetch', { error: err.message });
+        }
       });
     }, config.aircraft.updateInterval);
 
