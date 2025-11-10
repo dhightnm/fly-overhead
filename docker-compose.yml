@@ -4,15 +4,15 @@ services:
     platform: linux/amd64
     container_name: fly-overhead-postgres
     environment:
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=postgres
-      - POSTGRES_DB=fly_overhead
+      - POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
+      - POSTGRES_DB=${POSTGRES_DB:-fly_overhead}
     ports:
       - "5433:5432"
     volumes:
       - db-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -33,7 +33,7 @@ services:
     env_file:
       - ./.env
     environment:
-      - POSTGRES_URL=postgresql://postgres:postgres@db:5432/fly_overhead
+      - POSTGRES_URL=postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-fly_overhead}
       - PORT=3005
       - AVIATION_EDGE_API_KEY=4f486100c981ea8a41d6a83e395a2827
       - FLIGHTAWARE_API_KEY=${FLIGHTAWARE_API_KEY}
