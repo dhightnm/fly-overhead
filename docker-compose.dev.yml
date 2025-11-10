@@ -1,6 +1,7 @@
 services:
   db:
     image: postgis/postgis:15-3.3
+    platform: linux/amd64
     container_name: fly-overhead-postgres
     environment:
       - POSTGRES_USER=postgres
@@ -48,6 +49,10 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
+      - 1.1.1.1
     networks:
       - fly-overhead-network
     restart: unless-stopped

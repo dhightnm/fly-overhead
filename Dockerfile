@@ -1,7 +1,7 @@
 # ---------------------------------------
 # 1) Build the React front-end
 # ---------------------------------------
-FROM node:16 AS build-frontend
+FROM node:18 AS build-frontend
 
 # Set working directory inside container
 WORKDIR /app/client
@@ -15,12 +15,13 @@ RUN npm install --production=false
 COPY client/ .
 
 # Build for production (creates /app/client/build)
+# Node 18 should handle the build without needing the openssl-legacy-provider flag
 RUN npm run build
 
 # ---------------------------------------
 # 2) Run server + serve built static files
 # ---------------------------------------
-FROM node:16
+FROM node:18
 
 # Build argument for cache busting (optional, set via docker compose)
 ARG BUILD_DATE

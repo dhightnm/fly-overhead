@@ -79,6 +79,47 @@ class PostgresRepository {
   }
 
   /**
+   * Create critical performance indexes on aircraft_states table
+   * These indexes are essential for query performance
+   */
+  async createAircraftStatesIndexes() {
+    const indexes = [
+      // Critical: Index on last_contact for time-based filtering
+      // DESC order optimizes for ORDER BY last_contact DESC queries
+      `CREATE INDEX IF NOT EXISTS idx_aircraft_states_last_contact 
+       ON aircraft_states(last_contact DESC)`,
+      
+      // Composite index on lat/lon for spatial queries (fallback when PostGIS not available)
+      // Partial index only for rows without geometry to keep index small
+      `CREATE INDEX IF NOT EXISTS idx_aircraft_states_lat_lon 
+       ON aircraft_states(latitude, longitude) 
+       WHERE geom IS NULL`,
+      
+      // Partial index for time filtering when geometry is available
+      // Helps optimize queries that check both time and spatial constraints
+      `CREATE INDEX IF NOT EXISTS idx_aircraft_states_last_contact_geom 
+       ON aircraft_states(last_contact) 
+       WHERE geom IS NOT NULL`,
+      
+      // Index on callsign for lookups
+      `CREATE INDEX IF NOT EXISTS idx_aircraft_states_callsign 
+       ON aircraft_states(callsign) 
+       WHERE callsign IS NOT NULL AND callsign != ''`,
+    ];
+
+    for (const indexQuery of indexes) {
+      try {
+        await this.db.query(indexQuery);
+      } catch (error) {
+        // Index might already exist or other non-critical error
+        logger.debug('Index creation info', { error: error.message });
+      }
+    }
+    
+    logger.info('Aircraft states indexes created or verified');
+  }
+
+  /**
    * Create history table
    */
   async createHistoryTable() {
@@ -108,6 +149,36 @@ class PostgresRepository {
     `;
     await this.db.query(query);
     logger.info('History table created or already exists');
+  }
+
+  /**
+   * Create performance indexes on aircraft_states_history table
+   */
+  async createHistoryTableIndexes() {
+    const indexes = [
+      // Composite index for history queries by aircraft
+      `CREATE INDEX IF NOT EXISTS idx_aircraft_states_history_icao24_contact 
+       ON aircraft_states_history(icao24, last_contact DESC)`,
+      
+      // Index on created_at for time-based queries
+      `CREATE INDEX IF NOT EXISTS idx_aircraft_states_history_created_at 
+       ON aircraft_states_history(created_at DESC)`,
+      
+      // Index on callsign for lookups
+      `CREATE INDEX IF NOT EXISTS idx_aircraft_states_history_callsign 
+       ON aircraft_states_history(callsign) 
+       WHERE callsign IS NOT NULL AND callsign != ''`,
+    ];
+
+    for (const indexQuery of indexes) {
+      try {
+        await this.db.query(indexQuery);
+      } catch (error) {
+        logger.debug('Index creation info', { error: error.message });
+      }
+    }
+    
+    logger.info('History table indexes created or verified');
   }
 
   /**
@@ -154,6 +225,11 @@ class PostgresRepository {
       CREATE INDEX IF NOT EXISTS idx_routes_icao24 ON flight_routes_cache(icao24);
       CREATE INDEX IF NOT EXISTS idx_routes_callsign ON flight_routes_cache(callsign);
       CREATE INDEX IF NOT EXISTS idx_routes_cache_aircraft_type ON flight_routes_cache(aircraft_type);
+      
+      -- Critical composite index for LATERAL join optimization
+      -- This index is essential for the optimized findAircraftInBounds query
+      CREATE INDEX IF NOT EXISTS idx_flight_routes_cache_created_at 
+      ON flight_routes_cache(cache_key, created_at DESC);
     `;
     await this.db.query(cacheQuery);
 
@@ -501,10 +577,10 @@ class PostgresRepository {
    * Falls back to BETWEEN if geom column not populated yet
    */
   async findAircraftInBounds(latmin, lonmin, latmax, lonmax, recentContactThreshold) {
-    // Try PostGIS spatial query first (faster with GIST spatial index on large datasets)
-    // ST_Contains with ST_MakeEnvelope handles bounding box queries efficiently
-    // Falls back to BETWEEN if geom is NULL (for backwards compatibility)
-    // LEFT JOIN with flight_routes_cache to get route data immediately (no API call needed)
+    // Optimized query with LIMIT to prevent timeouts on large result sets
+    // Uses PostGIS spatial index for fast bounding box queries
+    // Uses LATERAL join for efficient cache lookups (only queries cache for matching aircraft)
+    // LIMIT of 1000 aircraft prevents timeouts on large datasets
     const query = `
       SELECT 
         a.*,
@@ -517,26 +593,69 @@ class PostgresRepository {
         c.aircraft_type,
         c.source as route_source,
         c.created_at as route_created_at
-      FROM aircraft_states a
-      LEFT JOIN flight_routes_cache c ON (
-        (c.cache_key = a.callsign AND a.callsign IS NOT NULL AND a.callsign != '')
-        OR c.cache_key = a.icao24
-        OR (c.cache_key = a.icao24 AND a.callsign IS NULL)
-      )
-      WHERE a.last_contact >= $1
-        AND (
-          -- Use PostGIS spatial query when geom is available (preferred, uses spatial index)
-          (a.geom IS NOT NULL 
-           AND ST_Contains(
-             ST_MakeEnvelope($4, $2, $5, $3, 4326), -- lonmin, latmin, lonmax, latmax
-             a.geom
-           ))
-          OR
-          -- Fallback to BETWEEN when geom is NULL (backwards compatibility)
-          (a.geom IS NULL
-           AND a.latitude BETWEEN $2 AND $3
-           AND a.longitude BETWEEN $4 AND $5)
-        )
+      FROM (
+        SELECT *
+        FROM aircraft_states
+        WHERE last_contact >= $1
+          AND (
+            -- Use PostGIS spatial query when geom is available (preferred, uses spatial index)
+            (geom IS NOT NULL 
+             AND ST_Contains(
+               ST_MakeEnvelope($4, $2, $5, $3, 4326), -- lonmin, latmin, lonmax, latmax
+               geom
+             ))
+            OR
+            -- Fallback to BETWEEN when geom is NULL (backwards compatibility)
+            (geom IS NULL
+             AND latitude BETWEEN $2 AND $3
+             AND longitude BETWEEN $4 AND $5)
+          )
+        ORDER BY last_contact DESC
+        LIMIT 1000
+      ) a
+      LEFT JOIN LATERAL (
+        SELECT 
+          departure_iata,
+          departure_icao,
+          departure_name,
+          arrival_iata,
+          arrival_icao,
+          arrival_name,
+          aircraft_type,
+          source,
+          created_at
+        FROM (
+          SELECT 
+            departure_iata,
+            departure_icao,
+            departure_name,
+            arrival_iata,
+            arrival_icao,
+            arrival_name,
+            aircraft_type,
+            source,
+            created_at
+          FROM flight_routes_cache
+          WHERE cache_key = a.icao24
+          UNION ALL
+          SELECT 
+            departure_iata,
+            departure_icao,
+            departure_name,
+            arrival_iata,
+            arrival_icao,
+            arrival_name,
+            aircraft_type,
+            source,
+            created_at
+          FROM flight_routes_cache
+          WHERE cache_key = a.callsign 
+            AND a.callsign IS NOT NULL 
+            AND a.callsign != ''
+        ) combined
+        ORDER BY created_at DESC
+        LIMIT 1
+      ) c ON true
       ORDER BY a.last_contact DESC
     `;
     return this.db.manyOrNone(query, [recentContactThreshold, latmin, latmax, lonmin, lonmax]);
@@ -1575,89 +1694,184 @@ class PostgresRepository {
 
   /**
    * Add feeder columns to aircraft_states table
+   * Checks for column existence first to avoid expensive ALTER TABLE operations
    */
   async addFeederColumnsToAircraftStates() {
-    const query = `
-      DO $$
-      BEGIN
-        -- Add data_source column
-        IF NOT EXISTS (
-          SELECT 1 FROM information_schema.columns
-          WHERE table_name='aircraft_states' AND column_name='data_source'
-        ) THEN
-          ALTER TABLE aircraft_states ADD COLUMN data_source TEXT DEFAULT 'opensky';
-        END IF;
+    try {
+      // First check if all columns already exist to avoid any ALTER TABLE operations
+      const columnCheck = await this.db.one(`
+        SELECT 
+          COUNT(*) FILTER (WHERE column_name = 'data_source') as has_data_source,
+          COUNT(*) FILTER (WHERE column_name = 'feeder_id') as has_feeder_id,
+          COUNT(*) FILTER (WHERE column_name = 'source_priority') as has_source_priority,
+          COUNT(*) FILTER (WHERE column_name = 'ingestion_timestamp') as has_ingestion_timestamp
+        FROM information_schema.columns
+        WHERE table_schema = 'public' 
+          AND table_name = 'aircraft_states'
+          AND column_name IN ('data_source', 'feeder_id', 'source_priority', 'ingestion_timestamp');
+      `);
 
-        -- Add feeder_id column
-        IF NOT EXISTS (
-          SELECT 1 FROM information_schema.columns
-          WHERE table_name='aircraft_states' AND column_name='feeder_id'
-        ) THEN
-          ALTER TABLE aircraft_states ADD COLUMN feeder_id TEXT REFERENCES feeders(feeder_id);
-        END IF;
+      // If all columns exist, just ensure indexes exist and return
+      if (columnCheck.has_data_source > 0 && columnCheck.has_feeder_id > 0 && 
+          columnCheck.has_source_priority > 0 && columnCheck.has_ingestion_timestamp > 0) {
+        logger.info('Feeder columns already exist in aircraft_states, ensuring indexes exist');
+        await this.db.query(`
+          CREATE INDEX IF NOT EXISTS idx_aircraft_states_feeder_id ON aircraft_states(feeder_id);
+          CREATE INDEX IF NOT EXISTS idx_aircraft_states_data_source ON aircraft_states(data_source);
+          CREATE INDEX IF NOT EXISTS idx_aircraft_states_source_priority ON aircraft_states(source_priority);
+        `);
+        logger.info('Indexes verified for aircraft_states');
+        return;
+      }
 
-        -- Add source_priority column
-        IF NOT EXISTS (
-          SELECT 1 FROM information_schema.columns
-          WHERE table_name='aircraft_states' AND column_name='source_priority'
-        ) THEN
-          ALTER TABLE aircraft_states ADD COLUMN source_priority INT DEFAULT 10;
-        END IF;
+      // Only run ALTER TABLE if columns are missing
+      logger.info('Adding feeder columns to aircraft_states');
+      const query = `
+        DO $$
+        BEGIN
+          -- Add data_source column
+          IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema = 'public'
+              AND table_name='aircraft_states' AND column_name='data_source'
+          ) THEN
+            ALTER TABLE aircraft_states ADD COLUMN data_source TEXT DEFAULT 'opensky';
+          END IF;
 
-        -- Add ingestion_timestamp column
-        IF NOT EXISTS (
-          SELECT 1 FROM information_schema.columns
-          WHERE table_name='aircraft_states' AND column_name='ingestion_timestamp'
-        ) THEN
-          ALTER TABLE aircraft_states ADD COLUMN ingestion_timestamp TIMESTAMPTZ DEFAULT NOW();
-        END IF;
-      END $$;
+          -- Add feeder_id column
+          IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema = 'public'
+              AND table_name='aircraft_states' AND column_name='feeder_id'
+          ) THEN
+            ALTER TABLE aircraft_states ADD COLUMN feeder_id TEXT REFERENCES feeders(feeder_id);
+          END IF;
 
-      CREATE INDEX IF NOT EXISTS idx_aircraft_states_feeder_id ON aircraft_states(feeder_id);
-      CREATE INDEX IF NOT EXISTS idx_aircraft_states_data_source ON aircraft_states(data_source);
-      CREATE INDEX IF NOT EXISTS idx_aircraft_states_source_priority ON aircraft_states(source_priority);
-    `;
-    await this.db.query(query);
-    logger.info('Feeder columns added to aircraft_states table');
+          -- Add source_priority column
+          IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema = 'public'
+              AND table_name='aircraft_states' AND column_name='source_priority'
+          ) THEN
+            ALTER TABLE aircraft_states ADD COLUMN source_priority INT DEFAULT 10;
+          END IF;
+
+          -- Add ingestion_timestamp column
+          IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema = 'public'
+              AND table_name='aircraft_states' AND column_name='ingestion_timestamp'
+          ) THEN
+            ALTER TABLE aircraft_states ADD COLUMN ingestion_timestamp TIMESTAMPTZ DEFAULT NOW();
+          END IF;
+        END $$;
+
+        CREATE INDEX IF NOT EXISTS idx_aircraft_states_feeder_id ON aircraft_states(feeder_id);
+        CREATE INDEX IF NOT EXISTS idx_aircraft_states_data_source ON aircraft_states(data_source);
+        CREATE INDEX IF NOT EXISTS idx_aircraft_states_source_priority ON aircraft_states(source_priority);
+      `;
+      await this.db.query(query);
+      logger.info('Feeder columns added to aircraft_states table');
+    } catch (error) {
+      logger.warn('Error adding feeder columns to aircraft_states (columns may already exist)', {
+        error: error.message,
+      });
+      // Don't throw - allow server to continue even if this fails
+    }
   }
 
   /**
    * Add feeder columns to aircraft_states_history table
+   * Checks for column existence first to avoid expensive ALTER TABLE on large tables
    */
   async addFeederColumnsToAircraftStatesHistory() {
-    const query = `
-      DO $$
-      BEGIN
-        -- Add data_source column
-        IF NOT EXISTS (
-          SELECT 1 FROM information_schema.columns
-          WHERE table_name='aircraft_states_history' AND column_name='data_source'
-        ) THEN
-          ALTER TABLE aircraft_states_history ADD COLUMN data_source TEXT DEFAULT 'opensky';
-        END IF;
+    try {
+      // First check if all columns already exist to avoid any ALTER TABLE operations
+      const columnCheck = await this.db.one(`
+        SELECT 
+          COUNT(*) FILTER (WHERE column_name = 'data_source') as has_data_source,
+          COUNT(*) FILTER (WHERE column_name = 'feeder_id') as has_feeder_id,
+          COUNT(*) FILTER (WHERE column_name = 'source_priority') as has_source_priority
+        FROM information_schema.columns
+        WHERE table_schema = 'public' 
+          AND table_name = 'aircraft_states_history'
+          AND column_name IN ('data_source', 'feeder_id', 'source_priority');
+      `);
 
-        -- Add feeder_id column
-        IF NOT EXISTS (
-          SELECT 1 FROM information_schema.columns
-          WHERE table_name='aircraft_states_history' AND column_name='feeder_id'
-        ) THEN
-          ALTER TABLE aircraft_states_history ADD COLUMN feeder_id TEXT REFERENCES feeders(feeder_id);
-        END IF;
+      // If all columns exist, check if indexes exist and return
+      if (columnCheck.has_data_source > 0 && columnCheck.has_feeder_id > 0 && columnCheck.has_source_priority > 0) {
+        logger.info('Feeder columns already exist in aircraft_states_history, checking indexes');
+        // Check if indexes already exist to avoid expensive index creation on large tables
+        const indexCheck = await this.db.one(`
+          SELECT 
+            COUNT(*) FILTER (WHERE indexname = 'idx_aircraft_states_history_feeder_id') as has_feeder_idx,
+            COUNT(*) FILTER (WHERE indexname = 'idx_aircraft_states_history_data_source') as has_data_source_idx
+          FROM pg_indexes
+          WHERE schemaname = 'public' 
+            AND tablename = 'aircraft_states_history'
+            AND indexname IN ('idx_aircraft_states_history_feeder_id', 'idx_aircraft_states_history_data_source');
+        `);
+        
+        if (indexCheck.has_feeder_idx > 0 && indexCheck.has_data_source_idx > 0) {
+          logger.info('Indexes already exist for aircraft_states_history, skipping');
+          return;
+        }
+        
+        // Only create indexes if they don't exist (this may take a while on large tables)
+        logger.info('Creating missing indexes on aircraft_states_history (this may take a while)');
+        await this.db.query(`
+          CREATE INDEX IF NOT EXISTS idx_aircraft_states_history_feeder_id ON aircraft_states_history(feeder_id);
+          CREATE INDEX IF NOT EXISTS idx_aircraft_states_history_data_source ON aircraft_states_history(data_source);
+        `);
+        logger.info('Indexes created for aircraft_states_history');
+        return;
+      }
 
-        -- Add source_priority column
-        IF NOT EXISTS (
-          SELECT 1 FROM information_schema.columns
-          WHERE table_name='aircraft_states_history' AND column_name='source_priority'
-        ) THEN
-          ALTER TABLE aircraft_states_history ADD COLUMN source_priority INT DEFAULT 10;
-        END IF;
-      END $$;
+      // Only run ALTER TABLE if columns are missing
+      logger.info('Adding feeder columns to aircraft_states_history (this may take a while on large tables)');
+      const query = `
+        DO $$
+        BEGIN
+          -- Add data_source column
+          IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema = 'public'
+              AND table_name='aircraft_states_history' AND column_name='data_source'
+          ) THEN
+            ALTER TABLE aircraft_states_history ADD COLUMN data_source TEXT DEFAULT 'opensky';
+          END IF;
 
-      CREATE INDEX IF NOT EXISTS idx_aircraft_states_history_feeder_id ON aircraft_states_history(feeder_id);
-      CREATE INDEX IF NOT EXISTS idx_aircraft_states_history_data_source ON aircraft_states_history(data_source);
-    `;
-    await this.db.query(query);
-    logger.info('Feeder columns added to aircraft_states_history table');
+          -- Add feeder_id column
+          IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema = 'public'
+              AND table_name='aircraft_states_history' AND column_name='feeder_id'
+          ) THEN
+            ALTER TABLE aircraft_states_history ADD COLUMN feeder_id TEXT REFERENCES feeders(feeder_id);
+          END IF;
+
+          -- Add source_priority column
+          IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema = 'public'
+              AND table_name='aircraft_states_history' AND column_name='source_priority'
+          ) THEN
+            ALTER TABLE aircraft_states_history ADD COLUMN source_priority INT DEFAULT 10;
+          END IF;
+        END $$;
+
+        CREATE INDEX IF NOT EXISTS idx_aircraft_states_history_feeder_id ON aircraft_states_history(feeder_id);
+        CREATE INDEX IF NOT EXISTS idx_aircraft_states_history_data_source ON aircraft_states_history(data_source);
+      `;
+      await this.db.query(query);
+      logger.info('Feeder columns added to aircraft_states_history table');
+    } catch (error) {
+      logger.warn('Error adding feeder columns to aircraft_states_history (columns may already exist)', {
+        error: error.message,
+      });
+      // Don't throw - allow server to continue even if this fails
+      // The columns might already exist from a previous run
+    }
   }
 
   /**

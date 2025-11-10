@@ -249,6 +249,20 @@ async function createNavaidsTable(db) {
  */
 async function initializeAirportSchema(db) {
   try {
+    // Check if airports table already exists to avoid hanging on large table operations
+    const tableCheck = await db.oneOrNone(`
+      SELECT EXISTS (
+        SELECT FROM information_schema.tables 
+        WHERE table_schema = 'public' 
+        AND table_name = 'airports'
+      );
+    `);
+    
+    if (tableCheck && tableCheck.exists) {
+      logger.info('Airport tables already exist, skipping initialization');
+      return;
+    }
+    
     await createAirportsTable(db);
     await createRunwaysTable(db);
     await createFrequenciesTable(db);

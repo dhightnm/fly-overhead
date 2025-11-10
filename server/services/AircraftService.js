@@ -7,6 +7,7 @@ const rateLimitManager = require('./RateLimitManager');
 const config = require('../config');
 const logger = require('../utils/logger');
 const { mapAircraftType } = require('../utils/aircraftCategoryMapper');
+const { initializeAirportSchema } = require('../database/airportSchema');
 
 /**
  * Business logic layer for aircraft operations
@@ -252,11 +253,22 @@ class AircraftService {
       const isDevelopment = config.server.env === 'development';
       const isRateLimited = rateLimitManager.isRateLimited();
       
-      // In development, when rate limited, use extended threshold to show stale data
+      // In development, use extended threshold to show stale data
+      // This helps when data is old (from backups) or APIs are unavailable
       let contactThreshold = config.aircraft.recentContactThreshold;
-      if (isDevelopment && isRateLimited) {
+      if (isDevelopment) {
+        // In development, always use extended threshold to show more data
+        // This is especially useful when testing with restored backups
         contactThreshold = config.aircraft.devModeStaleThreshold;
-        logger.debug('Using extended threshold for development (rate limited)', {
+        logger.debug('Using extended threshold for development', {
+          normalThreshold: config.aircraft.recentContactThreshold,
+          devThreshold: contactThreshold,
+          isRateLimited,
+        });
+      } else if (isRateLimited) {
+        // In production, only use extended threshold when actually rate limited
+        contactThreshold = config.aircraft.devModeStaleThreshold;
+        logger.debug('Using extended threshold (rate limited)', {
           normalThreshold: config.aircraft.recentContactThreshold,
           devThreshold: contactThreshold,
         });
@@ -341,7 +353,9 @@ class AircraftService {
   async initializeDatabase() {
     try {
       await postgresRepository.createMainTable();
+      await postgresRepository.createAircraftStatesIndexes(); // Performance indexes
       await postgresRepository.createHistoryTable();
+      await postgresRepository.createHistoryTableIndexes(); // Performance indexes
       await postgresRepository.createFlightRoutesTable();
       await postgresRepository.createUsersTable();
       // Feeder service tables
@@ -349,7 +363,18 @@ class AircraftService {
       await postgresRepository.createFeederStatsTable();
       await postgresRepository.addFeederColumnsToAircraftStates();
       await postgresRepository.addFeederColumnsToAircraftStatesHistory();
-      logger.info('Database initialized successfully');
+      // Airport schema tables (airports, runways, frequencies, navaids)
+      // Wrap in try-catch to allow server to start even if airport init fails
+      try {
+        await initializeAirportSchema(postgresRepository.db);
+        logger.info('Airport schema initialized successfully');
+      } catch (error) {
+        logger.warn('Airport schema initialization failed (tables may already exist)', {
+          error: error.message,
+        });
+        // Don't throw - allow server to continue
+      }
+      logger.info('Database initialized successfully with performance indexes');
     } catch (error) {
       logger.error('Error initializing database', { error: error.message });
       throw error;
