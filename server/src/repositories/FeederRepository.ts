@@ -1,19 +1,33 @@
-const logger = require('../utils/logger');
+import pgPromise from 'pg-promise';
+import bcrypt from 'bcryptjs';
+import logger from '../utils/logger';
+import type { Feeder } from '../types/database.types';
+
+interface FeederRegistrationData {
+  feeder_id: string;
+  api_key_hash: string;
+  name?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  metadata?: Record<string, any> | null;
+}
 
 /**
  * Repository for feeder operations
  */
 class FeederRepository {
-  constructor(db) {
+  private db: pgPromise.IDatabase<any>;
+
+  constructor(db: pgPromise.IDatabase<any>) {
     this.db = db;
   }
 
-  async getFeederById(feederId) {
+  async getFeederById(feederId: string): Promise<Feeder | null> {
     const query = 'SELECT * FROM feeders WHERE feeder_id = $1';
-    return this.db.oneOrNone(query, [feederId]);
+    return this.db.oneOrNone<Feeder>(query, [feederId]);
   }
 
-  async registerFeeder(feederData) {
+  async registerFeeder(feederData: FeederRegistrationData): Promise<Feeder> {
     const {
       feeder_id, api_key_hash, name, latitude, longitude, metadata,
     } = feederData;
@@ -35,15 +49,20 @@ class FeederRepository {
       ? [feeder_id, api_key_hash, name || null, longitude, latitude, metadata || {}]
       : [feeder_id, api_key_hash, name || null, metadata || {}];
 
-    return this.db.one(query, params);
+    return this.db.one<Feeder>(query, params);
   }
 
-  async updateFeederLastSeen(feederId) {
+  async updateFeederLastSeen(feederId: string): Promise<void> {
     const query = 'UPDATE feeders SET last_seen_at = NOW() WHERE feeder_id = $1';
     await this.db.query(query, [feederId]);
   }
 
-  async upsertFeederStats(feederId, messagesReceived, uniqueAircraft) {
+  async upsertFeederStats(
+    feederId: string,
+    messagesReceived: number,
+    uniqueAircraft: number
+  ): Promise<void> {
+    // Use date column to match existing table schema
     const query = `
       INSERT INTO feeder_stats (feeder_id, date, messages_received, unique_aircraft)
       VALUES ($1, CURRENT_DATE, $2, $3)
@@ -55,10 +74,8 @@ class FeederRepository {
     await this.db.query(query, [feederId, messagesReceived, uniqueAircraft]);
   }
 
-  async getFeederByApiKey(apiKey) {
+  async getFeederByApiKey(apiKey: string): Promise<Feeder | null> {
     try {
-      const bcrypt = require('bcryptjs');
-
       // Get all active feeders
       const query = `
         SELECT id, feeder_id, api_key_hash, name, status,
@@ -69,7 +86,7 @@ class FeederRepository {
         WHERE status IN ('active', 'inactive', 'suspended');
       `;
 
-      const feeders = await this.db.manyOrNone(query);
+      const feeders = await this.db.manyOrNone<Feeder>(query);
 
       // Check each feeder's API key hash
       for (const feeder of feeders) {
@@ -86,16 +103,18 @@ class FeederRepository {
             created_at: feeder.created_at,
             updated_at: feeder.updated_at,
             last_seen_at: feeder.last_seen_at,
-          };
+          } as Feeder;
         }
       }
 
       return null;
     } catch (error) {
-      logger.error('Error getting feeder by API key', { error: error.message });
+      const err = error as Error;
+      logger.error('Error getting feeder by API key', { error: err.message });
       throw error;
     }
   }
 }
 
-module.exports = FeederRepository;
+export default FeederRepository;
+

@@ -1,15 +1,44 @@
-const logger = require('../utils/logger');
-const crypto = require('crypto');
+import pgPromise from 'pg-promise';
+import bcrypt from 'bcryptjs';
+import logger from '../utils/logger';
+import type { ApiKey } from '../types/database.types';
+
+interface CreateApiKeyData {
+  keyHash: string;
+  prefix: string;
+  name: string;
+  description?: string | null;
+  userId?: number | null;
+  scopes?: string[];
+  createdBy?: number | null;
+  expiresAt?: Date | null;
+}
+
+interface ApiKeyFilters {
+  userId?: number | null;
+  status?: string | null;
+  keyPrefix?: string | null;
+  limit?: number;
+  offset?: number;
+}
+
+interface ApiKeyUpdates {
+  name?: string;
+  description?: string;
+  scopes?: string[];
+}
 
 /**
  * Repository for API key management
  */
 class ApiKeyRepository {
-  constructor(db) {
+  private db: pgPromise.IDatabase<any>;
+
+  constructor(db: pgPromise.IDatabase<any>) {
     this.db = db;
   }
 
-  async createApiKey(data) {
+  async createApiKey(data: CreateApiKeyData): Promise<ApiKey> {
     const {
       keyHash,
       prefix,
@@ -33,7 +62,7 @@ class ApiKeyRepository {
         created_at, updated_at, expires_at, created_by;
     `;
 
-    const result = await this.db.one(query, [
+    const result = await this.db.one<ApiKey>(query, [
       keyHash,
       prefix,
       name,
@@ -54,7 +83,7 @@ class ApiKeyRepository {
     return result;
   }
 
-  async getApiKeyByHash(keyHash) {
+  async getApiKeyByHash(keyHash: string): Promise<ApiKey | null> {
     const query = `
       SELECT
         id, key_id, key_hash, key_prefix, name, description,
@@ -66,13 +95,11 @@ class ApiKeyRepository {
         AND status = 'active';
     `;
 
-    return this.db.oneOrNone(query, [keyHash]);
+    return this.db.oneOrNone<ApiKey>(query, [keyHash]);
   }
 
-  async validateApiKey(plainKey) {
+  async validateApiKey(plainKey: string): Promise<ApiKey | null> {
     try {
-      const bcrypt = require('bcryptjs');
-
       // Get all active keys
       const query = `
         SELECT
@@ -84,14 +111,14 @@ class ApiKeyRepository {
           AND (expires_at IS NULL OR expires_at > CURRENT_TIMESTAMP);
       `;
 
-      const keys = await this.db.manyOrNone(query);
+      const keys = await this.db.manyOrNone<ApiKey>(query);
 
       // Check each key hash (bcrypt compare)
       for (const key of keys) {
         const isValid = await bcrypt.compare(plainKey, key.key_hash);
         if (isValid) {
           // Update last used (fire and forget)
-          this.updateApiKeyLastUsed(key.id).catch((err) => {
+          this.updateApiKeyLastUsed(key.id).catch((err: Error) => {
             logger.warn('Failed to update API key last_used_at', {
               keyId: key.key_id,
               error: err.message,
@@ -104,12 +131,13 @@ class ApiKeyRepository {
 
       return null;
     } catch (error) {
-      logger.error('Error validating API key', { error: error.message });
+      const err = error as Error;
+      logger.error('Error validating API key', { error: err.message });
       throw error;
     }
   }
 
-  async getApiKeyById(keyId) {
+  async getApiKeyById(keyId: string): Promise<ApiKey | null> {
     const query = `
       SELECT
         id, key_id, key_prefix, name, description,
@@ -120,10 +148,10 @@ class ApiKeyRepository {
       WHERE key_id = $1;
     `;
 
-    return this.db.oneOrNone(query, [keyId]);
+    return this.db.oneOrNone<ApiKey>(query, [keyId]);
   }
 
-  async listApiKeys(filters = {}) {
+  async listApiKeys(filters: ApiKeyFilters = {}): Promise<ApiKey[]> {
     const {
       userId = null,
       status = null,
@@ -132,8 +160,8 @@ class ApiKeyRepository {
       offset = 0,
     } = filters;
 
-    const whereClause = [];
-    const params = [];
+    const whereClause: string[] = [];
+    const params: any[] = [];
     let paramIndex = 1;
 
     if (userId !== null) {
@@ -166,10 +194,10 @@ class ApiKeyRepository {
 
     params.push(limit, offset);
 
-    return this.db.manyOrNone(query, params);
+    return this.db.manyOrNone<ApiKey>(query, params);
   }
 
-  async updateApiKeyLastUsed(id) {
+  async updateApiKeyLastUsed(id: number): Promise<void> {
     const query = `
       UPDATE api_keys
       SET
@@ -181,7 +209,11 @@ class ApiKeyRepository {
     await this.db.query(query, [id]);
   }
 
-  async revokeApiKey(keyId, revokedBy = null, reason = null) {
+  async revokeApiKey(
+    keyId: string,
+    revokedBy: number | null = null,
+    reason: string | null = null
+  ): Promise<ApiKey> {
     const query = `
       UPDATE api_keys
       SET
@@ -195,7 +227,7 @@ class ApiKeyRepository {
         revoked_at, revoked_by, revoked_reason;
     `;
 
-    const result = await this.db.one(query, [keyId, revokedBy, reason]);
+    const result = await this.db.one<ApiKey>(query, [keyId, revokedBy, reason]);
 
     logger.info('API key revoked', {
       keyId: result.key_id,
@@ -207,11 +239,11 @@ class ApiKeyRepository {
     return result;
   }
 
-  async updateApiKey(keyId, updates) {
+  async updateApiKey(keyId: string, updates: ApiKeyUpdates): Promise<ApiKey> {
     const { name, description, scopes } = updates;
 
-    const fields = [];
-    const params = [];
+    const fields: string[] = [];
+    const params: any[] = [];
     let paramIndex = 2; // Start at 2 because $1 is keyId
 
     if (name !== undefined) {
@@ -243,7 +275,7 @@ class ApiKeyRepository {
         created_at, updated_at, expires_at;
     `;
 
-    const result = await this.db.one(query, [keyId, ...params]);
+    const result = await this.db.one<ApiKey>(query, [keyId, ...params]);
 
     logger.info('API key updated', {
       keyId: result.key_id,
@@ -255,4 +287,5 @@ class ApiKeyRepository {
   }
 }
 
-module.exports = ApiKeyRepository;
+export default ApiKeyRepository;
+

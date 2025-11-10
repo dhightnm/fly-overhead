@@ -13,6 +13,8 @@ yarn-error.log*
 client/build/
 server/client/build/
 dist/
+server/dist/
+*.tsbuildinfo
 
 # IDE
 .idea/

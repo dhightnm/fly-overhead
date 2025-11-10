@@ -35,6 +35,8 @@ services:
     environment:
       - POSTGRES_URL=postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-fly_overhead}
       - PORT=3005
+      - NODE_ENV=production
+      - USE_COMPILED=true  # Use compiled TypeScript
       - AVIATION_EDGE_API_KEY=4f486100c981ea8a41d6a83e395a2827
       - FLIGHTAWARE_API_KEY=${FLIGHTAWARE_API_KEY}
     depends_on:

@@ -1,13 +1,27 @@
+import pgPromise from 'pg-promise';
+import type { Airport, Navaid } from '../types/database.types';
+import PostGISService from '../services/PostGISService';
+
 /**
  * Repository for airport and navaid queries
  */
 class AirportRepository {
-  constructor(db, postgis) {
+  private db: pgPromise.IDatabase<any>;
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  // @ts-ignore - postgis reserved for future use
+  private _postgis: PostGISService;
+
+  constructor(db: pgPromise.IDatabase<any>, postgis: PostGISService) {
     this.db = db;
-    this.postgis = postgis;
+    this._postgis = postgis;
   }
 
-  async findAirportsNearPoint(latitude, longitude, radiusKm = 50, airportType = null) {
+  async findAirportsNearPoint(
+    latitude: number,
+    longitude: number,
+    radiusKm: number = 50,
+    airportType: string | null = null
+  ): Promise<Airport[]> {
     let query = `
       SELECT *,
         ST_Distance(
@@ -23,7 +37,7 @@ class AirportRepository {
         )
     `;
 
-    const params = [latitude, longitude, radiusKm * 1000];
+    const params: any[] = [latitude, longitude, radiusKm * 1000];
 
     if (airportType) {
       query += ' AND type = $4';
@@ -32,10 +46,11 @@ class AirportRepository {
 
     query += ' ORDER BY distance_km ASC LIMIT 50;';
 
-    return this.db.query(query, params);
+    const results = await this.db.query<Airport>(query, params) as unknown as Airport[];
+    return results;
   }
 
-  async findAirportByCode(code) {
+  async findAirportByCode(code: string): Promise<Airport | null> {
     const query = `
       SELECT * FROM airports
       WHERE UPPER(iata_code) = UPPER($1)
@@ -43,10 +58,17 @@ class AirportRepository {
          OR UPPER(ident) = UPPER($1)
       LIMIT 1;
     `;
-    return this.db.oneOrNone(query, [code]);
+    return this.db.oneOrNone<Airport>(query, [code]);
   }
 
-  async findAirportsInBounds(latmin, lonmin, latmax, lonmax, airportType = null, limit = 100) {
+  async findAirportsInBounds(
+    latmin: number,
+    lonmin: number,
+    latmax: number,
+    lonmax: number,
+    airportType: string | null = null,
+    limit: number = 100
+  ): Promise<Airport[]> {
     let query = `
       SELECT
         id,
@@ -72,7 +94,7 @@ class AirportRepository {
         AND longitude_deg BETWEEN $2 AND $4
     `;
 
-    const params = [latmin, lonmin, latmax, lonmax];
+    const params: any[] = [latmin, lonmin, latmax, lonmax];
 
     if (airportType) {
       query += ' AND type = $5';
@@ -84,10 +106,16 @@ class AirportRepository {
       params.push(limit);
     }
 
-    return this.db.query(query, params);
+    const results = await this.db.query<Airport>(query, params) as unknown as Airport[];
+    return results;
   }
 
-  async findNavaidsNearPoint(latitude, longitude, radiusKm = 50, navaidType = null) {
+  async findNavaidsNearPoint(
+    latitude: number,
+    longitude: number,
+    radiusKm: number = 50,
+    navaidType: string | null = null
+  ): Promise<Navaid[]> {
     let query = `
       SELECT *,
         ST_Distance(
@@ -103,7 +131,7 @@ class AirportRepository {
         )
     `;
 
-    const params = [latitude, longitude, radiusKm * 1000];
+    const params: any[] = [latitude, longitude, radiusKm * 1000];
 
     if (navaidType) {
       query += ' AND type = $4';
@@ -112,10 +140,11 @@ class AirportRepository {
 
     query += ' ORDER BY distance_km ASC LIMIT 50;';
 
-    return this.db.query(query, params);
+    const results = await this.db.query<Navaid>(query, params) as unknown as Navaid[];
+    return results;
   }
 
-  async searchAirports(searchTerm, limit = 10) {
+  async searchAirports(searchTerm: string, limit: number = 10): Promise<Airport[]> {
     const query = `
       SELECT * FROM airports
       WHERE UPPER(name) LIKE UPPER($1)
@@ -133,8 +162,10 @@ class AirportRepository {
         name
       LIMIT $3;
     `;
-    return this.db.query(query, [`%${searchTerm}%`, searchTerm, limit]);
+    const results = await this.db.query<Airport>(query, [`%${searchTerm}%`, searchTerm, limit]) as unknown as Airport[];
+    return results;
   }
 }
 
-module.exports = AirportRepository;
+export default AirportRepository;
+

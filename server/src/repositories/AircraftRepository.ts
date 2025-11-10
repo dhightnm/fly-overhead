@@ -1,15 +1,51 @@
-// Note: logger and mapAircraftType may be needed when extracting more methods
+import pgPromise from 'pg-promise';
+import type { AircraftState } from '../types/database.types';
+import PostGISService from '../services/PostGISService';
+
+/**
+ * Aircraft state array format from OpenSky API:
+ * [0] icao24, [1] callsign, [2] origin_country, [3] time_position, [4] last_contact,
+ * [5] longitude, [6] latitude, [7] baro_altitude, [8] on_ground, [9] velocity,
+ * [10] true_track, [11] vertical_rate, [12] sensors, [13] geo_altitude, [14] squawk,
+ * [15] spi, [16] position_source, [17] category, [18] created_at (optional)
+ */
+type AircraftStateArray = [
+  string, // icao24
+  string | null, // callsign
+  string | null, // origin_country
+  number | null, // time_position
+  number | null, // last_contact
+  number | null, // longitude
+  number | null, // latitude
+  number | null, // baro_altitude
+  boolean | null, // on_ground
+  number | null, // velocity
+  number | null, // true_track
+  number | null, // vertical_rate
+  number[] | null, // sensors
+  number | null, // geo_altitude
+  string | null, // squawk
+  boolean | null, // spi
+  number | null, // position_source
+  number | null, // category
+  Date?, // created_at (optional)
+];
 
 /**
  * Repository for aircraft states and history operations
  */
 class AircraftRepository {
-  constructor(db, postgis) {
+  private db: pgPromise.IDatabase<any>;
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  // @ts-ignore - postgis reserved for future use
+  private _postgis: PostGISService;
+
+  constructor(db: pgPromise.IDatabase<any>, postgis: PostGISService) {
     this.db = db;
-    this.postgis = postgis;
+    this._postgis = postgis;
   }
 
-  async upsertAircraftState(state) {
+  async upsertAircraftState(state: AircraftStateArray): Promise<void> {
     // History insert (no created_at needed, has DEFAULT)
     const historyState = [
       state[0], state[1], state[2], state[3], state[4],
@@ -60,7 +96,7 @@ class AircraftRepository {
     await this.db.query(upsertQuery, state);
   }
 
-  async findAircraftByIdentifier(identifier) {
+  async findAircraftByIdentifier(identifier: string): Promise<AircraftState[]> {
     const query = `
       SELECT *
       FROM aircraft_states
@@ -68,11 +104,17 @@ class AircraftRepository {
          OR LOWER(callsign) = LOWER($1)
       ORDER BY last_contact DESC NULLS LAST, created_at DESC
     `;
-    const results = await this.db.any(query, [identifier.trim()]);
+    const results = await this.db.any<AircraftState>(query, [identifier.trim()]);
     return results;
   }
 
-  async findAircraftInBounds(latmin, lonmin, latmax, lonmax, recentContactThreshold) {
+  async findAircraftInBounds(
+    latmin: number,
+    lonmin: number,
+    latmax: number,
+    lonmax: number,
+    recentContactThreshold: number
+  ): Promise<any[]> {
     // Optimized query with LIMIT to prevent timeouts on large result sets
     // Uses PostGIS spatial index for fast bounding box queries
     // Uses LATERAL join for efficient cache lookups (only queries cache for matching aircraft)
@@ -157,7 +199,7 @@ class AircraftRepository {
     return this.db.manyOrNone(query, [recentContactThreshold, latmin, latmax, lonmin, lonmax]);
   }
 
-  async updateAircraftCategory(icao24, category) {
+  async updateAircraftCategory(icao24: string, category: number | null): Promise<void> {
     if (!icao24 || category === null || category === undefined) {
       return;
     }
@@ -170,12 +212,16 @@ class AircraftRepository {
     await this.db.query(query, [category, icao24]);
   }
 
-  async findAircraftHistory(icao24, startTime = null, endTime = null) {
+  async findAircraftHistory(
+    icao24: string,
+    startTime: Date | null = null,
+    endTime: Date | null = null
+  ): Promise<AircraftState[]> {
     let query = `
       SELECT * FROM aircraft_states_history 
       WHERE icao24 = $1
     `;
-    const params = [icao24];
+    const params: any[] = [icao24];
 
     if (startTime) {
       query += ' AND created_at >= $2';
@@ -191,16 +237,20 @@ class AircraftRepository {
 
     query += ' ORDER BY created_at ASC';
 
-    const results = await this.db.any(query, params);
+    const results = await this.db.any<AircraftState>(query, params);
     return results;
   }
 
-  async findMultipleAircraftHistory(icao24s, startTime = null, endTime = null) {
+  async findMultipleAircraftHistory(
+    icao24s: string[],
+    startTime: Date | null = null,
+    endTime: Date | null = null
+  ): Promise<AircraftState[]> {
     let query = `
       SELECT * FROM aircraft_states_history 
       WHERE icao24 = ANY($1)
     `;
-    const params = [icao24s];
+    const params: any[] = [icao24s];
 
     if (startTime) {
       query += ' AND created_at >= $2';
@@ -216,11 +266,14 @@ class AircraftRepository {
 
     query += ' ORDER BY icao24, created_at ASC';
 
-    const results = await this.db.any(query, params);
+    const results = await this.db.any<AircraftState>(query, params);
     return results;
   }
 
-  async findRecentAircraftWithoutRoutes(minLastContact, limit = 10) {
+  async findRecentAircraftWithoutRoutes(
+    minLastContact: number,
+    limit: number = 10
+  ): Promise<AircraftState[]> {
     const query = `
       SELECT a.*
       FROM aircraft_states a
@@ -233,12 +286,18 @@ class AircraftRepository {
       ORDER BY a.last_contact DESC
       LIMIT $2
     `;
-    return this.db.any(query, [minLastContact, limit]);
+    return this.db.any<AircraftState>(query, [minLastContact, limit]);
   }
 
   // This method is complex and references routeRepository - keeping it here for now
   // but it could be moved to a service layer
-  async upsertAircraftStateWithPriority(state, feederId, ingestionTimestamp, dataSource = 'opensky', sourcePriority = 30) {
+  async upsertAircraftStateWithPriority(
+    state: AircraftStateArray,
+    feederId: string | null,
+    ingestionTimestamp: Date | null,
+    dataSource: string = 'opensky',
+    sourcePriority: number = 30
+  ): Promise<void> {
     // Extract from old implementation - keeping for now
     // TODO: Refactor to use RouteRepository
     const historyState = [
@@ -272,126 +331,147 @@ class AircraftRepository {
         callsign = CASE 
           WHEN EXCLUDED.source_priority < aircraft_states.source_priority 
             OR (EXCLUDED.source_priority = aircraft_states.source_priority AND EXCLUDED.ingestion_timestamp > aircraft_states.ingestion_timestamp)
+            OR (EXCLUDED.last_contact > aircraft_states.last_contact + 600)
           THEN TRIM(EXCLUDED.callsign)
           ELSE aircraft_states.callsign
         END,
         origin_country = CASE 
           WHEN EXCLUDED.source_priority < aircraft_states.source_priority 
             OR (EXCLUDED.source_priority = aircraft_states.source_priority AND EXCLUDED.ingestion_timestamp > aircraft_states.ingestion_timestamp)
+            OR (EXCLUDED.last_contact > aircraft_states.last_contact + 600)
           THEN EXCLUDED.origin_country
           ELSE aircraft_states.origin_country
         END,
         time_position = CASE 
           WHEN EXCLUDED.source_priority < aircraft_states.source_priority 
             OR (EXCLUDED.source_priority = aircraft_states.source_priority AND EXCLUDED.ingestion_timestamp > aircraft_states.ingestion_timestamp)
+            OR (EXCLUDED.last_contact > aircraft_states.last_contact + 600)
           THEN EXCLUDED.time_position
           ELSE aircraft_states.time_position
         END,
         last_contact = CASE 
           WHEN EXCLUDED.source_priority < aircraft_states.source_priority 
             OR (EXCLUDED.source_priority = aircraft_states.source_priority AND EXCLUDED.ingestion_timestamp > aircraft_states.ingestion_timestamp)
+            OR (EXCLUDED.last_contact > aircraft_states.last_contact + 600)
           THEN EXCLUDED.last_contact
           ELSE aircraft_states.last_contact
         END,
         longitude = CASE 
           WHEN EXCLUDED.source_priority < aircraft_states.source_priority 
             OR (EXCLUDED.source_priority = aircraft_states.source_priority AND EXCLUDED.ingestion_timestamp > aircraft_states.ingestion_timestamp)
+            OR (EXCLUDED.last_contact > aircraft_states.last_contact + 600)
           THEN EXCLUDED.longitude
           ELSE aircraft_states.longitude
         END,
         latitude = CASE 
           WHEN EXCLUDED.source_priority < aircraft_states.source_priority 
             OR (EXCLUDED.source_priority = aircraft_states.source_priority AND EXCLUDED.ingestion_timestamp > aircraft_states.ingestion_timestamp)
+            OR (EXCLUDED.last_contact > aircraft_states.last_contact + 600)
           THEN EXCLUDED.latitude
           ELSE aircraft_states.latitude
         END,
         baro_altitude = CASE 
           WHEN EXCLUDED.source_priority < aircraft_states.source_priority 
             OR (EXCLUDED.source_priority = aircraft_states.source_priority AND EXCLUDED.ingestion_timestamp > aircraft_states.ingestion_timestamp)
+            OR (EXCLUDED.last_contact > aircraft_states.last_contact + 600)
           THEN EXCLUDED.baro_altitude
           ELSE aircraft_states.baro_altitude
         END,
         on_ground = CASE 
           WHEN EXCLUDED.source_priority < aircraft_states.source_priority 
             OR (EXCLUDED.source_priority = aircraft_states.source_priority AND EXCLUDED.ingestion_timestamp > aircraft_states.ingestion_timestamp)
+            OR (EXCLUDED.last_contact > aircraft_states.last_contact + 600)
           THEN EXCLUDED.on_ground
           ELSE aircraft_states.on_ground
         END,
         velocity = CASE 
           WHEN EXCLUDED.source_priority < aircraft_states.source_priority 
             OR (EXCLUDED.source_priority = aircraft_states.source_priority AND EXCLUDED.ingestion_timestamp > aircraft_states.ingestion_timestamp)
+            OR (EXCLUDED.last_contact > aircraft_states.last_contact + 600)
           THEN EXCLUDED.velocity
           ELSE aircraft_states.velocity
         END,
         true_track = CASE 
           WHEN EXCLUDED.source_priority < aircraft_states.source_priority 
             OR (EXCLUDED.source_priority = aircraft_states.source_priority AND EXCLUDED.ingestion_timestamp > aircraft_states.ingestion_timestamp)
+            OR (EXCLUDED.last_contact > aircraft_states.last_contact + 600)
           THEN EXCLUDED.true_track
           ELSE aircraft_states.true_track
         END,
         vertical_rate = CASE 
           WHEN EXCLUDED.source_priority < aircraft_states.source_priority 
             OR (EXCLUDED.source_priority = aircraft_states.source_priority AND EXCLUDED.ingestion_timestamp > aircraft_states.ingestion_timestamp)
+            OR (EXCLUDED.last_contact > aircraft_states.last_contact + 600)
           THEN EXCLUDED.vertical_rate
           ELSE aircraft_states.vertical_rate
         END,
         sensors = CASE 
           WHEN EXCLUDED.source_priority < aircraft_states.source_priority 
             OR (EXCLUDED.source_priority = aircraft_states.source_priority AND EXCLUDED.ingestion_timestamp > aircraft_states.ingestion_timestamp)
+            OR (EXCLUDED.last_contact > aircraft_states.last_contact + 600)
           THEN EXCLUDED.sensors
           ELSE aircraft_states.sensors
         END,
         geo_altitude = CASE 
           WHEN EXCLUDED.source_priority < aircraft_states.source_priority 
             OR (EXCLUDED.source_priority = aircraft_states.source_priority AND EXCLUDED.ingestion_timestamp > aircraft_states.ingestion_timestamp)
+            OR (EXCLUDED.last_contact > aircraft_states.last_contact + 600)
           THEN EXCLUDED.geo_altitude
           ELSE aircraft_states.geo_altitude
         END,
         squawk = CASE 
           WHEN EXCLUDED.source_priority < aircraft_states.source_priority 
             OR (EXCLUDED.source_priority = aircraft_states.source_priority AND EXCLUDED.ingestion_timestamp > aircraft_states.ingestion_timestamp)
+            OR (EXCLUDED.last_contact > aircraft_states.last_contact + 600)
           THEN EXCLUDED.squawk
           ELSE aircraft_states.squawk
         END,
         spi = CASE 
           WHEN EXCLUDED.source_priority < aircraft_states.source_priority 
             OR (EXCLUDED.source_priority = aircraft_states.source_priority AND EXCLUDED.ingestion_timestamp > aircraft_states.ingestion_timestamp)
+            OR (EXCLUDED.last_contact > aircraft_states.last_contact + 600)
           THEN EXCLUDED.spi
           ELSE aircraft_states.spi
         END,
         position_source = CASE 
           WHEN EXCLUDED.source_priority < aircraft_states.source_priority 
             OR (EXCLUDED.source_priority = aircraft_states.source_priority AND EXCLUDED.ingestion_timestamp > aircraft_states.ingestion_timestamp)
+            OR (EXCLUDED.last_contact > aircraft_states.last_contact + 600)
           THEN EXCLUDED.position_source
           ELSE aircraft_states.position_source
         END,
         category = CASE 
           WHEN EXCLUDED.source_priority < aircraft_states.source_priority 
             OR (EXCLUDED.source_priority = aircraft_states.source_priority AND EXCLUDED.ingestion_timestamp > aircraft_states.ingestion_timestamp)
+            OR (EXCLUDED.last_contact > aircraft_states.last_contact + 600)
           THEN EXCLUDED.category
           ELSE aircraft_states.category
         END,
         feeder_id = CASE 
           WHEN EXCLUDED.source_priority < aircraft_states.source_priority 
             OR (EXCLUDED.source_priority = aircraft_states.source_priority AND EXCLUDED.ingestion_timestamp > aircraft_states.ingestion_timestamp)
+            OR (EXCLUDED.last_contact > aircraft_states.last_contact + 600)
           THEN EXCLUDED.feeder_id
           ELSE aircraft_states.feeder_id
         END,
         ingestion_timestamp = CASE 
           WHEN EXCLUDED.source_priority < aircraft_states.source_priority 
             OR (EXCLUDED.source_priority = aircraft_states.source_priority AND EXCLUDED.ingestion_timestamp > aircraft_states.ingestion_timestamp)
+            OR (EXCLUDED.last_contact > aircraft_states.last_contact + 600)
           THEN EXCLUDED.ingestion_timestamp
           ELSE aircraft_states.ingestion_timestamp
         END,
         data_source = CASE 
           WHEN EXCLUDED.source_priority < aircraft_states.source_priority 
             OR (EXCLUDED.source_priority = aircraft_states.source_priority AND EXCLUDED.ingestion_timestamp > aircraft_states.ingestion_timestamp)
+            OR (EXCLUDED.last_contact > aircraft_states.last_contact + 600)
           THEN EXCLUDED.data_source
           ELSE aircraft_states.data_source
         END,
         source_priority = CASE 
           WHEN EXCLUDED.source_priority < aircraft_states.source_priority 
             OR (EXCLUDED.source_priority = aircraft_states.source_priority AND EXCLUDED.ingestion_timestamp > aircraft_states.ingestion_timestamp)
+            OR (EXCLUDED.last_contact > aircraft_states.last_contact + 600)
           THEN EXCLUDED.source_priority
           ELSE aircraft_states.source_priority
         END;
@@ -400,10 +480,11 @@ class AircraftRepository {
       state[0], state[1], state[2], state[3], state[4],
       state[5], state[6], state[7], state[8], state[9],
       state[10], state[11], state[12], state[13], state[14],
-      state[15], state[16], state[17], state[18],
+      state[15], state[16], state[17], state[18] || new Date(),
       feederId, ingestionTimestamp, dataSource, sourcePriority,
     ]);
   }
 }
 
-module.exports = AircraftRepository;
+export default AircraftRepository;
+

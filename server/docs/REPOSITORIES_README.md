@@ -65,11 +65,7 @@ await aircraftRepo.upsertAircraftState(state);
 
 ## Migration Complete ✅
 
-All methods have been successfully extracted from the monolithic `PostgresRepository.old.js` into specialized repositories. The old file can now be safely removed:
-
-```bash
-rm server/repositories/PostgresRepository.old.js
-```
+All methods have been successfully extracted from the monolithic `PostgresRepository.old.js` into specialized repositories. The old file has been moved to `server/old-code/` for reference.
 
 **Note**: Keep the old file as a backup for a short period to ensure everything works correctly, then remove it.
 
@@ -83,6 +79,6 @@ rm server/repositories/PostgresRepository.old.js
 
 ## File Reference
 
-- **Original file**: `PostgresRepository.old.js` (backup of original 2,587-line file)
+- **Original file**: `server/old-code/PostgresRepository.old.js` (backup of original 2,587-line file)
 - **Method locations**: See `REFACTORING_PLAN.md` for method-to-repository mapping
 

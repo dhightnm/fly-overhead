@@ -7,6 +7,23 @@ import type { AirportSearchResult } from '../types';
 
 class AircraftService {
   /**
+   * Trigger a fresh fetch of aircraft data from OpenSky for a specific region
+   * This should be called when the map moves to ensure we have the latest data
+   */
+  async triggerBoundedFetch(bounds: Bounds): Promise<void> {
+    const { southWest, northEast } = bounds;
+    try {
+      await api.post(
+        `/api/area/fetch/${southWest.lat}/${southWest.lng}/${northEast.lat}/${northEast.lng}`
+      );
+      console.log('Triggered fresh OpenSky fetch for bounds:', bounds);
+    } catch (error) {
+      // Silent fail - don't block the UI if OpenSky fetch fails
+      console.debug('OpenSky bounded fetch failed (may be rate limited):', error);
+    }
+  }
+
+  /**
    * Fetch aircraft in a geographic bounds
    */
   async getAircraftInBounds(bounds: Bounds): Promise<Aircraft[]> {

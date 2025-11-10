@@ -38,14 +38,18 @@ services:
       - NODE_ENV=development
       - AVIATION_EDGE_API_KEY=4f486100c981ea8a41d6a83e395a2827
       - FLIGHTAWARE_API_KEY=${FLIGHTAWARE_API_KEY}
-    # Mount server code as volume for live reloading (no rebuild needed)
-    # Note: On Windows, use forward slashes and relative paths
+    # Development mode uses compiled TypeScript from Docker build
+    # The dist/ and node_modules are preserved from the build
+    # Source files are mounted read-only for inspection/debugging
+    # To rebuild after code changes: docker-compose -f docker-compose.dev.yml build server
     volumes:
-      - ./server:/app/server
+      # Mount source files read-only for inspection (optional)
+      - ./server/src:/app/server/src:ro
+      # Preserve compiled dist and node_modules from Docker build
+      - /app/server/dist
+      - /app/server/node_modules
       # Mount client build directory so the server can serve static files
       - ./client/build:/app/server/client/build
-      # Anonymous volume to preserve node_modules installed in container
-      - /app/server/node_modules
     depends_on:
       db:
         condition: service_healthy
@@ -56,6 +60,8 @@ services:
     networks:
       - fly-overhead-network
     restart: unless-stopped
+    # Use compiled TypeScript from Docker build
+    command: ["node", "server/dist/index.js"]
 
 volumes:
   db-data:

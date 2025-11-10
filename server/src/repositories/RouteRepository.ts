@@ -1,15 +1,20 @@
-const logger = require('../utils/logger');
-const crypto = require('crypto');
+import pgPromise from 'pg-promise';
+import crypto from 'crypto';
+import logger from '../utils/logger';
+import type { RouteData } from '../types/api.types';
+import type { FlightRouteHistory } from '../types/database.types';
 
 /**
  * Repository for route caching and flight history
  */
 class RouteRepository {
-  constructor(db) {
+  private db: pgPromise.IDatabase<any>;
+
+  constructor(db: pgPromise.IDatabase<any>) {
     this.db = db;
   }
 
-  async cacheRoute(cacheKey, routeData) {
+  async cacheRoute(cacheKey: string, routeData: RouteData): Promise<void> {
     try {
       // Log source for debugging
       logger.info('Caching route with source', {
@@ -70,22 +75,20 @@ class RouteRepository {
         aircraftType,
       ]);
 
-      // Note: Aircraft category update should be handled by the service layer
-      // after route caching, as RouteRepository doesn't have direct access to AircraftRepository
-
       logger.info('Route cached successfully', { cacheKey, source: sourceValue });
     } catch (error) {
+      const err = error as Error;
       logger.error('Error caching route', {
         cacheKey,
         callsign: routeData.callsign,
-        error: error.message,
-        stack: error.stack,
+        error: err.message,
+        stack: err.stack,
       });
       throw error;
     }
   }
 
-  async getCachedRoute(cacheKey) {
+  async getCachedRoute(cacheKey: string): Promise<RouteData | null> {
     // Different TTLs based on route completeness:
     // - Complete routes (has arrival): 24 hours
     // - Incomplete routes (no arrival, inference): 30 minutes
@@ -138,7 +141,7 @@ class RouteRepository {
     };
   }
 
-  async findHistoricalRoute(callsign, departureIcao) {
+  async findHistoricalRoute(callsign: string, departureIcao: string): Promise<any> {
     const query = `
       SELECT
         departure_iata, departure_icao, departure_name,
@@ -168,7 +171,7 @@ class RouteRepository {
     };
   }
 
-  async findHistoricalRouteByIcao24(icao24, departureIcao) {
+  async findHistoricalRouteByIcao24(icao24: string, departureIcao: string): Promise<any> {
     const query = `
       SELECT
         departure_iata, departure_icao, departure_name,
@@ -198,7 +201,7 @@ class RouteRepository {
     };
   }
 
-  async storeRouteHistory(routeData) {
+  async storeRouteHistory(routeData: RouteData): Promise<void> {
     // First, check if this is a recent flight that might need updating
     const callsignNorm = routeData.callsign ? String(routeData.callsign).trim().toUpperCase() : '';
     const icao24Norm = routeData.icao24 ? String(routeData.icao24).trim().toLowerCase() : '';
@@ -218,7 +221,7 @@ class RouteRepository {
 
     // Check for existing recent flight with same departure time (within 48 hours)
     const departureTime = actualStart || scheduledStart;
-    let existingFlightId = null;
+    let existingFlightId: number | null = null;
 
     if (icao24Norm && callsignNorm && departureTime) {
       const recentFlightQuery = `
@@ -268,7 +271,7 @@ class RouteRepository {
             hadArrival: !!existingFlight.actual_flight_end,
           });
 
-          const updateFields = {};
+          const updateFields: Record<string, any> = {};
           if (needsFlightKeyFix) {
             const startKey = departureTime ? departureTime.toISOString() : 'null';
             const endKey = (actualEnd || scheduledEnd) ? (actualEnd || scheduledEnd).toISOString() : 'null';
@@ -326,12 +329,15 @@ class RouteRepository {
     const flightKey = crypto.createHash('md5').update(flightKeyComponents).digest('hex');
     const routeKey = [depIcao, arrIcao].join('>');
 
-    let eteSeconds = null;
-    if (typeof routeData.flightData?.duration === 'number') {
-      eteSeconds = routeData.flightData.duration;
-    } else if (typeof routeData.flightData?.filedEte === 'number') {
-      eteSeconds = routeData.flightData.filedEte;
-    }
+    // Calculate ETE if available (reserved for future use)
+    // Note: Currently not used in query, but calculated for potential future use
+    const _eteSeconds: number | null = 
+      typeof routeData.flightData?.duration === 'number' 
+        ? routeData.flightData.duration
+        : typeof routeData.flightData?.filedEte === 'number'
+          ? routeData.flightData.filedEte
+          : null;
+    void _eteSeconds; // Suppress unused variable warning - reserved for future use
 
     const scheduledEte = (scheduledStart && scheduledEnd)
       ? Math.max(0, Math.floor((scheduledEnd.getTime() - scheduledStart.getTime()) / 1000))
@@ -425,8 +431,9 @@ class RouteRepository {
         routeData.arrivalDelay || null,
       ]);
     } catch (error) {
+      const err = error as Error;
       // Ignore duplicate key errors (expected when same flight already stored)
-      if (error.message?.includes('duplicate key') || error.message?.includes('uniq_flight_routes_history_flight_key')) {
+      if (err.message?.includes('duplicate key') || err.message?.includes('uniq_flight_routes_history_flight_key')) {
         logger.debug('Flight already exists in history (duplicate key)', {
           callsign: callsignNorm,
           icao24: icao24Norm,
@@ -438,7 +445,7 @@ class RouteRepository {
     }
   }
 
-  async findFlightsNeedingBackfill(limit = 20) {
+  async findFlightsNeedingBackfill(limit: number = 20): Promise<FlightRouteHistory[]> {
     const query = `
       SELECT id, icao24, callsign, created_at,
              actual_flight_start, actual_flight_end,
@@ -455,10 +462,14 @@ class RouteRepository {
       ORDER BY created_at DESC
       LIMIT $1;
     `;
-    return this.db.any(query, [limit]);
+    return this.db.any<FlightRouteHistory>(query, [limit]);
   }
 
-  async findFlightsNeedingBackfillInRange(startDate, endDate, limit = 50) {
+  async findFlightsNeedingBackfillInRange(
+    startDate: string,
+    endDate: string,
+    limit: number = 50
+  ): Promise<FlightRouteHistory[]> {
     const query = `
       SELECT id, icao24, callsign, created_at,
              actual_flight_start, actual_flight_end,
@@ -476,10 +487,10 @@ class RouteRepository {
       ORDER BY created_at DESC
       LIMIT $3;
     `;
-    return this.db.any(query, [startDate, endDate, limit]);
+    return this.db.any<FlightRouteHistory>(query, [startDate, endDate, limit]);
   }
 
-  async findFlightsMissingAllRecent(limit = 50) {
+  async findFlightsMissingAllRecent(limit: number = 50): Promise<FlightRouteHistory[]> {
     const query = `
       SELECT id, icao24, callsign, created_at
       FROM flight_routes_history
@@ -493,15 +504,15 @@ class RouteRepository {
       ORDER BY created_at DESC
       LIMIT $1;
     `;
-    return this.db.any(query, [limit]);
+    return this.db.any<FlightRouteHistory>(query, [limit]);
   }
 
-  async updateFlightHistoryById(id, fields) {
-    const sets = [];
-    const values = [];
+  async updateFlightHistoryById(id: number, fields: Partial<FlightRouteHistory>): Promise<void> {
+    const sets: string[] = [];
+    const values: any[] = [];
     let idx = 1;
 
-    const push = (col, val) => {
+    const push = (col: string, val: any) => {
       sets.push(`${col} = $${idx}`);
       values.push(val);
       idx += 1;
@@ -544,7 +555,12 @@ class RouteRepository {
     await this.db.none(query, values);
   }
 
-  async getHistoricalRoutes(icao24, startDate, endDate, limit = 100) {
+  async getHistoricalRoutes(
+    icao24: string,
+    startDate?: Date | null,
+    endDate?: Date | null,
+    limit: number = 100
+  ): Promise<any[]> {
     let query = `
       SELECT
         callsign,
@@ -556,7 +572,7 @@ class RouteRepository {
       FROM flight_routes_history
       WHERE icao24 = $1
     `;
-    const params = [icao24];
+    const params: any[] = [icao24];
     let paramIndex = 2;
 
     if (startDate) {
@@ -576,7 +592,7 @@ class RouteRepository {
 
     const results = await this.db.query(query, params);
 
-    return results.map((row) => ({
+    return results.map((row: any) => ({
       callsign: row.callsign,
       departureAirport: {
         iata: row.departure_iata,
@@ -598,7 +614,7 @@ class RouteRepository {
     }));
   }
 
-  async getLatestRouteHistory(icao24, callsign) {
+  async getLatestRouteHistory(icao24: string, callsign?: string | null): Promise<any> {
     const query = `
       SELECT aircraft_type, aircraft_model
       FROM flight_routes_history
@@ -613,7 +629,7 @@ class RouteRepository {
     return result;
   }
 
-  async getRouteStats() {
+  async getRouteStats(): Promise<any> {
     const query = `
       SELECT
         (SELECT COUNT(*) FROM flight_routes_history) as history_total,
@@ -629,4 +645,5 @@ class RouteRepository {
   }
 }
 
-module.exports = RouteRepository;
+export default RouteRepository;
+

@@ -1,13 +1,18 @@
-const pgp = require('pg-promise')();
-const config = require('../config');
-const logger = require('../utils/logger');
-const PostGISService = require('../services/PostGISService');
+import pgPromise from 'pg-promise';
+import config from '../config';
+import logger from '../utils/logger';
+import PostGISService from '../services/PostGISService';
+
+const pgp = pgPromise();
 
 /**
  * Base database connection manager
  * Handles connection initialization and PostGIS setup
  */
 class DatabaseConnection {
+  private db: pgPromise.IDatabase<any>;
+  private postgis: PostGISService;
+
   constructor() {
     const connectionString = config.database.postgres.url;
     this.db = pgp(connectionString);
@@ -15,7 +20,7 @@ class DatabaseConnection {
     this.initConnection();
   }
 
-  async initConnection() {
+  async initConnection(): Promise<void> {
     try {
       const obj = await this.db.connect();
       logger.info('Database connection established');
@@ -23,13 +28,14 @@ class DatabaseConnection {
 
       // Initialize PostGIS asynchronously (non-blocking) after connection is established
       // This allows the server to start quickly while PostGIS initializes in the background
-      this.initializePostGIS().catch((error) => {
+      this.initializePostGIS().catch((error: Error) => {
         logger.warn('PostGIS initialization failed (running in background)', {
           error: error.message,
         });
       });
     } catch (error) {
-      logger.error('Database connection error', { error });
+      const err = error as Error;
+      logger.error('Database connection error', { error: err });
       process.exit(1);
     }
   }
@@ -37,14 +43,15 @@ class DatabaseConnection {
   /**
    * Initialize PostGIS extension and spatial features
    */
-  async initializePostGIS() {
+  async initializePostGIS(): Promise<void> {
     try {
       await this.postgis.initialize();
       await this.postgis.createGeometryTriggers();
       logger.info('PostGIS initialized successfully');
     } catch (error) {
+      const err = error as Error;
       logger.warn('PostGIS initialization failed (may already be initialized)', {
-        error: error.message,
+        error: err.message,
       });
     }
   }
@@ -52,30 +59,30 @@ class DatabaseConnection {
   /**
    * Get database connection
    */
-  getDb() {
+  getDb(): pgPromise.IDatabase<any> {
     return this.db;
   }
 
   /**
    * Get PostGIS service
    */
-  getPostGIS() {
+  getPostGIS(): PostGISService {
     return this.postgis;
   }
 }
 
 // Singleton instance
-let connectionInstance = null;
+let connectionInstance: DatabaseConnection | null = null;
 
 /**
  * Get or create database connection instance
  */
-function getConnection() {
+export function getConnection(): DatabaseConnection {
   if (!connectionInstance) {
     connectionInstance = new DatabaseConnection();
   }
   return connectionInstance;
 }
 
-module.exports = { DatabaseConnection, getConnection };
+export { DatabaseConnection };
 

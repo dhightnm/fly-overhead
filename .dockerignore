@@ -46,3 +46,14 @@ coverage/
 !README.md
 fly-overhead.code-workspace
 
+# Old JavaScript repository files (migrating to TypeScript)
+# These JS files re-export from compiled TS, but we want to use the compiled code directly
+server/repositories/*.js
+!server/repositories/index.js
+!server/repositories/PostgresRepository.js
+server/dist/
+
+# Documentation and old code (not needed in Docker images)
+server/docs/
+server/old-code/
+

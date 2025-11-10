@@ -1,38 +1,58 @@
+import pgPromise from 'pg-promise';
+import type { User } from '../types/database.types';
+
+interface CreateUserData {
+  email: string;
+  password?: string | null;
+  name: string;
+  isPremium?: boolean;
+  googleId?: string | null;
+}
+
+interface GoogleProfile {
+  id: string;
+  email: string;
+  name: string;
+  picture?: string;
+}
+
 /**
  * Repository for user management
  */
 class UserRepository {
-  constructor(db) {
+  private db: pgPromise.IDatabase<any>;
+
+  constructor(db: pgPromise.IDatabase<any>) {
     this.db = db;
   }
 
-  async getUserByEmail(email) {
+  async getUserByEmail(email: string): Promise<User | null> {
     const query = 'SELECT * FROM users WHERE email = $1';
-    return this.db.oneOrNone(query, [email]);
+    return this.db.oneOrNone<User>(query, [email]);
   }
 
-  async getUserByGoogleId(googleId) {
+  async getUserByGoogleId(googleId: string): Promise<User | null> {
     const query = 'SELECT * FROM users WHERE google_id = $1';
-    return this.db.oneOrNone(query, [googleId]);
+    return this.db.oneOrNone<User>(query, [googleId]);
   }
 
-  async getUserById(id) {
+  async getUserById(id: number): Promise<User | null> {
     const query = 'SELECT id, email, name, is_premium, premium_expires_at, created_at FROM users WHERE id = $1';
-    return this.db.oneOrNone(query, [id]);
+    return this.db.oneOrNone<User>(query, [id]);
   }
 
-  async createUser(userData) {
+  async createUser(userData: CreateUserData): Promise<User> {
     const { email, password, name, isPremium, googleId } = userData;
     const query = `
       INSERT INTO users (email, password, name, is_premium, google_id)
       VALUES ($1, $2, $3, $4, $5)
       RETURNING id, email, name, is_premium, created_at
     `;
-    return this.db.one(query, [email, password || null, name, isPremium || false, googleId || null]);
+    return this.db.one<User>(query, [email, password || null, name, isPremium || false, googleId || null]);
   }
 
-  async createOrUpdateGoogleUser(googleProfile) {
-    const { id: googleId, email, name, picture } = googleProfile;
+  async createOrUpdateGoogleUser(googleProfile: GoogleProfile): Promise<User> {
+    const { id: googleId, email, name } = googleProfile;
 
     // Check if user exists by Google ID
     let user = await this.getUserByGoogleId(googleId);
@@ -45,7 +65,7 @@ class UserRepository {
         WHERE google_id = $3
         RETURNING id, email, name, is_premium, created_at
       `;
-      return this.db.one(query, [email, name, googleId]);
+      return this.db.one<User>(query, [email, name, googleId]);
     }
 
     // Check if user exists by email (account linking)
@@ -58,7 +78,7 @@ class UserRepository {
         WHERE email = $2
         RETURNING id, email, name, is_premium, created_at
       `;
-      return this.db.one(query, [googleId, email]);
+      return this.db.one<User>(query, [googleId, email]);
     }
 
     // Create new user
@@ -70,15 +90,20 @@ class UserRepository {
     });
   }
 
-  async updateUserPremiumStatus(userId, isPremium, expiresAt = null) {
+  async updateUserPremiumStatus(
+    userId: number,
+    isPremium: boolean,
+    expiresAt: Date | null = null
+  ): Promise<User> {
     const query = `
       UPDATE users
       SET is_premium = $1, premium_expires_at = $2, updated_at = CURRENT_TIMESTAMP
       WHERE id = $3
       RETURNING id, email, name, is_premium, premium_expires_at
     `;
-    return this.db.one(query, [isPremium, expiresAt, userId]);
+    return this.db.one<User>(query, [isPremium, expiresAt, userId]);
   }
 }
 
-module.exports = UserRepository;
+export default UserRepository;
+

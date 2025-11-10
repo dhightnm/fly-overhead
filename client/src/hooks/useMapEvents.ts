@@ -59,12 +59,17 @@ export const useMapDataFetcher = ({
     try {
       const southWest = wrapBounds.getSouthWest();
       const northEast = wrapBounds.getNorthEast();
-      const aircraft = await aircraftService.getAircraftInBounds(
-        {
-          southWest: { lat: southWest.lat, lng: southWest.lng },
-          northEast: { lat: northEast.lat, lng: northEast.lng },
-        }
-      );
+      const boundsObj = {
+        southWest: { lat: southWest.lat, lng: southWest.lng },
+        northEast: { lat: northEast.lat, lng: northEast.lng },
+      };
+
+      // Trigger fresh OpenSky fetch for this region (non-blocking)
+      aircraftService.triggerBoundedFetch(boundsObj).catch(() => {
+        // Silent fail - don't block data fetch
+      });
+
+      const aircraft = await aircraftService.getAircraftInBounds(boundsObj);
 
       if (aircraft) {
         // Smart merge: only preserve recent planes, avoid accumulation

@@ -33,17 +33,33 @@ WORKDIR /app
 # Copy only server package.json (to install dependencies)
 COPY server/package*.json ./server/
 
-# Install server dependencies
+# Install server dependencies (including dev dependencies for TypeScript build)
 WORKDIR /app/server
-RUN npm install --production
+RUN npm install --legacy-peer-deps
+
+# Copy the rest of your server code (includes tsconfig files)
+# Note: We're in /app/server, so we copy server contents to current directory (.)
+COPY server/ ./
+
+# Verify tsconfig files are present before building
+RUN ls -la tsconfig*.json || (echo "ERROR: tsconfig files not found!" && exit 1)
+
+# Build TypeScript to JavaScript
+RUN npm run build
+
+# Verify build succeeded
+RUN if [ ! -f dist/index.js ]; then \
+      echo "ERROR: TypeScript build failed - dist/index.js not found!" && \
+      exit 1; \
+    fi && \
+    echo "TypeScript build successful!"
+
+# Remove dev dependencies to reduce image size
+# Note: Using --legacy-peer-deps to handle ESLint peer dependency conflicts
+RUN npm prune --production --legacy-peer-deps || npm prune --production
 
 # Set working directory back to /app
 WORKDIR /app
-
-# Copy the rest of your server code
-# Use .dockerignore to exclude node_modules, but include all source files
-# This layer will be invalidated when any server/*.js file changes
-COPY server/ ./server/
 
 # Copy the built React frontend from Stage 1 into server/client/build
 COPY --from=build-frontend /app/client/build ./server/client/build
@@ -55,5 +71,5 @@ EXPOSE 3005
 ENV PORT=3005
 ENV NODE_ENV=production
 
-# Run your Node server
-CMD ["node", "server/index.js"]
+# Run your Node server (now using compiled TypeScript)
+CMD ["node", "server/dist/index.js"]

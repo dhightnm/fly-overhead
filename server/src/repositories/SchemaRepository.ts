@@ -1,11 +1,14 @@
-const logger = require('../utils/logger');
-const { getConnection } = require('./DatabaseConnection');
-const { initializeAirportSchema } = require('../database/airportSchema');
+import pgPromise from 'pg-promise';
+import logger from '../utils/logger';
+import { getConnection } from './DatabaseConnection';
+import { initializeAirportSchema } from '../database/airportSchema';
 
 /**
  * Repository for database schema creation and migrations
  */
 class SchemaRepository {
+  private db: pgPromise.IDatabase<any>;
+
   constructor() {
     this.db = getConnection().getDb();
   }
@@ -13,7 +16,7 @@ class SchemaRepository {
   /**
    * Create main aircraft_states table
    */
-  async createMainTable() {
+  async createMainTable(): Promise<void> {
     const query = `
       CREATE TABLE IF NOT EXISTS aircraft_states (
         id SERIAL PRIMARY KEY,
@@ -46,7 +49,7 @@ class SchemaRepository {
    * Create critical performance indexes on aircraft_states table
    * These indexes are essential for query performance
    */
-  async createAircraftStatesIndexes() {
+  async createAircraftStatesIndexes(): Promise<void> {
     const indexes = [
       // Critical: Index on last_contact for time-based filtering
       // DESC order optimizes for ORDER BY last_contact DESC queries
@@ -76,7 +79,8 @@ class SchemaRepository {
         await this.db.query(indexQuery);
       } catch (error) {
         // Index might already exist or other non-critical error
-        logger.debug('Index creation info', { error: error.message });
+        const err = error as Error;
+        logger.debug('Index creation info', { error: err.message });
       }
     }
 
@@ -86,7 +90,7 @@ class SchemaRepository {
   /**
    * Create history table
    */
-  async createHistoryTable() {
+  async createHistoryTable(): Promise<void> {
     const query = `
       CREATE TABLE IF NOT EXISTS aircraft_states_history (
         id SERIAL PRIMARY KEY,
@@ -119,8 +123,15 @@ class SchemaRepository {
    * Create performance indexes on aircraft_states_history table
    * Uses CONCURRENTLY to avoid blocking and handles disk space errors gracefully
    */
-  async createHistoryTableIndexes() {
-    const indexes = [
+  async createHistoryTableIndexes(): Promise<void> {
+    interface IndexDefinition {
+      name: string;
+      query: string;
+      description: string;
+      optional: boolean;
+    }
+
+    const indexes: IndexDefinition[] = [
       {
         name: 'idx_aircraft_states_history_icao24_contact',
         query: `CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_aircraft_states_history_icao24_contact 
@@ -148,7 +159,7 @@ class SchemaRepository {
     for (const index of indexes) {
       try {
         // Check if index already exists to avoid unnecessary work
-        const exists = await this.db.oneOrNone(`
+        const exists = await this.db.oneOrNone<{ count: number }>(`
           SELECT 1 FROM pg_indexes 
           WHERE schemaname = 'public' 
             AND indexname = $1
@@ -162,18 +173,19 @@ class SchemaRepository {
           logger.debug(`${index.name} already exists`);
         }
       } catch (error) {
+        const err = error as Error;
         // Handle disk space errors gracefully
-        if (error.message.includes('No space left on device')) {
+        if (err.message.includes('No space left on device')) {
           if (index.optional) {
             logger.warn(`${index.description} skipped due to disk space (optional index)`);
           } else {
             logger.warn(`${index.description} creation skipped due to disk space`, {
-              error: error.message,
+              error: err.message,
             });
           }
         } else {
           // Log other errors but don't throw - allow server to continue
-          logger.debug(`${index.description} creation info`, { error: error.message });
+          logger.debug(`${index.description} creation info`, { error: err.message });
         }
       }
     }
@@ -184,7 +196,7 @@ class SchemaRepository {
   /**
    * Create flight routes cache table
    */
-  async createFlightRoutesTable() {
+  async createFlightRoutesTable(): Promise<void> {
     // Cache table: Stores most recent route per callsign/icao24 (fast lookups)
     const cacheQuery = `
       CREATE TABLE IF NOT EXISTS flight_routes_cache (
@@ -276,7 +288,7 @@ class SchemaRepository {
   /**
    * Create feeders table
    */
-  async createFeedersTable() {
+  async createFeedersTable(): Promise<void> {
     const query = `
       CREATE TABLE IF NOT EXISTS feeders (
         id SERIAL PRIMARY KEY,
@@ -301,28 +313,77 @@ class SchemaRepository {
   /**
    * Create feeder stats table
    */
-  async createFeederStatsTable() {
-    const query = `
+  async createFeederStatsTable(): Promise<void> {
+    // Create table - match existing schema which uses 'date' column
+    const createTableQuery = `
       CREATE TABLE IF NOT EXISTS feeder_stats (
         id SERIAL PRIMARY KEY,
         feeder_id TEXT NOT NULL REFERENCES feeders(feeder_id) ON DELETE CASCADE,
-        timestamp TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+        date DATE NOT NULL DEFAULT CURRENT_DATE,
         messages_received INT DEFAULT 0,
         unique_aircraft INT DEFAULT 0,
-        created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+        data_quality_score FLOAT,
+        avg_latency_ms FLOAT,
+        error_count INT DEFAULT 0,
+        created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(feeder_id, date)
       );
-      
-      CREATE INDEX IF NOT EXISTS idx_feeder_stats_feeder_id ON feeder_stats(feeder_id);
-      CREATE INDEX IF NOT EXISTS idx_feeder_stats_timestamp ON feeder_stats(timestamp DESC);
     `;
-    await this.db.query(query);
+    await this.db.query(createTableQuery);
+    
+    // Add any missing columns for existing tables
+    const addColumnsQuery = `
+      DO $$
+      BEGIN
+        -- Add data_quality_score if missing
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns 
+          WHERE table_name='feeder_stats' AND column_name='data_quality_score'
+        ) THEN
+          ALTER TABLE feeder_stats ADD COLUMN data_quality_score FLOAT;
+        END IF;
+        
+        -- Add avg_latency_ms if missing
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns 
+          WHERE table_name='feeder_stats' AND column_name='avg_latency_ms'
+        ) THEN
+          ALTER TABLE feeder_stats ADD COLUMN avg_latency_ms FLOAT;
+        END IF;
+        
+        -- Add error_count if missing
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns 
+          WHERE table_name='feeder_stats' AND column_name='error_count'
+        ) THEN
+          ALTER TABLE feeder_stats ADD COLUMN error_count INT DEFAULT 0;
+        END IF;
+      END $$;
+    `;
+    await this.db.query(addColumnsQuery);
+    
+    // Create indexes
+    const indexQueries = [
+      'CREATE INDEX IF NOT EXISTS idx_feeder_stats_feeder_id ON feeder_stats(feeder_id)',
+      'CREATE INDEX IF NOT EXISTS idx_feeder_stats_date ON feeder_stats(date DESC)',
+    ];
+    
+    for (const indexQuery of indexQueries) {
+      try {
+        await this.db.query(indexQuery);
+      } catch (error) {
+        const err = error as Error;
+        logger.warn('Index creation warning (may already exist)', { error: err.message });
+      }
+    }
+    
     logger.info('Feeder stats table created or already exists');
   }
 
   /**
    * Add feeder columns to aircraft_states table
    */
-  async addFeederColumnsToAircraftStates() {
+  async addFeederColumnsToAircraftStates(): Promise<void> {
     const queries = [
       `DO $$
       BEGIN
@@ -372,7 +433,7 @@ class SchemaRepository {
   /**
    * Add feeder columns to aircraft_states_history table
    */
-  async addFeederColumnsToAircraftStatesHistory() {
+  async addFeederColumnsToAircraftStatesHistory(): Promise<void> {
     const queries = [
       `DO $$
       BEGIN
@@ -422,7 +483,7 @@ class SchemaRepository {
   /**
    * Create users table
    */
-  async createUsersTable() {
+  async createUsersTable(): Promise<void> {
     const query = `
       CREATE TABLE IF NOT EXISTS users (
         id SERIAL PRIMARY KEY,
@@ -446,7 +507,7 @@ class SchemaRepository {
   /**
    * Initialize all database schemas
    */
-  async initializeAll() {
+  async initializeAll(): Promise<void> {
     await this.createMainTable();
     await this.createAircraftStatesIndexes();
     await this.createHistoryTable();
@@ -464,8 +525,9 @@ class SchemaRepository {
       await initializeAirportSchema(this.db);
       logger.info('Airport schema initialized successfully');
     } catch (error) {
+      const err = error as Error;
       logger.warn('Airport schema initialization failed (tables may already exist)', {
-        error: error.message,
+        error: err.message,
       });
       // Don't throw - allow server to continue
     }
@@ -474,5 +536,5 @@ class SchemaRepository {
   }
 }
 
-module.exports = SchemaRepository;
+export default SchemaRepository;
 
