@@ -115,7 +115,7 @@ docker build -t fly-overhead:latest .
 # Test the build
 docker run -p 3005:3005 \
   -e POSTGRES_URL=postgresql://postgres:postgres@192.168.58.15:5433/fly_overhead \
-  -e OPENSKY_USER=dhight \
+  -e OPENSKY_USER=YOUR_OPENSKY_USERNAME \
   -e OPENSKY_PASS=YOUR_OPENSKY_PASSWORD \
   -e JWT_SECRET=your-super-secret-jwt-key-change-this-in-production-7309 \
   -e GOOGLE_CLIENT_ID=690273174931-b4g9ipgkvmbk2as7fmj92p5o6svvnvc0.apps.googleusercontent.com \
@@ -182,14 +182,14 @@ HOST=0.0.0.0
 POSTGRES_URL=postgresql://postgres:YOUR_DB_PASSWORD@YOUR_DB_ENDPOINT:5432/fly_overhead
 
 # OpenSky Network API
-OPENSKY_USER=dhight
+OPENSKY_USER=YOUR_OPENSKY_USERNAME
 OPENSKY_PASS=YOUR_OPENSKY_PASSWORD
 
 # JWT Authentication
-JWT_SECRET=your-super-secret-jwt-key-change-this-in-production-7309
+JWT_SECRET=your-super-secret-jwt-key-change-this-in-production
 
 # Google OAuth
-GOOGLE_CLIENT_ID=690273174931-b4g9ipgkvmbk2as7fmj92p5o6svvnvc0.apps.googleusercontent.com
+GOOGLE_CLIENT_ID=YOUR_GOOGLE_CLIENT_ID
 GOOGLE_CLIENT_SECRET=YOUR_GOOGLE_CLIENT_SECRET
 GOOGLE_REDIRECT_URI=postmessage
 
@@ -524,10 +524,10 @@ PORT=3005
 NODE_ENV=production
 HOST=0.0.0.0
 POSTGRES_URL=postgresql://postgres:PASSWORD@ENDPOINT:5432/fly_overhead
-OPENSKY_USER=dhight
+OPENSKY_USER=YOUR_OPENSKY_USERNAME
 OPENSKY_PASS=YOUR_OPENSKY_PASSWORD
-JWT_SECRET=your-super-secret-jwt-key-change-this-in-production-7309
-GOOGLE_CLIENT_ID=690273174931-b4g9ipgkvmbk2as7fmj92p5o6svvnvc0.apps.googleusercontent.com
+JWT_SECRET=your-super-secret-jwt-key-change-this-in-production
+GOOGLE_CLIENT_ID=YOUR_GOOGLE_CLIENT_ID
 GOOGLE_CLIENT_SECRET=YOUR_GOOGLE_CLIENT_SECRET
 GOOGLE_REDIRECT_URI=postmessage
 FLIGHTAWARE_API_KEY=YOUR_FLIGHTAWARE_API_KEY

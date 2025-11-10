@@ -32,7 +32,7 @@ module.exports = {
     },
     n2yo: {
       baseUrl: 'https://api.n2yo.com/rest/v1',
-      apiKey: process.env.N2YO_API_KEY || 'M3FTYY-Q2CLZF-U76MTW-553N',
+      apiKey: process.env.N2YO_API_KEY,
     },
     flightAware: {
       baseUrl: 'https://aeroapi.flightaware.com/aeroapi',

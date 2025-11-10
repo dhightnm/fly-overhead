@@ -36,7 +36,7 @@ services:
       - POSTGRES_URL=postgresql://postgres:postgres@db:5432/fly_overhead
       - PORT=3005
       - AVIATION_EDGE_API_KEY=4f486100c981ea8a41d6a83e395a2827
-      - FLIGHTAWARE_API_KEY=gmyEuwaSA620GprtqWgiJ2jEEsAc200G
+      - FLIGHTAWARE_API_KEY=${FLIGHTAWARE_API_KEY}
     depends_on:
       db:
         condition: service_healthy
