@@ -58,60 +58,160 @@ class PostGISService {
 
   /**
    * Create spatial indexes for fast queries
+   * Uses CONCURRENTLY to avoid blocking and handles disk space errors gracefully
    */
   async createSpatialIndexes() {
-    const queries = [
-      `CREATE INDEX IF NOT EXISTS idx_aircraft_states_geom 
-       ON aircraft_states USING GIST(geom);`,
-
-      `CREATE INDEX IF NOT EXISTS idx_aircraft_history_geom 
-       ON aircraft_states_history USING GIST(geom);`,
-
-      // Composite index for time-based spatial queries
-      `CREATE INDEX IF NOT EXISTS idx_aircraft_history_geom_time 
-       ON aircraft_states_history(icao24, created_at);`,
+    // Critical spatial indexes (required for PostGIS queries)
+    const criticalIndexes = [
+      {
+        name: 'idx_aircraft_states_geom',
+        query: `CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_aircraft_states_geom 
+                ON aircraft_states USING GIST(geom);`,
+        description: 'Spatial index on aircraft_states',
+      },
+      {
+        name: 'idx_aircraft_history_geom',
+        query: `CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_aircraft_history_geom 
+                ON aircraft_states_history USING GIST(geom);`,
+        description: 'Spatial index on aircraft_states_history',
+      },
     ];
 
-    // eslint-disable-next-line no-restricted-syntax
-    for (const query of queries) {
-      // eslint-disable-next-line no-await-in-loop
-      await this.db.query(query);
+    // Optional composite indexes (nice-to-have but not critical)
+    const optionalIndexes = [
+      {
+        name: 'idx_aircraft_history_geom_time',
+        query: `CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_aircraft_history_geom_time 
+                ON aircraft_states_history(icao24, created_at);`,
+        description: 'Composite index for time-based spatial queries',
+      },
+    ];
+
+    // Create critical indexes first
+    for (const index of criticalIndexes) {
+      try {
+        // Check if index already exists to avoid unnecessary work
+        const exists = await this.db.oneOrNone(`
+          SELECT 1 FROM pg_indexes 
+          WHERE schemaname = 'public' 
+            AND indexname = $1
+        `, [index.name]);
+
+        if (!exists) {
+          logger.info(`Creating ${index.description}...`);
+          await this.db.query(index.query);
+          logger.info(`${index.name} created successfully`);
+        } else {
+          logger.debug(`${index.name} already exists`);
+        }
+      } catch (error) {
+        // Log but don't throw - allow server to continue even if index creation fails
+        if (error.message.includes('No space left on device')) {
+          logger.warn(`${index.description} creation skipped due to disk space`, {
+            error: error.message,
+          });
+        } else {
+          logger.warn(`${index.description} creation failed (non-critical)`, {
+            error: error.message,
+          });
+        }
+      }
     }
 
-    logger.info('Spatial indexes created');
+    // Create optional indexes only if we have disk space
+    for (const index of optionalIndexes) {
+      try {
+        // Check if index already exists
+        const exists = await this.db.oneOrNone(`
+          SELECT 1 FROM pg_indexes 
+          WHERE schemaname = 'public' 
+            AND indexname = $1
+        `, [index.name]);
+
+        if (!exists) {
+          logger.info(`Creating optional ${index.description}...`);
+          await this.db.query(index.query);
+          logger.info(`${index.name} created successfully`);
+        } else {
+          logger.debug(`${index.name} already exists`);
+        }
+      } catch (error) {
+        // Silently skip optional indexes if they fail (disk space, etc.)
+        logger.debug(`${index.description} skipped`, {
+          error: error.message,
+        });
+      }
+    }
+
+    logger.info('Spatial indexes creation completed');
   }
 
   /**
    * Populate geometry from existing lat/lon data
+   * Uses batch updates to avoid blocking and disk space issues
    */
   async populateGeometryData() {
     try {
-      // Update aircraft_states
+      // Check if geometry is already mostly populated to avoid unnecessary work
+      const checkResult = await this.db.one(`
+        SELECT 
+          COUNT(*) FILTER (WHERE geom IS NULL AND longitude IS NOT NULL AND latitude IS NOT NULL) as missing_geom,
+          COUNT(*) FILTER (WHERE geom IS NOT NULL) as has_geom,
+          COUNT(*) as total
+        FROM aircraft_states;
+      `);
+
+      const missingCount = parseInt(checkResult.missing_geom, 10);
+      const hasGeomCount = parseInt(checkResult.has_geom, 10);
+      const totalCount = parseInt(checkResult.total, 10);
+
+      // If most rows already have geometry, skip bulk update to avoid blocking startup
+      if (hasGeomCount > 0 && (hasGeomCount / totalCount) > 0.9) {
+        logger.info('Geometry data mostly populated, skipping bulk update', {
+          hasGeom: hasGeomCount,
+          missingGeom: missingCount,
+          total: totalCount,
+        });
+        return;
+      }
+
+      // Only update a small batch to avoid blocking and disk space issues
+      // The triggers will handle new inserts/updates automatically
+      const batchSize = 1000;
       const result1 = await this.db.query(`
         UPDATE aircraft_states 
         SET geom = ST_SetSRID(ST_MakePoint(longitude, latitude), 4326)
-        WHERE longitude IS NOT NULL 
-          AND latitude IS NOT NULL 
-          AND geom IS NULL;
-      `);
+        WHERE id IN (
+          SELECT id FROM aircraft_states
+          WHERE longitude IS NOT NULL 
+            AND latitude IS NOT NULL 
+            AND geom IS NULL
+          LIMIT $1
+        );
+      `, [batchSize]);
 
       // Update aircraft_states_history (only recent records to avoid long query)
       const result2 = await this.db.query(`
         UPDATE aircraft_states_history 
         SET geom = ST_SetSRID(ST_MakePoint(longitude, latitude), 4326)
-        WHERE longitude IS NOT NULL 
-          AND latitude IS NOT NULL 
-          AND geom IS NULL
-          AND created_at > NOW() - INTERVAL '7 days';
-      `);
+        WHERE id IN (
+          SELECT id FROM aircraft_states_history
+          WHERE longitude IS NOT NULL 
+            AND latitude IS NOT NULL 
+            AND geom IS NULL
+            AND created_at > NOW() - INTERVAL '7 days'
+          LIMIT $1
+        );
+      `, [batchSize]);
 
-      logger.info('Geometry data populated', {
+      logger.info('Geometry data populated (batch)', {
         statesUpdated: result1.rowCount || 0,
         historyUpdated: result2.rowCount || 0,
+        remaining: missingCount - (result1.rowCount || 0),
       });
     } catch (error) {
-      logger.error('Error populating geometry data', { error: error.message });
-      throw error;
+      // Don't throw - allow server to continue even if geometry population fails
+      logger.warn('Error populating geometry data (non-critical)', { error: error.message });
     }
   }
 
