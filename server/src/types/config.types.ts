@@ -1,0 +1,63 @@
+/**
+ * Configuration type definitions
+ */
+
+export interface ServerConfig {
+  port: number;
+  env: 'development' | 'production' | 'test';
+  host: string;
+}
+
+export interface DatabaseConfig {
+  postgres: {
+    url: string;
+    pool: {
+      min: number;
+      max: number;
+    };
+  };
+}
+
+export interface AwsConfig {
+  region: string;
+  accessKeyId?: string;
+  secretAccessKey?: string;
+}
+
+export interface ExternalApiConfig {
+  opensky: {
+    baseUrl: string;
+    user?: string;
+    pass?: string;
+  };
+  n2yo: {
+    baseUrl: string;
+    apiKey?: string;
+  };
+  flightAware: {
+    baseUrl: string;
+    apiKey?: string;
+  };
+}
+
+export interface CorsConfig {
+  allowedOrigins: string[];
+  allowedIPs: string[];
+}
+
+export interface AircraftConfig {
+  updateInterval: number;
+  staleRecordThreshold: number;
+  recentContactThreshold: number;
+  devModeStaleThreshold: number;
+}
+
+export interface AppConfig {
+  server: ServerConfig;
+  database: DatabaseConfig;
+  aws: AwsConfig;
+  external: ExternalApiConfig;
+  cors: CorsConfig;
+  aircraft: AircraftConfig;
+}
+
