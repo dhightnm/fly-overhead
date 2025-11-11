@@ -1,0 +1,24 @@
+# Cursor IDE - Ignore old JavaScript files, use TypeScript source as truth
+
+# Ignore old JavaScript files in server root (use src/ TypeScript instead)
+server/index.js
+server/routes/*.js
+server/services/*.js
+server/middlewares/*.js
+server/utils/*.js
+server/repositories/PostgresRepository.js
+server/repositories/index.js
+server/config/index.js
+
+# Ignore compiled JavaScript (use src/ TypeScript source instead)
+server/dist/
+
+# Ignore old archived code
+server/old-code/
+
+# Standard ignores
+node_modules/
+.git/
+*.log
+.DS_Store
+

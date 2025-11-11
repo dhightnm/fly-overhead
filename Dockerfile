@@ -31,18 +31,23 @@ WORKDIR /app
 
 # Copy only server package.json (to install dependencies)
 COPY server/package*.json ./server/
+COPY server/tsconfig*.json ./server/
 
-# Install server dependencies
+# Install server dependencies (including TypeScript)
 WORKDIR /app/server
-RUN npm install --production
+RUN npm install
+
+# Copy the TypeScript source code
+COPY server/src/ ./src/
+COPY server/config/ ./config/
+COPY server/utils/ ./utils/
+COPY server/database/ ./database/
+
+# Build TypeScript to JavaScript
+RUN npm run build
 
 # Set working directory back to /app
 WORKDIR /app
-
-# Copy the rest of your server code
-# Use .dockerignore to exclude node_modules, but include all source files
-# This layer will be invalidated when any server/*.js file changes
-COPY server/ ./server/
 
 # Copy the built React frontend from Stage 1 into server/client/build
 COPY --from=build-frontend /app/client/build ./server/client/build
@@ -54,5 +59,5 @@ EXPOSE 3005
 ENV PORT=3005
 ENV NODE_ENV=production
 
-# Run your Node server
-CMD ["node", "server/index.js"]
+# Run the compiled TypeScript server
+CMD ["node", "server/dist/index.js"]
