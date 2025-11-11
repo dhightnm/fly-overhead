@@ -226,6 +226,19 @@ class AircraftRepository {
     await this.db.query(query, [category, icao24]);
   }
 
+  async updateAircraftCallsign(icao24: string, callsign: string | null): Promise<void> {
+    if (!icao24 || !callsign) {
+      return;
+    }
+    const query = `
+      UPDATE aircraft_states
+      SET callsign = TRIM($1)
+      WHERE icao24 = $2
+        AND (callsign IS NULL OR callsign = '')
+    `;
+    await this.db.query(query, [callsign, icao24]);
+  }
+
   async findAircraftHistory(
     icao24: string,
     startTime: Date | null = null,
@@ -366,7 +379,7 @@ class AircraftRepository {
           WHEN EXCLUDED.source_priority < aircraft_states.source_priority 
             OR (EXCLUDED.source_priority = aircraft_states.source_priority AND EXCLUDED.ingestion_timestamp > aircraft_states.ingestion_timestamp)
             OR (EXTRACT(EPOCH FROM NOW())::bigint - COALESCE(aircraft_states.last_contact, 0)) > 600
-          THEN TRIM(EXCLUDED.callsign)
+          THEN COALESCE(NULLIF(TRIM(EXCLUDED.callsign), ''), aircraft_states.callsign)
           ELSE aircraft_states.callsign
         END,
         origin_country = CASE 

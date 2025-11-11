@@ -13,11 +13,70 @@ import { requireApiKeyAuth } from '../middlewares/apiKeyAuth';
 const router = Router();
 
 const cache = new NodeCache({ stdTTL: 60, maxKeys: 100 });
-export const boundsCache = new NodeCache({ 
+export const boundsCache = new NodeCache({
   stdTTL: 2, // 2 seconds - short TTL to ensure fresh data after OpenSky updates
   maxKeys: 1000,
   checkperiod: 10,
 });
+
+const CURRENT_FLIGHT_THRESHOLD_SECONDS = 15 * 60; // 15 minutes
+const LANDED_OVERRIDE_THRESHOLD_SECONDS = 30 * 60; // 30 minutes before forcing arrival location
+const LANDED_STATUSES = new Set(['arrived', 'landed', 'completed', 'diverted', 'cancelled']);
+
+const normalizeStatus = (status?: string | null): string | null => {
+  if (!status || typeof status !== 'string') {
+    return null;
+  }
+  return status.trim().toLowerCase();
+};
+
+const maybeOverrideWithArrivalLocation = (aircraft: any, route: any, dataAgeSeconds: number | null): void => {
+  if (!route) {
+    return;
+  }
+
+  const arrivalLocation = route?.arrivalAirport?.location;
+  if (!arrivalLocation || typeof arrivalLocation.lat !== 'number' || typeof arrivalLocation.lng !== 'number') {
+    return;
+  }
+
+  const normalizedStatus = normalizeStatus(route?.flightStatus);
+  const hasArrivalStatus = normalizedStatus ? LANDED_STATUSES.has(normalizedStatus) : false;
+  const actualArrivalTimestamp =
+    typeof route?.flightData?.actualArrival === 'number' ? route.flightData.actualArrival : null;
+  const nowSeconds = Math.floor(Date.now() / 1000);
+  const actualArrivalAgeSeconds = actualArrivalTimestamp ? Math.max(0, nowSeconds - actualArrivalTimestamp) : null;
+  const hasActualArrival = actualArrivalAgeSeconds !== null;
+  const staleByAge = dataAgeSeconds !== null ? dataAgeSeconds > LANDED_OVERRIDE_THRESHOLD_SECONDS : false;
+
+  if (!(hasArrivalStatus || hasActualArrival || staleByAge)) {
+    return;
+  }
+
+  const previousLatitude = aircraft.latitude;
+  const previousLongitude = aircraft.longitude;
+
+  aircraft.latitude = arrivalLocation.lat;
+  aircraft.longitude = arrivalLocation.lng;
+  aircraft.on_ground = true;
+  aircraft.velocity = 0;
+  aircraft.true_track = null;
+  aircraft.position_source = 'route-arrival';
+  aircraft.data_source = aircraft.data_source || 'route';
+  aircraft.isStale = true;
+  aircraft.staleReason = hasArrivalStatus ? `flight_status:${normalizedStatus}` : 'route-arrival-inferred';
+
+  logger.info('Overriding aircraft position with arrival airport due to stale data', {
+    icao24: aircraft.icao24,
+    previousLatitude,
+    previousLongitude,
+    arrivalLatitude: arrivalLocation.lat,
+    arrivalLongitude: arrivalLocation.lng,
+    dataAgeSeconds,
+    normalizedStatus,
+    hasActualArrival,
+  });
+};
 
 /**
  * Get all aircraft (cached)
@@ -56,24 +115,45 @@ router.get('/planes/:identifier', async (req: Request, res: Response, next: Next
     }
 
     try {
-      const isCurrentFlight = true;
+      const nowSeconds = Math.floor(Date.now() / 1000);
+      const lastContact = typeof aircraft.last_contact === 'number' ? aircraft.last_contact : null;
+      const dataAgeSeconds = lastContact !== null ? nowSeconds - lastContact : null;
+      const isCurrentFlight = dataAgeSeconds === null || dataAgeSeconds <= CURRENT_FLIGHT_THRESHOLD_SECONDS;
 
-      logger.info('Fetching route for aircraft (assumed current since visible on map)', {
+      if (dataAgeSeconds !== null) {
+        aircraft.data_age_seconds = dataAgeSeconds;
+        aircraft.last_update_age_seconds = dataAgeSeconds;
+      }
+
+      logger.info('Fetching route for aircraft', {
         icao24: aircraft.icao24,
         callsign: aircraft.callsign,
         isCurrentFlight,
         lastContact: aircraft.last_contact,
+        dataAgeSeconds,
       });
 
-      const route = await flightRouteService.getFlightRoute(
-        aircraft.icao24,
-        aircraft.callsign,
-        isCurrentFlight,
-        true,
-      );
+      const route = await flightRouteService.getFlightRoute(aircraft.icao24, aircraft.callsign, isCurrentFlight, true);
       if (route) {
         aircraft.route = route;
-        
+
+        // Update callsign from route if aircraft doesn't have one
+        if (route.callsign && (!aircraft.callsign || aircraft.callsign.trim() === '')) {
+          try {
+            await postgresRepository.updateAircraftCallsign(aircraft.icao24, route.callsign);
+            aircraft.callsign = route.callsign;
+            logger.info('Updated aircraft callsign from route', {
+              icao24: aircraft.icao24,
+              callsign: route.callsign,
+            });
+          } catch (err) {
+            const error = err as Error;
+            logger.warn('Failed to update aircraft callsign from route', { error: error.message });
+            // Still update in response even if DB update fails
+            aircraft.callsign = route.callsign;
+          }
+        }
+
         if (aircraft.icao24 && (route.aircraft?.type || route.aircraft?.model)) {
           const inferredCategory = mapAircraftTypeToCategory(route.aircraft?.type, route.aircraft?.model);
           if (inferredCategory !== null && (aircraft.category === null || aircraft.category === 0)) {
@@ -86,6 +166,8 @@ router.get('/planes/:identifier', async (req: Request, res: Response, next: Next
             }
           }
         }
+
+        maybeOverrideWithArrivalLocation(aircraft, route, dataAgeSeconds);
       }
     } catch (routeError) {
       const err = routeError as Error;
@@ -125,12 +207,7 @@ router.get('/route/:identifier', async (req: Request, res: Response, next: NextF
       hasAircraftData: !!aircraft,
     });
 
-    const route = await flightRouteService.getFlightRoute(
-      aircraftIcao24,
-      aircraftCallsign,
-      isCurrentFlight,
-      true,
-    );
+    const route = await flightRouteService.getFlightRoute(aircraftIcao24, aircraftCallsign, isCurrentFlight, true);
 
     if (!route) {
       return res.status(404).json({ error: 'Flight route not found' });
@@ -139,7 +216,10 @@ router.get('/route/:identifier', async (req: Request, res: Response, next: NextF
     let updatedCategory = currentAircraft?.category;
     if (aircraftIcao24 && (route.aircraft?.type || route.aircraft?.model)) {
       const inferredCategory = mapAircraftTypeToCategory(route.aircraft?.type, route.aircraft?.model);
-      if (inferredCategory !== null && (!currentAircraft || currentAircraft.category === null || currentAircraft.category === 0)) {
+      if (
+        inferredCategory !== null &&
+        (!currentAircraft || currentAircraft.category === null || currentAircraft.category === 0)
+      ) {
         try {
           await postgresRepository.updateAircraftCategory(aircraftIcao24, inferredCategory);
           updatedCategory = inferredCategory;
@@ -163,15 +243,13 @@ router.get('/route/:identifier', async (req: Request, res: Response, next: NextF
  * Get aircraft within geographical bounds (CACHED + PostGIS optimized)
  */
 router.get('/area/:latmin/:lonmin/:latmax/:lonmax', async (req: Request, res: Response, next: NextFunction) => {
-  const {
-    latmin, lonmin, latmax, lonmax,
-  } = req.params;
+  const { latmin, lonmin, latmax, lonmax } = req.params;
 
   const roundedLatMin = Math.floor(parseFloat(latmin) * 100) / 100;
   const roundedLonMin = Math.floor(parseFloat(lonmin) * 100) / 100;
   const roundedLatMax = Math.ceil(parseFloat(latmax) * 100) / 100;
   const roundedLonMax = Math.ceil(parseFloat(lonmax) * 100) / 100;
-  
+
   const cacheKey = `/area/${roundedLatMin}/${roundedLonMin}/${roundedLatMax}/${roundedLonMax}`;
 
   try {
@@ -188,9 +266,9 @@ router.get('/area/:latmin/:lonmin/:latmax/:lonmax', async (req: Request, res: Re
     );
 
     boundsCache.set(cacheKey, aircraft);
-    logger.debug('Cached aircraft data for bounding box', { 
-      cacheKey, 
-      aircraftCount: aircraft.length 
+    logger.debug('Cached aircraft data for bounding box', {
+      cacheKey,
+      aircraftCount: aircraft.length,
     });
 
     return res.json(aircraft);
@@ -203,9 +281,7 @@ router.get('/area/:latmin/:lonmin/:latmax/:lonmax', async (req: Request, res: Re
  * Trigger fetch and update aircraft in bounds (called by frontend on moveend)
  */
 router.post('/area/fetch/:latmin/:lonmin/:latmax/:lonmax', async (req: Request, res: Response, next: NextFunction) => {
-  const {
-    latmin, lonmin, latmax, lonmax,
-  } = req.params;
+  const { latmin, lonmin, latmax, lonmax } = req.params;
 
   const boundingBox = {
     lamin: parseFloat(latmin),
@@ -234,21 +310,24 @@ router.post('/area/fetch/:latmin/:lonmin/:latmax/:lonmax', async (req: Request, 
 /**
  * Get satellites above observer location
  */
-router.get('/starlink/:observer_lat/:observer_lng/:observer_alt', async (req: Request, res: Response, next: NextFunction) => {
-  const { observer_lat, observer_lng, observer_alt } = req.params;
+router.get(
+  '/starlink/:observer_lat/:observer_lng/:observer_alt',
+  async (req: Request, res: Response, next: NextFunction) => {
+    const { observer_lat, observer_lng, observer_alt } = req.params;
 
-  try {
-    const satelliteData = await satelliteService.getSatellitesAbove(
-      parseFloat(observer_lat),
-      parseFloat(observer_lng),
-      parseFloat(observer_alt),
-    );
+    try {
+      const satelliteData = await satelliteService.getSatellitesAbove(
+        parseFloat(observer_lat),
+        parseFloat(observer_lng),
+        parseFloat(observer_alt),
+      );
 
-    return res.json(satelliteData);
-  } catch (err) {
-    return next(err);
-  }
-});
+      return res.json(satelliteData);
+    } catch (err) {
+      return next(err);
+    }
+  },
+);
 
 /**
  * Get historical flight path for an aircraft
@@ -295,7 +374,7 @@ router.get('/history/search', async (req: Request, res: Response, next: NextFunc
     const flights = await historyService.searchFlightsByTimeRange(
       new Date(start as string),
       new Date(end as string),
-      parseInt(limit as string, 10)
+      parseInt(limit as string, 10),
     );
     return res.json(flights);
   } catch (err) {
@@ -339,19 +418,21 @@ router.get('/test-opensky/:icao24', async (req: Request, res: Response, next: Ne
 
     const allFlights: any[] = [];
     for (let i = 1; i <= 4; i++) {
-      const begin = now - ((i + 1) * oneDay);
-      const end = now - (i * oneDay);
+      const begin = now - (i + 1) * oneDay;
+      const end = now - i * oneDay;
 
       try {
         const flights = await openSkyService.default.getFlightsByAircraft(icao24, begin, end);
         if (flights && flights.length > 0) {
-          allFlights.push(...flights.map((f: any) => ({
-            ...f,
-            timeRange: {
-              begin: new Date(begin * 1000).toISOString(),
-              end: new Date(end * 1000).toISOString(),
-            },
-          })));
+          allFlights.push(
+            ...flights.map((f: any) => ({
+              ...f,
+              timeRange: {
+                begin: new Date(begin * 1000).toISOString(),
+                end: new Date(end * 1000).toISOString(),
+              },
+            })),
+          );
         }
       } catch (err) {
         // Continue to next range
@@ -415,20 +496,21 @@ router.get('/spatial/path/:icao24', async (req: Request, res: Response, next: Ne
 /**
  * Get traffic density heatmap
  */
-router.get('/spatial/density/:latmin/:lonmin/:latmax/:lonmax', async (req: Request, res: Response, next: NextFunction) => {
-  const {
-    latmin, lonmin, latmax, lonmax,
-  } = req.params;
-  const { cellSize = 0.01 } = req.query;
+router.get(
+  '/spatial/density/:latmin/:lonmin/:latmax/:lonmax',
+  async (req: Request, res: Response, next: NextFunction) => {
+    const { latmin, lonmin, latmax, lonmax } = req.params;
+    const { cellSize = 0.01 } = req.query;
 
-  try {
-    // TODO: Implement getTrafficDensity in repository
-    logger.warn('getTrafficDensity not yet implemented', { latmin, lonmin, latmax, lonmax, cellSize });
-    return res.status(501).json({ error: 'Not implemented' });
-  } catch (err) {
-    return next(err);
-  }
-});
+    try {
+      // TODO: Implement getTrafficDensity in repository
+      logger.warn('getTrafficDensity not yet implemented', { latmin, lonmin, latmax, lonmax, cellSize });
+      return res.status(501).json({ error: 'Not implemented' });
+    } catch (err) {
+      return next(err);
+    }
+  },
+);
 
 /**
  * Get spotting locations near an airport
@@ -479,36 +561,37 @@ router.get('/airports/near/:lat/:lon', async (req: Request, res: Response, next:
 /**
  * Get airports within bounding box (for map viewport)
  */
-router.get('/airports/bounds/:latmin/:lonmin/:latmax/:lonmax', async (req: Request, res: Response, next: NextFunction) => {
-  const {
-    latmin, lonmin, latmax, lonmax,
-  } = req.params;
-  const { type, limit = 100 } = req.query;
+router.get(
+  '/airports/bounds/:latmin/:lonmin/:latmax/:lonmax',
+  async (req: Request, res: Response, next: NextFunction) => {
+    const { latmin, lonmin, latmax, lonmax } = req.params;
+    const { type, limit = 100 } = req.query;
 
-  try {
-    const airports = await postgresRepository.findAirportsInBounds(
-      parseFloat(latmin),
-      parseFloat(lonmin),
-      parseFloat(latmax),
-      parseFloat(lonmax),
-      type as string | undefined || null,
-      parseInt(limit as string, 10),
-    );
+    try {
+      const airports = await postgresRepository.findAirportsInBounds(
+        parseFloat(latmin),
+        parseFloat(lonmin),
+        parseFloat(latmax),
+        parseFloat(lonmax),
+        (type as string | undefined) || null,
+        parseInt(limit as string, 10),
+      );
 
-    return res.json({
-      bounds: {
-        latmin: parseFloat(latmin),
-        lonmin: parseFloat(lonmin),
-        latmax: parseFloat(latmax),
-        lonmax: parseFloat(lonmax),
-      },
-      count: airports.length,
-      airports,
-    });
-  } catch (err) {
-    return next(err);
-  }
-});
+      return res.json({
+        bounds: {
+          latmin: parseFloat(latmin),
+          lonmin: parseFloat(lonmin),
+          latmax: parseFloat(latmax),
+          lonmax: parseFloat(lonmax),
+        },
+        count: airports.length,
+        airports,
+      });
+    } catch (err) {
+      return next(err);
+    }
+  },
+);
 
 /**
  * Get airport by IATA/ICAO code (includes runways and frequencies)
@@ -561,7 +644,7 @@ router.get('/navaids/near/:lat/:lon', async (req: Request, res: Response, next: 
       parseFloat(lat),
       parseFloat(lon),
       parseFloat(radius as string),
-      type as string | undefined || null,
+      (type as string | undefined) || null,
     );
 
     return res.json({
@@ -614,10 +697,7 @@ router.get('/flightplan/:identifier', async (req: Request, res: Response, next: 
       callsign: aircraftCallsign,
     });
 
-    const flightPlanRoute = await flightPlanRouteService.getFlightPlanRoute(
-      aircraftIcao24,
-      aircraftCallsign,
-    );
+    const flightPlanRoute = await flightPlanRouteService.getFlightPlanRoute(aircraftIcao24, aircraftCallsign);
 
     if (!flightPlanRoute) {
       return res.status(404).json({
@@ -650,4 +730,3 @@ router.get('/flightplan/test/data', async (_req: Request, res: Response, next: N
 });
 
 export default router;
-

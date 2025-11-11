@@ -7,6 +7,8 @@ import SignupModal from './SignupModal';
 import PremiumModal from './PremiumModal';
 import './navbar.css';
 
+const STALE_SEARCH_THRESHOLD_SECONDS = 6 * 60 * 60; // 6 hours
+
 const NavBar = () => {
   const [search, setSearch] = useState('');
   const [searchStatus, setSearchStatus] = useState(null);
@@ -40,10 +42,68 @@ const NavBar = () => {
     try {
       const aircraft = await aircraftService.searchAircraft(search.trim());
       
-      if (aircraft && aircraft.latitude && aircraft.longitude) {
-        setSearchLatlng([aircraft.latitude, aircraft.longitude]);
-        setSearchStatus('found');
-        setTimeout(() => setSearchStatus(null), 3000);
+      if (aircraft) {
+        const nowSeconds = Math.floor(Date.now() / 1000);
+        const dataAgeSeconds = typeof aircraft.data_age_seconds === 'number'
+          ? aircraft.data_age_seconds
+          : typeof aircraft.last_contact === 'number'
+            ? Math.max(0, nowSeconds - aircraft.last_contact)
+            : null;
+
+        if (dataAgeSeconds !== null && dataAgeSeconds > STALE_SEARCH_THRESHOLD_SECONDS) {
+          console.info('Search result is stale, skipping display', {
+            identifier: search.trim(),
+            icao24: aircraft.icao24,
+            dataAgeSeconds,
+          });
+          setSearchStatus('stale');
+          setTimeout(() => setSearchStatus(null), 4000);
+          return;
+        }
+
+        let targetLat = aircraft.latitude;
+        let targetLng = aircraft.longitude;
+        
+        // Helper function to calculate distance between two points in km
+        const calculateDistance = (lat1, lng1, lat2, lng2) => {
+          const R = 6371; // Earth's radius in km
+          const dLat = (lat2 - lat1) * Math.PI / 180;
+          const dLng = (lng2 - lng1) * Math.PI / 180;
+          const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+                    Math.sin(dLng / 2) * Math.sin(dLng / 2);
+          const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+          return R * c;
+        };
+        
+        // Only use arrival airport location if:
+        // 1. Plane is on ground, OR
+        // 2. Plane is within 5km of arrival airport AND has arrival airport AND velocity < 50
+        if (aircraft.route?.arrivalAirport?.location) {
+          const distanceToArrival = calculateDistance(
+            aircraft.latitude,
+            aircraft.longitude,
+            aircraft.route.arrivalAirport.location.lat,
+            aircraft.route.arrivalAirport.location.lng
+          );
+          
+          const hasLanded = aircraft.on_ground === true || 
+            (distanceToArrival <= 5 && aircraft.velocity !== undefined && aircraft.velocity < 50);
+          
+          if (hasLanded) {
+            targetLat = aircraft.route.arrivalAirport.location.lat;
+            targetLng = aircraft.route.arrivalAirport.location.lng;
+          }
+        }
+        
+        if (targetLat && targetLng) {
+          setSearchLatlng([targetLat, targetLng]);
+          setSearchStatus('found');
+          setTimeout(() => setSearchStatus(null), 3000);
+        } else {
+          setSearchStatus('not-found');
+          setTimeout(() => setSearchStatus(null), 3000);
+        }
       } else {
         setSearchStatus('not-found');
         setTimeout(() => setSearchStatus(null), 3000);
@@ -69,6 +129,8 @@ const NavBar = () => {
         return '✅';
       case 'not-found':
         return '❌';
+      case 'stale':
+        return '🕑';
       default:
         return '';
     }
@@ -100,6 +162,9 @@ const NavBar = () => {
             </button>
             {searchStatus === 'not-found' && (
               <span className="search-error">Aircraft not found</span>
+            )}
+            {searchStatus === 'stale' && (
+              <span className="search-error">Aircraft is no longer active</span>
             )}
           </div>
         </div>

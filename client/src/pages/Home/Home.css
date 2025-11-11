@@ -228,6 +228,11 @@
   font-size: 14px;
 }
 
+.detail-row.stale-indicator .detail-value {
+  color: #b45309;
+  font-weight: 600;
+}
+
 .detail-value.small {
   font-size: 11px;
   font-family: monospace;

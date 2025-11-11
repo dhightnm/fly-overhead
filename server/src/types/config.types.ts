@@ -38,6 +38,11 @@ export interface ExternalApiConfig {
     baseUrl: string;
     apiKey?: string;
   };
+  aerodatabox: {
+    baseUrl: string;
+    apiKey?: string;
+    dailyBudget?: number;
+  };
 }
 
 export interface CorsConfig {

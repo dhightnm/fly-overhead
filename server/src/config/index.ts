@@ -1,5 +1,12 @@
+import fs from 'fs';
+import path from 'path';
 import dotenv from 'dotenv';
 import type { AppConfig } from '../types/config.types';
+
+const rootEnvPath = path.resolve(__dirname, '../../../.env');
+if (fs.existsSync(rootEnvPath)) {
+  dotenv.config({ path: rootEnvPath });
+}
 
 dotenv.config();
 
@@ -40,6 +47,11 @@ const config: AppConfig = {
     flightAware: {
       baseUrl: 'https://aeroapi.flightaware.com/aeroapi',
       apiKey: process.env.FLIGHTAWARE_API_KEY,
+    },
+    aerodatabox: {
+      baseUrl: process.env.AERODATABOX_BASE_URL || 'https://prod.api.market/api/v1/aedbx/aerodatabox',
+      apiKey: process.env.AERODATABOX_API_KEY,
+      dailyBudget: process.env.AERODATABOX_DAILY_BUDGET ? parseInt(process.env.AERODATABOX_DAILY_BUDGET, 10) : undefined,
     },
   },
   cors: {

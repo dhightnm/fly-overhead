@@ -23,6 +23,7 @@ import './Home.css';
 import { inferAircraftCategory } from '../../utils/aircraft';
 
 const MOVING_VELOCITY_THRESHOLD = 2; // knots
+const STALE_SEARCH_THRESHOLD_SECONDS = 6 * 60 * 60; // 6 hours
 
 const Home: React.FC = () => {
   const { isPremium } = useAuth();
@@ -58,7 +59,7 @@ const Home: React.FC = () => {
   const [showPremiumModal, setShowPremiumModal] = useState(false);
   const [highlightedAircraftIcao24, setHighlightedAircraftIcao24] = useState<string | null>(null);
   const [airportSearchResults, setAirportSearchResults] = useState<AirportSearchResult[]>([]);
-  const [searchStatus, setSearchStatus] = useState<'searching' | 'found' | 'not-found' | null>(null);
+  const [searchStatus, setSearchStatus] = useState<'searching' | 'found' | 'not-found' | 'stale' | null>(null);
   const [showAirports, setShowAirports] = useState(true);
   const [showClosedAirports, setShowClosedAirports] = useState(false);
   const [selectedAirport, setSelectedAirport] = useState<AirportSearchResult | null>(null);
@@ -78,6 +79,20 @@ const Home: React.FC = () => {
     const toNumber = (value: any) =>
       value === null || value === undefined || value === '' ? value : Number(value);
 
+    const nowSeconds = Math.floor(Date.now() / 1000);
+    const lastContact = typeof aircraft.last_contact === 'number'
+      ? aircraft.last_contact
+      : typeof (aircraft as any).lastContact === 'number'
+        ? (aircraft as any).lastContact
+        : typeof (aircraft as any).time_position === 'number'
+          ? (aircraft as any).time_position
+          : null;
+    const dataAgeSeconds = aircraft.data_age_seconds !== undefined && aircraft.data_age_seconds !== null
+      ? aircraft.data_age_seconds
+      : lastContact !== null
+        ? Math.max(0, nowSeconds - lastContact)
+        : null;
+
     return {
       ...aircraft,
       latitude: toNumber(aircraft.latitude) ?? aircraft.latitude,
@@ -87,7 +102,9 @@ const Home: React.FC = () => {
       velocity: toNumber(aircraft.velocity) ?? 0,
       true_track: toNumber(aircraft.true_track) ?? aircraft.true_track,
       vertical_rate: toNumber(aircraft.vertical_rate) ?? aircraft.vertical_rate,
-      last_contact: aircraft.last_contact || Math.floor(Date.now() / 1000),
+      last_contact: lastContact,
+      data_age_seconds: dataAgeSeconds ?? undefined,
+      last_update_age_seconds: dataAgeSeconds ?? undefined,
       category: aircraft.category ?? inferAircraftCategory(aircraft) ?? aircraft.category,
       predicted: aircraft.predicted === true,
       prediction_confidence: aircraft.prediction_confidence,
@@ -214,71 +231,113 @@ const Home: React.FC = () => {
     try {
       const aircraft = await searchAircraftInHook(sidebarSearch.trim());
       
-      if (aircraft && aircraft.latitude && aircraft.longitude) {
+      if (aircraft) {
         const normalizedPlane = normalizeAircraft(aircraft);
-        const now = Math.floor(Date.now() / 1000);
-        const manualPlane: Aircraft = {
-          ...normalizedPlane,
-          last_contact: now,
-          predicted: false,
-          prediction_confidence: undefined,
-          source: 'manual',
-          position_source: 'search',
-        };
+        const nowSeconds = Math.floor(Date.now() / 1000);
+        const dataAgeSeconds = normalizedPlane.data_age_seconds ?? (normalizedPlane.last_contact ? Math.max(0, nowSeconds - normalizedPlane.last_contact) : null);
 
-        upsertPlane(manualPlane);
-        if (manualPlane.icao24) {
-          setManualPlanes((prev) => ({
-            ...prev,
-            [manualPlane.icao24]: manualPlane,
-          }));
-        }
-        contextValue.setSearchLatlng([manualPlane.latitude, manualPlane.longitude]);
-        if (manualPlane.icao24) {
-          setHighlightedAircraftIcao24(manualPlane.icao24);
-          setSelectedAircraft({
-            icao24: manualPlane.icao24,
-            callsign: manualPlane.callsign || 'N/A',
+        if (dataAgeSeconds !== null && dataAgeSeconds > STALE_SEARCH_THRESHOLD_SECONDS) {
+          console.info('Search result is stale, skipping display', {
+            icao24: normalizedPlane.icao24,
+            dataAgeSeconds,
           });
-          
-          // Immediately fetch route data to get category and route info
-          fetchRouteForAircraftWithCategoryUpdate(manualPlane).then(async (routeData) => {
-            if (routeData && routeData.aircraftCategory !== undefined && routeData.aircraftCategory !== null) {
-              const updatedCategory = routeData.aircraftCategory;
-              
-              // Update in main planes state
-              setPlanes((prevPlanes) =>
-                prevPlanes.map((p) =>
-                  p.icao24 === manualPlane.icao24 ? { ...p, category: updatedCategory } : p
-                )
-              );
-              
-              // Update in manualPlanes
-              setManualPlanes((prev) => {
-                const existingManual = prev[manualPlane.icao24];
-                if (!existingManual) {
-                  return prev;
+          setHighlightedAircraftIcao24(null);
+          setSearchStatus('stale');
+          setTimeout(() => setSearchStatus(null), 4000);
+          return;
+        }
+
+        if (normalizedPlane.latitude && normalizedPlane.longitude) {
+          const manualPlane: Aircraft = {
+            ...normalizedPlane,
+            predicted: false,
+            prediction_confidence: undefined,
+            source: 'manual',
+            position_source: 'search',
+          };
+
+          upsertPlane(manualPlane);
+          if (manualPlane.icao24) {
+            setManualPlanes((prev) => ({
+              ...prev,
+              [manualPlane.icao24]: manualPlane,
+            }));
+          }
+          contextValue.setSearchLatlng([manualPlane.latitude, manualPlane.longitude]);
+          if (manualPlane.icao24) {
+            setHighlightedAircraftIcao24(manualPlane.icao24);
+            setSelectedAircraft({
+              icao24: manualPlane.icao24,
+              callsign: manualPlane.callsign || manualPlane.route?.callsign || 'N/A',
+            });
+
+            // Immediately fetch route data to get category and route info
+            fetchRouteForAircraftWithCategoryUpdate(manualPlane).then(async (routeData) => {
+              if (routeData) {
+                if (routeData.callsign) {
+                  setSelectedAircraft((prev) =>
+                    prev && prev.icao24 === manualPlane.icao24
+                      ? { icao24: manualPlane.icao24, callsign: routeData.callsign || manualPlane.callsign || 'N/A' }
+                      : prev
+                  );
                 }
-                return {
-                  ...prev,
-                  [manualPlane.icao24]: {
-                    ...existingManual,
-                    category: updatedCategory,
-                    predicted: false,
-                    prediction_confidence: undefined,
-                  },
-                };
-              });
-            }
-            
-            // Flight plan will be fetched by useEffect if toggle is on
-          }).catch((err) => {
-            console.error('Error fetching route for searched aircraft:', err);
-          });
+
+                setManualPlanes((prev) => {
+                  const existingManual = prev[manualPlane.icao24];
+                  if (!existingManual) {
+                    return prev;
+                  }
+                  return {
+                    ...prev,
+                    [manualPlane.icao24]: {
+                      ...existingManual,
+                      route: routeData,
+                    },
+                  };
+                });
+
+                if (routeData.aircraftCategory !== undefined && routeData.aircraftCategory !== null) {
+                  const updatedCategory = routeData.aircraftCategory;
+
+                  // Update in main planes state
+                  setPlanes((prevPlanes) =>
+                    prevPlanes.map((p) =>
+                      p.icao24 === manualPlane.icao24 ? { ...p, category: updatedCategory } : p
+                    )
+                  );
+
+                  // Update in manualPlanes
+                  setManualPlanes((prev) => {
+                    const existingManual = prev[manualPlane.icao24];
+                    if (!existingManual) {
+                      return prev;
+                    }
+                    return {
+                      ...prev,
+                      [manualPlane.icao24]: {
+                        ...existingManual,
+                        category: updatedCategory,
+                        predicted: false,
+                        prediction_confidence: undefined,
+                      },
+                    };
+                  });
+                }
+              }
+              
+              // Flight plan will be fetched by useEffect if toggle is on
+            }).catch((err) => {
+              console.error('Error fetching route for searched aircraft:', err);
+            });
+          }
+          setSearchStatus('found');
+          setSidebarSearch('');
+          setTimeout(() => setSearchStatus(null), 3000);
+        } else {
+          setHighlightedAircraftIcao24(null);
+          setSearchStatus('not-found');
+          setTimeout(() => setSearchStatus(null), 3000);
         }
-        setSearchStatus('found');
-        setSidebarSearch('');
-        setTimeout(() => setSearchStatus(null), 3000);
       } else {
         setHighlightedAircraftIcao24(null);
         setSearchStatus('not-found');
@@ -298,6 +357,8 @@ const Home: React.FC = () => {
         return '🔍';
       case 'found':
         return '✅';
+      case 'stale':
+        return '🕑';
       default:
         return '';
     }
@@ -322,15 +383,25 @@ const Home: React.FC = () => {
 
   const handleViewHistory = async (plane: Aircraft) => {
     // Immediately set selection and highlight
+    const entryRoute = routes[plane.icao24] || plane.route;
+    const displayCallsign = plane.callsign || entryRoute?.callsign || 'N/A';
     setSelectedAircraft({
       icao24: plane.icao24,
-      callsign: plane.callsign || 'N/A',
+      callsign: displayCallsign,
     });
     setHighlightedAircraftIcao24(plane.icao24);
     setHistoryModalOpen(true);
 
     // Fetch route data (flight plan will be fetched by useEffect if toggle is on)
     const routeData = await fetchRouteForAircraftWithCategoryUpdate(plane);
+
+    if (routeData?.callsign) {
+      setSelectedAircraft((prev) =>
+        prev && prev.icao24 === plane.icao24
+          ? { icao24: plane.icao24, callsign: routeData.callsign || plane.callsign || 'N/A' }
+          : prev
+      );
+    }
 
     // Update category in both planes state and manualPlanes if we got route data
     if (routeData && routeData.aircraftCategory !== undefined && routeData.aircraftCategory !== null) {
@@ -454,17 +525,25 @@ const Home: React.FC = () => {
         isHighlighted={isHighlighted}
         isLoading={isLoading}
         onMarkerClick={async (isPrefetch = false) => {
+          const displayCallsign = plane.callsign || route?.callsign || 'N/A';
           if (!isPrefetch) {
             setSelectedAircraft({
               icao24: plane.icao24,
-              callsign: plane.callsign || 'N/A',
+              callsign: displayCallsign,
             });
             setHighlightedAircraftIcao24(plane.icao24);
           }
 
           // Fetch route data (airport info, aircraft type)
           // Flight plan waypoints will be fetched lazily when user toggles the route display
-          await fetchRouteForAircraftWithCategoryUpdate(plane, isPrefetch);
+          const routeData = await fetchRouteForAircraftWithCategoryUpdate(plane, isPrefetch);
+          if (!isPrefetch && routeData?.callsign) {
+            setSelectedAircraft((prev) =>
+              prev && prev.icao24 === plane.icao24
+                ? { icao24: plane.icao24, callsign: routeData.callsign || displayCallsign }
+                : prev
+            );
+          }
         }}
       />
       );
@@ -515,6 +594,9 @@ const Home: React.FC = () => {
           </div>
           {searchStatus === 'not-found' && (
             <p className="search-error-sidebar">Aircraft not found</p>
+          )}
+          {searchStatus === 'stale' && (
+            <p className="search-error-sidebar">Aircraft is no longer active (last seen hours ago)</p>
           )}
         </div>
 
@@ -740,38 +822,69 @@ const Home: React.FC = () => {
         )}
 
         <div className="aircraft-list">
-          {visiblePlaneEntries.map(({ plane }) => (
-            <div key={plane.icao24} className="aircraft-item">
-              <div className="aircraft-header">
-                <span className="aircraft-callsign">{plane.callsign || 'N/A'}</span>
-                <span className="aircraft-icao">{plane.icao24}</span>
+          {visiblePlaneEntries.map(({ plane, route }) => {
+            const nowSeconds = Math.floor(Date.now() / 1000);
+            const displayCallsign = plane.callsign || route?.callsign || 'N/A';
+            const departureDisplay = route?.departureAirport?.icao || route?.departureAirport?.iata || route?.departureAirport?.name || null;
+            const arrivalDisplay = route?.arrivalAirport?.icao || route?.arrivalAirport?.iata || route?.arrivalAirport?.name || null;
+            const aircraftModel = route?.aircraft?.model || plane.aircraft_model || plane.model || null;
+            const dataAgeSeconds = plane.data_age_seconds ?? (plane.last_contact ? Math.max(0, nowSeconds - plane.last_contact) : null);
+            const dataAgeHours = dataAgeSeconds !== null ? (dataAgeSeconds / 3600).toFixed(1) : null;
+            const isStale = plane.isStale || (dataAgeSeconds !== null && dataAgeSeconds > STALE_SEARCH_THRESHOLD_SECONDS);
+
+            return (
+              <div key={plane.icao24} className="aircraft-item">
+                <div className="aircraft-header">
+                  <span className="aircraft-callsign">{displayCallsign}</span>
+                  <span className="aircraft-icao">{plane.icao24}</span>
+                </div>
+                <div className="aircraft-details">
+                  {departureDisplay || arrivalDisplay ? (
+                    <div className="detail-row">
+                      <span className="detail-label">Route:</span>
+                      <span className="detail-value">
+                        {departureDisplay || 'N/A'} → {arrivalDisplay || 'N/A'}
+                      </span>
+                    </div>
+                  ) : null}
+                  {aircraftModel && (
+                    <div className="detail-row">
+                      <span className="detail-label">Aircraft:</span>
+                      <span className="detail-value">{aircraftModel}</span>
+                    </div>
+                  )}
+                  <div className="detail-row">
+                    <span className="detail-label">Altitude:</span>
+                    <span className="detail-value">{plane.baro_altitude ? `${Math.round(plane.baro_altitude * 3.28084)}ft` : 'N/A'}</span>
+                  </div>
+                  <div className="detail-row">
+                    <span className="detail-label">Speed:</span>
+                    <span className="detail-value">{plane.velocity ? `${Math.round(plane.velocity * 1.94384)}kts` : 'N/A'}</span>
+                  </div>
+                  <div className="detail-row">
+                    <span className="detail-label">Heading:</span>
+                    <span className="detail-value">{plane.true_track ? `${plane.true_track.toFixed(0)}°` : 'N/A'}</span>
+                  </div>
+                  <div className="detail-row">
+                    <span className="detail-label">Position:</span>
+                    <span className="detail-value small">{plane.latitude?.toFixed(4)}, {plane.longitude?.toFixed(4)}</span>
+                  </div>
+                  {isStale && (
+                    <div className="detail-row stale-indicator">
+                      <span className="detail-label">Status:</span>
+                      <span className="detail-value">Stale ⏱️{dataAgeHours ? ` (${dataAgeHours}h old)` : ''}</span>
+                    </div>
+                  )}
+                  <button 
+                    className="view-history-btn"
+                    onClick={() => handleViewHistory(plane)}
+                  >
+                    📊 View Flight History
+                  </button>
+                </div>
               </div>
-              <div className="aircraft-details">
-                <div className="detail-row">
-                  <span className="detail-label">Altitude:</span>
-                  <span className="detail-value">{plane.baro_altitude ? `${Math.round(plane.baro_altitude * 3.28084)}ft` : 'N/A'}</span>
-                </div>
-                <div className="detail-row">
-                  <span className="detail-label">Speed:</span>
-                  <span className="detail-value">{plane.velocity ? `${Math.round(plane.velocity * 1.94384)}kts` : 'N/A'}</span>
-                </div>
-                <div className="detail-row">
-                  <span className="detail-label">Heading:</span>
-                  <span className="detail-value">{plane.true_track ? `${plane.true_track.toFixed(0)}°` : 'N/A'}</span>
-                </div>
-                <div className="detail-row">
-                  <span className="detail-label">Position:</span>
-                  <span className="detail-value small">{plane.latitude?.toFixed(4)}, {plane.longitude?.toFixed(4)}</span>
-                </div>
-                <button 
-                  className="view-history-btn"
-                  onClick={() => handleViewHistory(plane)}
-                >
-                  📊 View Flight History
-                </button>
-              </div>
-            </div>
-          ))}
+            );
+          })}
           {visiblePlaneEntries.length === 0 && (
             <p className="no-aircraft">No aircraft in view</p>
           )}

@@ -95,6 +95,7 @@ class PostgresRepository {
   async findAircraftByIdentifier(identifier: string): Promise<any> { return this.aircraft.findAircraftByIdentifier(identifier); }
   async findAircraftInBounds(latmin: number, lonmin: number, latmax: number, lonmax: number, recentContactThreshold: number): Promise<any> { return this.aircraft.findAircraftInBounds(latmin, lonmin, latmax, lonmax, recentContactThreshold); }
   async updateAircraftCategory(icao24: string, category: number | null): Promise<void> { return this.aircraft.updateAircraftCategory(icao24, category); }
+  async updateAircraftCallsign(icao24: string, callsign: string | null): Promise<void> { return this.aircraft.updateAircraftCallsign(icao24, callsign); }
   async findAircraftHistory(icao24: string, startTime?: Date | null, endTime?: Date | null): Promise<any> { return this.aircraft.findAircraftHistory(icao24, startTime, endTime); }
   async findMultipleAircraftHistory(icao24s: string[], startTime?: Date | null, endTime?: Date | null): Promise<any> { return this.aircraft.findMultipleAircraftHistory(icao24s, startTime, endTime); }
   async findRecentAircraftWithoutRoutes(minLastContact: number, limit?: number): Promise<any> { return this.aircraft.findRecentAircraftWithoutRoutes(minLastContact, limit); }
