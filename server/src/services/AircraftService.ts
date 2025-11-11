@@ -486,28 +486,19 @@ class AircraftService {
    */
   async getAircraftInBounds(latmin: number, lonmin: number, latmax: number, lonmax: number): Promise<any[]> {
     try {
-      const isDevelopment = config.server.env === 'development';
-      const isRateLimited = rateLimitManager.isRateLimited();
+      // Use a reasonable threshold - max 30 minutes for active flights
+      // Extended thresholds (24 hours) are too permissive and show stale aircraft
+      let contactThreshold = config.aircraft.recentContactThreshold; // 30 minutes default
 
-      // In development, use extended threshold to show stale data
-      // This helps when data is old (from backups) or APIs are unavailable
-      let contactThreshold = config.aircraft.recentContactThreshold;
-      if (isDevelopment) {
-        // In development, always use extended threshold to show more data
-        // This is especially useful when testing with restored backups
-        contactThreshold = config.aircraft.devModeStaleThreshold;
-        logger.debug('Using extended threshold for development', {
-          normalThreshold: config.aircraft.recentContactThreshold,
-          devThreshold: contactThreshold,
-          isRateLimited,
+      // Cap the threshold at 30 minutes even in dev mode to prevent showing hours-old aircraft
+      // If we need to test with old data, we can use a separate test endpoint
+      const MAX_REASONABLE_THRESHOLD = 30 * 60; // 30 minutes max
+      if (contactThreshold > MAX_REASONABLE_THRESHOLD) {
+        logger.warn('Capping contact threshold to prevent showing very old aircraft', {
+          requested: contactThreshold,
+          capped: MAX_REASONABLE_THRESHOLD,
         });
-      } else if (isRateLimited) {
-        // In production, only use extended threshold when actually rate limited
-        contactThreshold = config.aircraft.devModeStaleThreshold;
-        logger.debug('Using extended threshold (rate limited)', {
-          normalThreshold: config.aircraft.recentContactThreshold,
-          devThreshold: contactThreshold,
-        });
+        contactThreshold = MAX_REASONABLE_THRESHOLD;
       }
 
       const thresholdTimestamp = Math.floor(Date.now() / 1000) - contactThreshold;
@@ -519,35 +510,88 @@ class AircraftService {
 
       await this.enrichAircraftWithAerodatabox(enrichedWithRoutes);
 
-      // Mark stale aircraft in development mode when rate limited BEFORE trajectory prediction
+      // Mark stale aircraft BEFORE trajectory prediction
       // This ensures the isStale flag is preserved when the prediction service creates new objects
-      // Mark stale aircraft from BOTH feeder and OpenSky sources
+      // Mark aircraft as stale if they're older than 15 minutes (more conservative than the 30-minute query threshold)
       const now = Math.floor(Date.now() / 1000);
-      const normalThreshold = now - config.aircraft.recentContactThreshold;
+      const STALE_THRESHOLD_SECONDS = 15 * 60; // 15 minutes - matches frontend filter
 
-      if (isDevelopment && isRateLimited) {
-        enrichedWithRoutes.forEach((aircraft: any) => {
-          // Mark as stale if older than normal threshold but within dev threshold
-          // Works for both feeder and OpenSky data sources
-          if (aircraft.last_contact && aircraft.last_contact < normalThreshold) {
+      enrichedWithRoutes.forEach((aircraft: any) => {
+        if (aircraft.last_contact) {
+          const ageSeconds = now - aircraft.last_contact;
+          if (ageSeconds > STALE_THRESHOLD_SECONDS) {
             aircraft.isStale = true;
-            aircraft.staleReason = 'rate_limited';
-            aircraft.ageMinutes = Math.floor((now - aircraft.last_contact) / 60);
-            // Log which data source is stale for debugging
-            logger.debug('Marking aircraft as stale', {
-              icao24: aircraft.icao24,
-              data_source: aircraft.data_source,
-              ageMinutes: aircraft.ageMinutes,
-            });
+            aircraft.staleReason = aircraft.staleReason || 'stale-data';
+            aircraft.ageMinutes = Math.floor(ageSeconds / 60);
+            aircraft.data_age_seconds = ageSeconds;
+            aircraft.last_update_age_seconds = ageSeconds;
           }
-        });
-      }
+        }
+      });
 
-      const enhanced = await trajectoryPredictionService.enhanceAircraftWithPredictions(enrichedWithRoutes);
+      // Filter out landed aircraft that are older than 15 minutes
+      // These should not appear on the map as they've already landed
+      const MAX_LANDED_AGE_SECONDS = 15 * 60; // 15 minutes
+      const filteredAircraft = enrichedWithRoutes.filter((aircraft: any) => {
+        // If aircraft is on ground and data is older than 15 minutes, filter it out
+        if (aircraft.on_ground === true && aircraft.last_contact) {
+          const ageSeconds = now - aircraft.last_contact;
+          if (ageSeconds > MAX_LANDED_AGE_SECONDS) {
+            logger.debug('Filtering out old landed aircraft', {
+              icao24: aircraft.icao24,
+              callsign: aircraft.callsign,
+              ageSeconds,
+              last_contact: new Date(aircraft.last_contact * 1000).toISOString(),
+            });
+            return false;
+          }
+        }
+        return true;
+      });
+
+      // Apply position override for landed aircraft (similar to /planes/:identifier route)
+      const LANDED_STATUSES = new Set(['arrived', 'landed', 'completed', 'diverted', 'cancelled']);
+      const LANDED_OVERRIDE_THRESHOLD_SECONDS = 30 * 60; // 30 minutes
+      const normalizeStatus = (status?: string | null): string | null => {
+        if (!status || typeof status !== 'string') return null;
+        return status.trim().toLowerCase();
+      };
+
+      filteredAircraft.forEach((aircraft: any) => {
+        const route = aircraft.route;
+        if (!route?.arrivalAirport?.location) return;
+
+        const arrivalLocation = route.arrivalAirport.location;
+        if (typeof arrivalLocation.lat !== 'number' || typeof arrivalLocation.lng !== 'number') return;
+
+        const normalizedStatus = normalizeStatus(route.flightStatus);
+        const hasArrivalStatus = normalizedStatus ? LANDED_STATUSES.has(normalizedStatus) : false;
+        const actualArrivalTimestamp =
+          typeof route.flightData?.actualArrival === 'number' ? route.flightData.actualArrival : null;
+        const actualArrivalAgeSeconds = actualArrivalTimestamp ? Math.max(0, now - actualArrivalTimestamp) : null;
+        const hasActualArrival = actualArrivalAgeSeconds !== null;
+        const dataAgeSeconds =
+          aircraft.data_age_seconds ?? (aircraft.last_contact ? Math.max(0, now - aircraft.last_contact) : null);
+        const staleByAge = dataAgeSeconds !== null ? dataAgeSeconds > LANDED_OVERRIDE_THRESHOLD_SECONDS : false;
+
+        if (hasArrivalStatus || hasActualArrival || staleByAge) {
+          aircraft.latitude = arrivalLocation.lat;
+          aircraft.longitude = arrivalLocation.lng;
+          aircraft.on_ground = true;
+          aircraft.velocity = 0;
+          aircraft.true_track = null;
+          aircraft.position_source = 'route-arrival';
+          aircraft.isStale = true;
+          aircraft.staleReason = hasArrivalStatus ? `flight_status:${normalizedStatus}` : 'route-arrival-inferred';
+        }
+      });
+
+      const enhanced = await trajectoryPredictionService.enhanceAircraftWithPredictions(filteredAircraft);
 
       const predictedCount = enhanced.filter((a: any) => a.predicted).length;
       const routesCount = enhanced.filter((a: any) => a.route).length;
       const staleCount = enhanced.filter((a: any) => a.isStale).length;
+      const filteredCount = enrichedWithRoutes.length - filteredAircraft.length;
 
       if (predictedCount > 0) {
         logger.debug(`Applied trajectory predictions to ${predictedCount}/${enhanced.length} aircraft`);
@@ -555,6 +599,10 @@ class AircraftService {
 
       if (routesCount > 0) {
         logger.info(`Included route data for ${routesCount}/${enhanced.length} aircraft (from cache)`);
+      }
+
+      if (filteredCount > 0) {
+        logger.info(`Filtered out ${filteredCount} old landed aircraft`);
       }
 
       if (staleCount > 0) {
