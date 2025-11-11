@@ -48,10 +48,24 @@ class AircraftRepository {
   async upsertAircraftState(state: AircraftStateArray): Promise<void> {
     // History insert (no created_at needed, has DEFAULT)
     const historyState = [
-      state[0], state[1], state[2], state[3], state[4],
-      state[5], state[6], state[7], state[8], state[9],
-      state[10], state[11], state[12], state[13], state[14],
-      state[15], state[16], state[17],
+      state[0],
+      state[1],
+      state[2],
+      state[3],
+      state[4],
+      state[5],
+      state[6],
+      state[7],
+      state[8],
+      state[9],
+      state[10],
+      state[11],
+      state[12],
+      state[13],
+      state[14],
+      state[15],
+      state[16],
+      state[17],
     ];
 
     const insertHistoryQuery = `
@@ -113,7 +127,7 @@ class AircraftRepository {
     lonmin: number,
     latmax: number,
     lonmax: number,
-    recentContactThreshold: number
+    recentContactThreshold: number,
   ): Promise<any[]> {
     // Optimized query with LIMIT to prevent timeouts on large result sets
     // Uses PostGIS spatial index for fast bounding box queries
@@ -215,7 +229,7 @@ class AircraftRepository {
   async findAircraftHistory(
     icao24: string,
     startTime: Date | null = null,
-    endTime: Date | null = null
+    endTime: Date | null = null,
   ): Promise<AircraftState[]> {
     let query = `
       SELECT * FROM aircraft_states_history 
@@ -244,7 +258,7 @@ class AircraftRepository {
   async findMultipleAircraftHistory(
     icao24s: string[],
     startTime: Date | null = null,
-    endTime: Date | null = null
+    endTime: Date | null = null,
   ): Promise<AircraftState[]> {
     let query = `
       SELECT * FROM aircraft_states_history 
@@ -270,10 +284,7 @@ class AircraftRepository {
     return results;
   }
 
-  async findRecentAircraftWithoutRoutes(
-    minLastContact: number,
-    limit: number = 10
-  ): Promise<AircraftState[]> {
+  async findRecentAircraftWithoutRoutes(minLastContact: number, limit: number = 10): Promise<AircraftState[]> {
     const query = `
       SELECT a.*
       FROM aircraft_states a
@@ -296,15 +307,33 @@ class AircraftRepository {
     feederId: string | null,
     ingestionTimestamp: Date | null,
     dataSource: string = 'opensky',
-    sourcePriority: number = 30
+    sourcePriority: number = 30,
   ): Promise<void> {
     // Extract from old implementation - keeping for now
     // TODO: Refactor to use RouteRepository
     const historyState = [
-      state[0], state[1], state[2], state[3], state[4],
-      state[5], state[6], state[7], state[8], state[9],
-      state[10], state[11], state[12], state[13], state[14],
-      state[15], state[16], state[17], feederId, ingestionTimestamp, dataSource, sourcePriority,
+      state[0],
+      state[1],
+      state[2],
+      state[3],
+      state[4],
+      state[5],
+      state[6],
+      state[7],
+      state[8],
+      state[9],
+      state[10],
+      state[11],
+      state[12],
+      state[13],
+      state[14],
+      state[15],
+      state[16],
+      state[17],
+      feederId,
+      ingestionTimestamp,
+      dataSource,
+      sourcePriority,
     ];
 
     const insertHistoryQuery = `
@@ -482,14 +511,31 @@ class AircraftRepository {
         END;
     `;
     await this.db.query(upsertQuery, [
-      state[0], state[1], state[2], state[3], state[4],
-      state[5], state[6], state[7], state[8], state[9],
-      state[10], state[11], state[12], state[13], state[14],
-      state[15], state[16], state[17], state[18] || new Date(),
-      feederId, ingestionTimestamp, dataSource, sourcePriority,
+      state[0],
+      state[1],
+      state[2],
+      state[3],
+      state[4],
+      state[5],
+      state[6],
+      state[7],
+      state[8],
+      state[9],
+      state[10],
+      state[11],
+      state[12],
+      state[13],
+      state[14],
+      state[15],
+      state[16],
+      state[17],
+      state[18] || new Date(),
+      feederId,
+      ingestionTimestamp,
+      dataSource,
+      sourcePriority,
     ]);
   }
 }
 
 export default AircraftRepository;
-
