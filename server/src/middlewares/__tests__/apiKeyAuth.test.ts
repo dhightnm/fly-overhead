@@ -116,11 +116,7 @@ describe('API Key Authentication', () => {
 
   describe('optionalApiKeyAuth', () => {
     it('should pass through when no API key is provided', async () => {
-      await optionalApiKeyAuth(
-        mockRequest as any,
-        mockResponse as Response,
-        mockNext
-      );
+      await optionalApiKeyAuth(mockRequest as any, mockResponse as Response, mockNext);
 
       expect(mockNext).toHaveBeenCalled();
       expect(mockResponse.status).not.toHaveBeenCalled();
@@ -156,11 +152,7 @@ describe('API Key Authentication', () => {
 
       mockPostgresRepository.validateApiKey = jest.fn().mockResolvedValue(mockApiKey);
 
-      await optionalApiKeyAuth(
-        mockRequest as any,
-        mockResponse as Response,
-        mockNext
-      );
+      await optionalApiKeyAuth(mockRequest as any, mockResponse as Response, mockNext);
 
       expect(mockNext).toHaveBeenCalled();
       expect((mockRequest as any).apiKey).toBeDefined();
@@ -198,11 +190,7 @@ describe('API Key Authentication', () => {
 
       mockPostgresRepository.validateApiKey = jest.fn().mockResolvedValue(mockApiKey);
 
-      await optionalApiKeyAuth(
-        mockRequest as any,
-        mockResponse as Response,
-        mockNext
-      );
+      await optionalApiKeyAuth(mockRequest as any, mockResponse as Response, mockNext);
 
       expect(mockNext).toHaveBeenCalled();
       expect((mockRequest as any).apiKey).toBeDefined();
@@ -240,11 +228,7 @@ describe('API Key Authentication', () => {
 
       mockPostgresRepository.validateApiKey = jest.fn().mockResolvedValue(mockApiKey);
 
-      await optionalApiKeyAuth(
-        mockRequest as any,
-        mockResponse as Response,
-        mockNext
-      );
+      await optionalApiKeyAuth(mockRequest as any, mockResponse as Response, mockNext);
 
       expect(mockNext).toHaveBeenCalled();
       expect((mockRequest as any).apiKey).toBeDefined();
@@ -261,11 +245,7 @@ describe('API Key Authentication', () => {
       };
 
       // optionalApiKeyAuth validates format and rejects invalid keys
-      await optionalApiKeyAuth(
-        mockRequest as any,
-        mockResponse as Response,
-        mockNext
-      );
+      await optionalApiKeyAuth(mockRequest as any, mockResponse as Response, mockNext);
 
       // Should return 401 for invalid format
       expect(mockResponse.status).toHaveBeenCalled();
@@ -285,11 +265,7 @@ describe('API Key Authentication', () => {
 
       mockPostgresRepository.validateApiKey = jest.fn().mockResolvedValue(null);
 
-      await optionalApiKeyAuth(
-        mockRequest as any,
-        mockResponse as Response,
-        mockNext
-      );
+      await optionalApiKeyAuth(mockRequest as any, mockResponse as Response, mockNext);
 
       expect(mockResponse.status).toHaveBeenCalledWith(401);
       expect(mockNext).not.toHaveBeenCalled();
@@ -328,11 +304,7 @@ describe('API Key Authentication', () => {
 
       mockPostgresRepository.validateApiKey = jest.fn().mockResolvedValue(mockApiKey);
 
-      await optionalApiKeyAuth(
-        mockRequest as any,
-        mockResponse as Response,
-        mockNext
-      );
+      await optionalApiKeyAuth(mockRequest as any, mockResponse as Response, mockNext);
 
       expect(mockResponse.status).toHaveBeenCalledWith(401);
       expect(mockNext).not.toHaveBeenCalled();
@@ -341,11 +313,7 @@ describe('API Key Authentication', () => {
 
   describe('requireApiKeyAuth', () => {
     it('should reject request without API key', async () => {
-      await requireApiKeyAuth(
-        mockRequest as any,
-        mockResponse as Response,
-        mockNext
-      );
+      await requireApiKeyAuth(mockRequest as any, mockResponse as Response, mockNext);
 
       expect(mockResponse.status).toHaveBeenCalledWith(401);
       expect(mockNext).not.toHaveBeenCalled();
@@ -381,11 +349,7 @@ describe('API Key Authentication', () => {
 
       mockPostgresRepository.validateApiKey = jest.fn().mockResolvedValue(mockApiKey);
 
-      await requireApiKeyAuth(
-        mockRequest as any,
-        mockResponse as Response,
-        mockNext
-      );
+      await requireApiKeyAuth(mockRequest as any, mockResponse as Response, mockNext);
 
       expect(mockNext).toHaveBeenCalled();
       expect((mockRequest as any).apiKey).toBeDefined();
@@ -397,15 +361,10 @@ describe('API Key Authentication', () => {
         authorization: 'Bearer invalid_format',
       };
 
-      await requireApiKeyAuth(
-        mockRequest as any,
-        mockResponse as Response,
-        mockNext
-      );
+      await requireApiKeyAuth(mockRequest as any, mockResponse as Response, mockNext);
 
       expect(mockResponse.status).toHaveBeenCalledWith(401);
       expect(mockNext).not.toHaveBeenCalled();
     });
   });
 });
-
