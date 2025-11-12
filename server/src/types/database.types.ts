@@ -110,6 +110,7 @@ export interface User {
   picture: string | null;
   is_premium: boolean;
   premium_expires_at: Date | null;
+  is_feeder_provider: boolean;
   created_at: Date;
   updated_at: Date;
 }

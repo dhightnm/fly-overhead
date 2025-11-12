@@ -13,14 +13,14 @@ export interface AuthenticatedRequest extends Request {
     keyId: string;
     name: string;
     prefix: string;
-    type: 'development' | 'production';
+    type: 'development' | 'production' | 'feeder';
     userId: number | null;
     scopes: string[];
   };
   auth?: {
     authenticated: boolean;
     type: 'anonymous' | 'api_key';
-    keyType?: 'development' | 'production';
+    keyType?: 'development' | 'production' | 'feeder';
     scopes?: string[];
   };
 }
@@ -33,20 +33,20 @@ export function extractApiKey(req: Request): string | null {
   const authHeader = req.headers.authorization;
   if (authHeader && authHeader.startsWith('Bearer ')) {
     const key = authHeader.substring(7).trim();
-    if (key.startsWith('sk_')) {
+    if (key.startsWith('sk_') || key.startsWith('fd_')) {
       return key;
     }
   }
 
   // Method 2: X-API-Key header (fallback)
   const apiKeyHeader = req.headers['x-api-key'];
-  if (apiKeyHeader && typeof apiKeyHeader === 'string' && apiKeyHeader.startsWith('sk_')) {
+  if (apiKeyHeader && typeof apiKeyHeader === 'string' && (apiKeyHeader.startsWith('sk_') || apiKeyHeader.startsWith('fd_'))) {
     return apiKeyHeader.trim();
   }
 
   // Method 3: Query parameter (not recommended, but supported for testing)
   const queryKey = req.query.api_key;
-  if (queryKey && typeof queryKey === 'string' && queryKey.startsWith('sk_')) {
+  if (queryKey && typeof queryKey === 'string' && (queryKey.startsWith('sk_') || queryKey.startsWith('fd_'))) {
     logger.warn('API key provided in query string (not recommended)', {
       path: req.path,
       ip: req.ip,
@@ -55,6 +55,19 @@ export function extractApiKey(req: Request): string | null {
   }
 
   return null;
+}
+
+/**
+ * Determine API key type from prefix
+ */
+function getKeyTypeFromPrefix(prefix: string): 'development' | 'production' | 'feeder' {
+  if (prefix === 'sk_dev_') {
+    return 'development';
+  }
+  if (prefix === 'fd_') {
+    return 'feeder';
+  }
+  return 'production'; // Default for sk_live_ and any other prefix
 }
 
 /**
@@ -153,7 +166,7 @@ export async function optionalApiKeyAuth(
       keyId: keyData.key_id,
       name: keyData.name,
       prefix: keyData.key_prefix,
-      type: keyData.key_prefix === 'sk_dev_' ? 'development' : 'production',
+      type: getKeyTypeFromPrefix(keyData.key_prefix),
       userId: keyData.user_id,
       scopes: keyData.scopes || ['read'],
     };
@@ -247,7 +260,7 @@ export async function requireApiKeyAuth(
       keyId: keyData.key_id,
       name: keyData.name,
       prefix: keyData.key_prefix,
-      type: keyData.key_prefix === 'sk_dev_' ? 'development' : 'production',
+      type: getKeyTypeFromPrefix(keyData.key_prefix),
       userId: keyData.user_id,
       scopes: keyData.scopes || ['read'],
     };

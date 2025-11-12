@@ -10,7 +10,7 @@ const router = Router();
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
 const JWT_EXPIRES_IN = '7d';
 
-interface AuthenticatedRequest extends Request {
+export interface AuthenticatedRequest extends Request {
   user?: {
     userId: number;
     email: string;
@@ -18,7 +18,7 @@ interface AuthenticatedRequest extends Request {
 }
 
 /**
- * Middleware to authenticate JWT token
+ * Middleware to authenticate JWT token (required)
  */
 export function authenticateToken(req: AuthenticatedRequest, res: Response, next: NextFunction): void {
   const authHeader = req.headers.authorization;
@@ -33,6 +33,33 @@ export function authenticateToken(req: AuthenticatedRequest, res: Response, next
     if (err) {
       res.status(403).json({ error: 'Invalid or expired token' });
       return;
+    }
+    req.user = user as { userId: number; email: string };
+    return next();
+  });
+}
+
+/**
+ * Optional JWT authentication middleware
+ * Validates JWT token if provided, but doesn't block if missing
+ * Useful for endpoints that work with or without user authentication
+ */
+export function optionalAuthenticateToken(req: AuthenticatedRequest, res: Response, next: NextFunction): void {
+  const authHeader = req.headers.authorization;
+  const token = authHeader && authHeader.split(' ')[1];
+
+  // No token provided - pass through
+  if (!token) {
+    req.user = undefined;
+    return next();
+  }
+
+  // Try to verify token
+  jwt.verify(token, JWT_SECRET, (err, user) => {
+    if (err) {
+      // Invalid token - pass through without user (don't block)
+      req.user = undefined;
+      return next();
     }
     req.user = user as { userId: number; email: string };
     return next();
@@ -248,6 +275,7 @@ router.get('/me', authenticateToken, async (req: AuthenticatedRequest, res: Resp
       email: user.email,
       name: user.name,
       isPremium: user.is_premium,
+      isFeederProvider: user.is_feeder_provider || false,
     });
   } catch (error) {
     const err = error as Error;

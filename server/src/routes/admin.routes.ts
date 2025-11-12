@@ -4,6 +4,8 @@ import postgresRepository from '../repositories/PostgresRepository';
 import logger from '../utils/logger';
 import { generateApiKey } from '../utils/apiKeyGenerator';
 import { authenticateToken } from './auth.routes';
+import { getRateLimitStatusHandler } from '../middlewares/rateLimitMiddleware';
+import type { AuthenticatedRequest as ApiKeyAuthRequest } from '../middlewares/apiKeyAuth';
 
 const router = Router();
 
@@ -293,6 +295,12 @@ router.delete('/keys/:keyId', authenticateToken, async (req: AuthenticatedReques
     return next(error);
   }
 });
+
+/**
+ * GET /api/admin/rate-limit-status
+ * Get current rate limit status for authenticated user/key
+ */
+router.get('/rate-limit-status', authenticateToken, getRateLimitStatusHandler as any);
 
 export default router;
 

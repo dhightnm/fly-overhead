@@ -493,15 +493,55 @@ class SchemaRepository {
         picture TEXT,
         is_premium BOOLEAN DEFAULT false,
         premium_expires_at TIMESTAMPTZ,
+        is_feeder_provider BOOLEAN DEFAULT false,
         created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
       );
       
       CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
       CREATE INDEX IF NOT EXISTS idx_users_google_id ON users(google_id);
+      CREATE INDEX IF NOT EXISTS idx_users_is_feeder_provider ON users(is_feeder_provider);
     `;
     await this.db.query(query);
     logger.info('Users table created or already exists');
+  }
+
+  /**
+   * Add is_feeder_provider column to existing users table (migration)
+   */
+  async addFeederProviderColumnToUsers(): Promise<void> {
+    const query = `
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns 
+          WHERE table_name = 'users' AND column_name = 'is_feeder_provider'
+        ) THEN
+          ALTER TABLE users ADD COLUMN is_feeder_provider BOOLEAN DEFAULT false;
+          CREATE INDEX IF NOT EXISTS idx_users_is_feeder_provider ON users(is_feeder_provider);
+          logger.info('Added is_feeder_provider column to users table');
+        END IF;
+      END $$;
+    `;
+    try {
+      await this.db.query(query);
+      logger.info('Feeder provider column migration completed');
+    } catch (error) {
+      // If the DO block doesn't work, try direct ALTER
+      try {
+        await this.db.query(`
+          ALTER TABLE users 
+          ADD COLUMN IF NOT EXISTS is_feeder_provider BOOLEAN DEFAULT false;
+        `);
+        await this.db.query(`
+          CREATE INDEX IF NOT EXISTS idx_users_is_feeder_provider ON users(is_feeder_provider);
+        `);
+        logger.info('Added is_feeder_provider column to users table');
+      } catch (err) {
+        const error = err as Error;
+        logger.warn('Feeder provider column may already exist', { error: error.message });
+      }
+    }
   }
 
   /**

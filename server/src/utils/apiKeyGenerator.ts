@@ -40,8 +40,12 @@ export function generateApiKey(type: string = 'production'): ApiKeyResult {
     case 'live':
       prefix = 'sk_live_';
       break;
+    case 'feeder':
+    case 'fd':
+      prefix = 'fd_';
+      break;
     default:
-      throw new Error(`Invalid API key type: ${type}. Use 'development' or 'production'`);
+      throw new Error(`Invalid API key type: ${type}. Use 'development', 'production', or 'feeder'`);
   }
   
   const randomPart = generateSecureHex(32);
@@ -82,7 +86,14 @@ export function validateApiKeyFormat(key: string): ApiKeyValidation {
     return { valid: true, type: 'production', prefix: 'sk_live_' };
   }
   
-  return { valid: false, error: 'Invalid API key prefix. Must start with sk_dev_ or sk_live_' };
+  if (key.startsWith('fd_')) {
+    if (key.length !== 35) { // fd_ (3 chars) + 32 hex chars
+      return { valid: false, error: 'Invalid feeder key length' };
+    }
+    return { valid: true, type: 'feeder', prefix: 'fd_' };
+  }
+  
+  return { valid: false, error: 'Invalid API key prefix. Must start with sk_dev_, sk_live_, or fd_' };
 }
 
 /**
@@ -94,7 +105,8 @@ export function maskApiKey(key: string): string {
   }
   
   const prefix = key.startsWith('sk_dev_') ? 'sk_dev_' : 
-                 key.startsWith('sk_live_') ? 'sk_live_' : '';
+                 key.startsWith('sk_live_') ? 'sk_live_' :
+                 key.startsWith('fd_') ? 'fd_' : '';
   const lastFour = key.slice(-4);
   
   return `${prefix}${'*'.repeat(key.length - prefix.length - 4)}${lastFour}`;

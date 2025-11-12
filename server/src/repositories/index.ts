@@ -43,6 +43,7 @@ class PostgresRepository {
   async addFeederColumnsToAircraftStates(): Promise<void> { return this.schema.addFeederColumnsToAircraftStates(); }
   async addFeederColumnsToAircraftStatesHistory(): Promise<void> { return this.schema.addFeederColumnsToAircraftStatesHistory(); }
   async createUsersTable(): Promise<void> { return this.schema.createUsersTable(); }
+  async addFeederProviderColumnToUsers(): Promise<void> { return this.schema.addFeederProviderColumnToUsers(); }
   async initializeAll(): Promise<void> { return this.schema.initializeAll(); }
   async initializePostGIS(): Promise<void> { return this.connection.initializePostGIS(); }
   getDb() { return this.db; }
@@ -122,6 +123,7 @@ class PostgresRepository {
   async createUser(userData: any): Promise<any> { return this.user.createUser(userData); }
   async createOrUpdateGoogleUser(googleProfile: any): Promise<any> { return this.user.createOrUpdateGoogleUser(googleProfile); }
   async updateUserPremiumStatus(userId: number, isPremium: boolean, expiresAt?: Date | null): Promise<any> { return this.user.updateUserPremiumStatus(userId, isPremium, expiresAt); }
+  async updateUserFeederProviderStatus(userId: number, isFeederProvider: boolean): Promise<any> { return this.user.updateUserFeederProviderStatus(userId, isFeederProvider); }
 
   // Delegate feeder methods
   async getFeederById(feederId: string): Promise<any> { return this.feeder.getFeederById(feederId); }
