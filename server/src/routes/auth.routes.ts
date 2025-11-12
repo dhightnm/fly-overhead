@@ -44,7 +44,7 @@ export function authenticateToken(req: AuthenticatedRequest, res: Response, next
  * Validates JWT token if provided, but doesn't block if missing
  * Useful for endpoints that work with or without user authentication
  */
-export function optionalAuthenticateToken(req: AuthenticatedRequest, res: Response, next: NextFunction): void {
+export function optionalAuthenticateToken(req: AuthenticatedRequest, _res: Response, next: NextFunction): void {
   const authHeader = req.headers.authorization;
   const token = authHeader && authHeader.split(' ')[1];
 
@@ -95,11 +95,7 @@ router.post('/register', async (req: Request, res: Response, next: NextFunction)
       isPremium: false,
     });
 
-    const token = jwt.sign(
-      { userId: user.id, email: user.email },
-      JWT_SECRET,
-      { expiresIn: JWT_EXPIRES_IN }
-    );
+    const token = jwt.sign({ userId: user.id, email: user.email }, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
 
     logger.info('User registered', { email, userId: user.id });
 
@@ -140,11 +136,7 @@ router.post('/login', async (req: Request, res: Response, next: NextFunction) =>
       return res.status(401).json({ error: 'Invalid email or password' });
     }
 
-    const token = jwt.sign(
-      { userId: user.id, email: user.email },
-      JWT_SECRET,
-      { expiresIn: JWT_EXPIRES_IN }
-    );
+    const token = jwt.sign({ userId: user.id, email: user.email }, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
 
     logger.info('User logged in', { email, userId: user.id });
 
@@ -173,7 +165,7 @@ router.post('/google', async (req: Request, res: Response, next: NextFunction) =
 
     const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
     const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
-    
+
     if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET) {
       logger.error('Google OAuth credentials not configured');
       return res.status(500).json({ error: 'Google OAuth not configured' });
@@ -197,11 +189,11 @@ router.post('/google', async (req: Request, res: Response, next: NextFunction) =
     } else if (code) {
       try {
         let redirectUri = process.env.GOOGLE_REDIRECT_URI || 'postmessage';
-        
+
         if (!redirectUri || redirectUri === 'postmessage') {
           redirectUri = 'postmessage';
         }
-        
+
         const tokenResponse = await axios.post('https://oauth2.googleapis.com/token', {
           code,
           client_id: GOOGLE_CLIENT_ID,
@@ -236,11 +228,7 @@ router.post('/google', async (req: Request, res: Response, next: NextFunction) =
 
     const user = await postgresRepository.createOrUpdateGoogleUser(googleProfile);
 
-    const token = jwt.sign(
-      { userId: user.id, email: user.email },
-      JWT_SECRET,
-      { expiresIn: JWT_EXPIRES_IN }
-    );
+    const token = jwt.sign({ userId: user.id, email: user.email }, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
 
     logger.info('User logged in with Google', { email: user.email, userId: user.id });
 
@@ -285,4 +273,3 @@ router.get('/me', authenticateToken, async (req: AuthenticatedRequest, res: Resp
 });
 
 export default router;
-

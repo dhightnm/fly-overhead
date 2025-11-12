@@ -8,7 +8,7 @@ import flightPlanRouteService from '../services/FlightPlanRouteService';
 import postgresRepository from '../repositories/PostgresRepository';
 import logger from '../utils/logger';
 import { mapAircraftTypeToCategory } from '../utils/aircraftCategoryMapper';
-import { requireApiKeyAuth } from '../middlewares/apiKeyAuth';
+import { requireApiKeyAuth, type AuthenticatedRequest } from '../middlewares/apiKeyAuth';
 import { rateLimitMiddleware } from '../middlewares/rateLimitMiddleware';
 
 const router = Router();
@@ -191,6 +191,34 @@ router.get(
       }
 
       return res.json(aircraft);
+    } catch (err) {
+      return next(err);
+    }
+  },
+);
+
+/**
+ * Get route statistics (history + cache)
+ * Requires API key authentication with rate limiting
+ * NOTE: This must come before /route/:identifier to ensure proper route matching
+ */
+router.get(
+  '/routes/stats',
+  requireApiKeyAuth,
+  rateLimitMiddleware,
+  async (_req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const stats = await postgresRepository.getRouteStats();
+      return res.json({
+        history: {
+          total: parseInt(stats.history_total, 10),
+          complete: parseInt(stats.history_complete, 10),
+        },
+        cache: {
+          total: parseInt(stats.cache_total, 10),
+          complete: parseInt(stats.cache_complete, 10),
+        },
+      });
     } catch (err) {
       return next(err);
     }
@@ -761,33 +789,6 @@ router.get(
         radius: parseFloat(radius as string),
         count: navaids.length,
         navaids,
-      });
-    } catch (err) {
-      return next(err);
-    }
-  },
-);
-
-/**
- * Get route statistics (history + cache)
- * Requires API key authentication with rate limiting
- */
-router.get(
-  '/routes/stats',
-  requireApiKeyAuth,
-  rateLimitMiddleware,
-  async (_req: Request, res: Response, next: NextFunction) => {
-    try {
-      const stats = await postgresRepository.getRouteStats();
-      return res.json({
-        history: {
-          total: parseInt(stats.history_total, 10),
-          complete: parseInt(stats.history_complete, 10),
-        },
-        cache: {
-          total: parseInt(stats.cache_total, 10),
-          complete: parseInt(stats.cache_complete, 10),
-        },
       });
     } catch (err) {
       return next(err);

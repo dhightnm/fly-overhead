@@ -1,4 +1,4 @@
-import { Router, Request, Response, NextFunction } from 'express';
+import { Router, Response, NextFunction } from 'express';
 import postgresRepository from '../repositories/PostgresRepository';
 import logger from '../utils/logger';
 import { requireApiKeyAuth, optionalApiKeyAuth, type AuthenticatedRequest } from '../middlewares/apiKeyAuth';

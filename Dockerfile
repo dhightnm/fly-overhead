@@ -35,7 +35,7 @@ COPY server/tsconfig*.json ./server/
 
 # Install server dependencies (including TypeScript)
 WORKDIR /app/server
-RUN npm install
+RUN npm install --legacy-peer-deps
 
 # Copy the TypeScript source code
 COPY server/src/ ./src/

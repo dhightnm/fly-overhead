@@ -79,15 +79,15 @@ export class AerodataboxService {
   private loggedMissingKey = false;
 
   constructor(options?: AerodataboxServiceOptions) {
-    const configSource = config?.external?.aerodatabox ?? {};
+    const configSource = (config?.external?.aerodatabox ?? {}) as {
+      baseUrl?: string;
+      apiKey?: string;
+      dailyBudget?: number;
+    };
     const resolvedBaseUrl =
-      options && Object.prototype.hasOwnProperty.call(options, 'baseUrl')
-        ? options.baseUrl
-        : configSource.baseUrl;
+      options && Object.prototype.hasOwnProperty.call(options, 'baseUrl') ? options.baseUrl : configSource.baseUrl;
     const resolvedApiKey =
-      options && Object.prototype.hasOwnProperty.call(options, 'apiKey')
-        ? options.apiKey
-        : configSource.apiKey;
+      options && Object.prototype.hasOwnProperty.call(options, 'apiKey') ? options.apiKey : configSource.apiKey;
     const resolvedDailyBudget =
       options && Object.prototype.hasOwnProperty.call(options, 'dailyBudget')
         ? options.dailyBudget
@@ -95,9 +95,7 @@ export class AerodataboxService {
 
     this.baseUrl = String(resolvedBaseUrl || DEFAULT_BASE_URL).replace(/\/$/, '');
     this.apiKey =
-      typeof resolvedApiKey === 'string' && resolvedApiKey.trim() !== ''
-        ? resolvedApiKey.trim()
-        : undefined;
+      typeof resolvedApiKey === 'string' && resolvedApiKey.trim() !== '' ? resolvedApiKey.trim() : undefined;
     this.dailyBudget =
       typeof resolvedDailyBudget === 'number' && Number.isFinite(resolvedDailyBudget) && resolvedDailyBudget > 0
         ? resolvedDailyBudget
@@ -211,16 +209,18 @@ export class AerodataboxService {
   }
 
   private deriveFlightKey(flight: AerodataboxFlightRecord): string | null {
-    const departureTime = flight.departure?.actualTimeUtc
-      || flight.departure?.scheduledTimeUtc
-      || flight.movement?.departure?.actualTimeUtc
-      || flight.movement?.departure?.scheduledTimeUtc
-      || null;
-    const arrivalTime = flight.arrival?.actualTimeUtc
-      || flight.arrival?.scheduledTimeUtc
-      || flight.movement?.arrival?.actualTimeUtc
-      || flight.movement?.arrival?.scheduledTimeUtc
-      || null;
+    const departureTime =
+      flight.departure?.actualTimeUtc ||
+      flight.departure?.scheduledTimeUtc ||
+      flight.movement?.departure?.actualTimeUtc ||
+      flight.movement?.departure?.scheduledTimeUtc ||
+      null;
+    const arrivalTime =
+      flight.arrival?.actualTimeUtc ||
+      flight.arrival?.scheduledTimeUtc ||
+      flight.movement?.arrival?.actualTimeUtc ||
+      flight.movement?.arrival?.scheduledTimeUtc ||
+      null;
     const callsign = flight.callsign || flight.number || null;
 
     if (!departureTime && !callsign) {
@@ -242,17 +242,15 @@ export class AerodataboxService {
     }
 
     const scheduledDeparture = this.toEpochSeconds(
-      flight.departure?.scheduledTimeUtc || flight.movement?.departure?.scheduledTimeUtc
+      flight.departure?.scheduledTimeUtc || flight.movement?.departure?.scheduledTimeUtc,
     );
     const scheduledArrival = this.toEpochSeconds(
-      flight.arrival?.scheduledTimeUtc || flight.movement?.arrival?.scheduledTimeUtc
+      flight.arrival?.scheduledTimeUtc || flight.movement?.arrival?.scheduledTimeUtc,
     );
     const actualDeparture = this.toEpochSeconds(
-      flight.departure?.actualTimeUtc || flight.movement?.departure?.actualTimeUtc
+      flight.departure?.actualTimeUtc || flight.movement?.departure?.actualTimeUtc,
     );
-    const actualArrival = this.toEpochSeconds(
-      flight.arrival?.actualTimeUtc || flight.movement?.arrival?.actualTimeUtc
-    );
+    const actualArrival = this.toEpochSeconds(flight.arrival?.actualTimeUtc || flight.movement?.arrival?.actualTimeUtc);
 
     const routeData: RouteData = {
       callsign: normalizedCallsign,
@@ -260,12 +258,13 @@ export class AerodataboxService {
       departureAirport: departure,
       arrivalAirport: arrival,
       source: 'aerodatabox',
-      aircraft: flight.aircraft?.model || flight.aircraft?.modelCode
-        ? {
-            model: flight.aircraft?.model || flight.aircraft?.modelCode || undefined,
-            type: flight.aircraft?.modelCode || flight.aircraft?.model || undefined,
-          }
-        : undefined,
+      aircraft:
+        flight.aircraft?.model || flight.aircraft?.modelCode
+          ? {
+              model: flight.aircraft?.model || flight.aircraft?.modelCode || undefined,
+              type: flight.aircraft?.modelCode || flight.aircraft?.model || undefined,
+            }
+          : undefined,
       flightStatus: flight.status || null,
       registration: flight.aircraft?.reg || flight.aircraft?.registration || null,
       flightData: {
@@ -327,7 +326,7 @@ export class AerodataboxService {
       return null;
     }
 
-    const normalizeStatus = (status?: string | null) => status ? status.trim().toLowerCase() : '';
+    const normalizeStatus = (status?: string | null) => (status ? status.trim().toLowerCase() : '');
     const activeStatuses = new Set(['en route', 'in flight', 'departed', 'scheduled', 'boarding']);
     const inactiveStatuses = new Set(['landed', 'arrived', 'cancelled', 'diverted']);
 

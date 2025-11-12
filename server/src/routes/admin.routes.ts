@@ -5,7 +5,6 @@ import logger from '../utils/logger';
 import { generateApiKey } from '../utils/apiKeyGenerator';
 import { authenticateToken } from './auth.routes';
 import { getRateLimitStatusHandler } from '../middlewares/rateLimitMiddleware';
-import type { AuthenticatedRequest as ApiKeyAuthRequest } from '../middlewares/apiKeyAuth';
 
 const router = Router();
 
