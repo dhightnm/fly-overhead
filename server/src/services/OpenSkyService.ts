@@ -65,6 +65,7 @@ class OpenSkyService {
           extended: 1, // Include category field (index 17) - use 1 instead of true
         },
         headers: this.getAuthHeader(),
+        timeout: 30000, // 30 second timeout (was missing, causing 2min TCP timeout)
       });
       
       // Record successful request
@@ -125,6 +126,7 @@ class OpenSkyService {
           lamin, lomin, lamax, lomax,
         },
         headers: this.getAuthHeader(),
+        timeout: 30000, // 30 second timeout
       });
       
       // Record successful request
@@ -174,6 +176,7 @@ class OpenSkyService {
           end,
         },
         headers: this.getAuthHeader(),
+        timeout: 30000, // 30 second timeout
       });
 
       return response.data;
