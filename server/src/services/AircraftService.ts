@@ -609,7 +609,9 @@ class AircraftService {
         logger.debug(`Returning ${staleCount} stale aircraft (data may be outdated)`);
       }
 
-      logger.debug(`Returning ${enhanced.length} aircraft (${enhanced.length - staleCount} fresh, ${staleCount} stale)`);
+      logger.debug(
+        `Returning ${enhanced.length} aircraft (${enhanced.length - staleCount} fresh, ${staleCount} stale)`,
+      );
       return enhanced;
     } catch (error) {
       const err = error as Error;
