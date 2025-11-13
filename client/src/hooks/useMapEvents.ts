@@ -8,6 +8,7 @@ import { aircraftService } from "../services";
 import { mergePlaneRecords } from "../utils/aircraftMerge";
 import type { Aircraft, StarlinkSatellite } from "../types";
 import type { AirportSearchResult } from "../types";
+import { useAirportCache } from "./useAirportCache";
 
 interface UseMapEventsProps {
   setUserPosition: (position: [number, number]) => void;
@@ -32,6 +33,9 @@ export const useMapDataFetcher = ({
   const hasInitiallyLoaded = useRef(false);
   const moveEndTimerRef = useRef<NodeJS.Timeout | null>(null);
   const lastBoundsRef = useRef<string | null>(null);
+  
+  // Airport caching hook - loads airports by quadrant and caches them
+  const { getAirportsInBounds: getCachedAirports } = useAirportCache();
 
   const fetchData = useCallback(async () => {
     const map = mapRef.current;
@@ -42,20 +46,7 @@ export const useMapDataFetcher = ({
     const center = map.getCenter();
     const seaLevel = 0;
 
-    // Fetch starlink data
-    try {
-      const satellites = await aircraftService.getStarlinkSatellites(
-        center.lat,
-        center.lng,
-        seaLevel
-      );
-      setStarlink(satellites);
-    } catch (error) {
-      console.error("Error fetching starlink data:", error);
-      setStarlink([]);
-    }
-
-    // Fetch plane data
+    // Fetch plane data FIRST (most important)
     try {
       const southWest = wrapBounds.getSouthWest();
       const northEast = wrapBounds.getNorthEast();
@@ -115,23 +106,30 @@ export const useMapDataFetcher = ({
       // Don't clear planes on error - preserve existing state
     }
 
-    // Fetch airports if enabled
+    // Fetch starlink data SECOND (after planes loaded)
+    try {
+      const satellites = await aircraftService.getStarlinkSatellites(
+        center.lat,
+        center.lng,
+        seaLevel
+      );
+      setStarlink(satellites);
+    } catch (error) {
+      console.error("Error fetching starlink data:", error);
+      setStarlink([]);
+    }
+
+    // Get airports from cache (no API call needed - static data cached by quadrant)
     if (showAirports) {
-      try {
-        const southWest = wrapBounds.getSouthWest();
-        const northEast = wrapBounds.getNorthEast();
-        const airportData = await aircraftService.getAirportsInBounds(
-          {
-            southWest: { lat: southWest.lat, lng: southWest.lng },
-            northEast: { lat: northEast.lat, lng: northEast.lng },
-          },
-          150
-        );
-        setAirports(airportData);
-      } catch (error) {
-        console.error("Error fetching airport data:", error);
-        setAirports([]);
-      }
+      const southWest = wrapBounds.getSouthWest();
+      const northEast = wrapBounds.getNorthEast();
+      const cachedAirports = getCachedAirports(
+        southWest.lat,
+        southWest.lng,
+        northEast.lat,
+        northEast.lng
+      );
+      setAirports(cachedAirports);
     } else {
       setAirports([]);
     }

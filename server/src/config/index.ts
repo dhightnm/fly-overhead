@@ -25,7 +25,7 @@ const config: AppConfig = {
       url: process.env.POSTGRES_URL || 'postgresql://example:example@localhost:5432/fly_overhead',
       pool: {
         min: 2,
-        max: 10,
+        max: 15, // Increased from 10 to handle multiple concurrent webapp users
       },
     },
   },

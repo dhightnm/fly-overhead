@@ -66,14 +66,14 @@ export const RATE_LIMIT_TIERS: Record<string, RateLimitTier> = {
     bypassRateLimit: false,
   },
 
-  // Web app (same-origin requests from React app) - NO rate limits for seamless UX
+  // Web app (same-origin requests from React app) - balanced limits for UX + stability
   webapp: {
     name: 'Web App',
-    hourlyLimit: Infinity,
-    dailyLimit: Infinity,
-    burstLimit: Infinity,
-    concurrentLimit: Infinity,
-    bypassRateLimit: true, // Bypass rate limiting entirely for webapp
+    hourlyLimit: 10000, // Very high hourly limit (won't hit this)
+    dailyLimit: 100000, // Very high daily limit (won't hit this)
+    burstLimit: 50, // Generous burst allowance (frontend makes requests sequentially now)
+    concurrentLimit: 6, // Allow 6 concurrent (frontend makes sequential requests, so this is per-user concurrency)
+    bypassRateLimit: false, // Need to enforce concurrent limit
   },
 
   // Anonymous (no API key, external requests) - very limited access
