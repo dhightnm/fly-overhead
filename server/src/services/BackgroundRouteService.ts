@@ -49,7 +49,7 @@ class BackgroundRouteService {
 
   async processRoutes(): Promise<void> {
     try {
-      logger.info('Background route job starting', { batchSize: this.BATCH_SIZE });
+      logger.debug('Background route job starting', { batchSize: this.BATCH_SIZE });
 
       const tenMinutesAgo = Math.floor(Date.now() / 1000) - (10 * 60);
       const aircraft = await postgresRepository.findRecentAircraftWithoutRoutes(
@@ -58,11 +58,11 @@ class BackgroundRouteService {
       );
 
       if (aircraft.length === 0) {
-        logger.info('No aircraft need route data at this time');
+        logger.debug('No aircraft need route data at this time');
         return;
       }
 
-      logger.info(`Processing ${aircraft.length} aircraft for background route population`);
+      logger.debug(`Processing ${aircraft.length} aircraft for background route population`);
 
       for (let i = 0; i < aircraft.length; i++) {
         const plane = aircraft[i];
@@ -76,7 +76,7 @@ class BackgroundRouteService {
             continue;
           }
 
-          logger.info(`Background fetch: ${cacheKey} (${i + 1}/${aircraft.length})`);
+          logger.debug(`Background fetch: ${cacheKey} (${i + 1}/${aircraft.length})`);
 
           await flightRouteService.getFlightRoute(
             plane.icao24,
@@ -97,7 +97,7 @@ class BackgroundRouteService {
         }
       }
 
-      logger.info('Background route job completed', {
+      logger.debug('Background route job completed', {
         processed: aircraft.length,
       });
     } catch (error) {

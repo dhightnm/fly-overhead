@@ -598,18 +598,18 @@ class AircraftService {
       }
 
       if (routesCount > 0) {
-        logger.info(`Included route data for ${routesCount}/${enhanced.length} aircraft (from cache)`);
+        logger.debug(`Included route data for ${routesCount}/${enhanced.length} aircraft (from cache)`);
       }
 
       if (filteredCount > 0) {
-        logger.info(`Filtered out ${filteredCount} old landed aircraft`);
+        logger.debug(`Filtered out ${filteredCount} old landed aircraft`);
       }
 
       if (staleCount > 0) {
-        logger.warn(`Returning ${staleCount} stale aircraft (data may be outdated)`);
+        logger.debug(`Returning ${staleCount} stale aircraft (data may be outdated)`);
       }
 
-      logger.info(`Returning ${enhanced.length} aircraft (${enhanced.length - staleCount} fresh, ${staleCount} stale)`);
+      logger.debug(`Returning ${enhanced.length} aircraft (${enhanced.length - staleCount} fresh, ${staleCount} stale)`);
       return enhanced;
     } catch (error) {
       const err = error as Error;

@@ -278,7 +278,7 @@ export class FlightRouteService {
     const cacheKey = `${callsign || icao24}`;
 
     if (!allowExpensiveApis && this.cache.has(cacheKey)) {
-      logger.info('Route cache HIT (in-memory) - skipping API call', { cacheKey, icao24, callsign });
+      logger.debug('Route cache HIT (in-memory) - skipping API call', { cacheKey, icao24, callsign });
       const cachedRoute = this.cache.get(cacheKey)!;
       if (cachedRoute.aircraft?.type) {
         const aircraftInfo = mapAircraftType(cachedRoute.aircraft.type, cachedRoute.aircraft.model);
@@ -305,7 +305,7 @@ export class FlightRouteService {
           };
         }
 
-        logger.info('Route cache HIT (database) - skipping API call', {
+        logger.debug('Route cache HIT (database) - skipping API call', {
           cacheKey,
           icao24,
           callsign,
@@ -317,14 +317,14 @@ export class FlightRouteService {
         return cachedRoute as Route;
       }
     } else {
-      logger.info('Skipping database cache for user-initiated request (allowExpensiveApis=true)', {
+      logger.debug('Skipping database cache for user-initiated request (allowExpensiveApis=true)', {
         cacheKey,
         icao24,
         callsign,
       });
     }
 
-    logger.info('Route cache MISS - fetching from API', {
+    logger.debug('Route cache MISS - fetching from API', {
       cacheKey,
       icao24,
       callsign,
@@ -450,7 +450,7 @@ export class FlightRouteService {
         });
       }
     } else {
-      logger.info('Skipping OpenSky for current flight (saves 4-8 seconds)', { icao24, callsign });
+      logger.debug('Skipping OpenSky for current flight (saves 4-8 seconds)', { icao24, callsign });
     }
 
     if (this.flightAwareApiKey && finalCallsign && allowExpensiveApis) {
@@ -673,7 +673,7 @@ export class FlightRouteService {
         }
       }
     } else if (!allowExpensiveApis) {
-      logger.info('Skipping FlightAware (background job) - using inference', { icao24, callsign });
+      logger.debug('Skipping FlightAware (background job) - using inference', { icao24, callsign });
     }
 
     if (icao24) {
@@ -767,7 +767,7 @@ export class FlightRouteService {
     if (inferredRoute) {
       const hasArrival = inferredRoute.arrivalAirport?.icao || inferredRoute.arrivalAirport?.iata;
 
-      logger.info('Caching inferred route', {
+      logger.debug('Caching inferred route', {
         icao24,
         callsign,
         hasDeparture: !!(inferredRoute.departureAirport?.icao || inferredRoute.departureAirport?.iata),
@@ -1022,7 +1022,7 @@ export class FlightRouteService {
    * Cache route data
    */
   async cacheRoute(cacheKey: string, routeData: Route): Promise<void> {
-    logger.info('FlightRouteService.cacheRoute called', {
+    logger.debug('FlightRouteService.cacheRoute called', {
       cacheKey,
       source: routeData.source,
       hasCallsign: !!routeData.callsign,
@@ -1030,7 +1030,7 @@ export class FlightRouteService {
     try {
       await postgresRepository.cacheRoute(cacheKey, routeData);
       this.cache.set(cacheKey, routeData);
-      logger.info('FlightRouteService.cacheRoute completed', { cacheKey, source: routeData.source });
+      logger.debug('FlightRouteService.cacheRoute completed', { cacheKey, source: routeData.source });
     } catch (error) {
       const err = error as Error;
       logger.error('FlightRouteService.cacheRoute failed', { cacheKey, error: err.message });
@@ -1188,7 +1188,7 @@ export class FlightRouteService {
         return null;
       }
 
-      logger.info('Inferring route from position history and flight patterns', {
+      logger.debug('Inferring route from position history and flight patterns', {
         icao24,
         callsign,
         firstPos: { lat: firstPos.latitude, lng: firstPos.longitude },
@@ -1210,7 +1210,7 @@ export class FlightRouteService {
         return null;
       }
 
-      logger.info('Identified departure airport', {
+      logger.debug('Identified departure airport', {
         icao24,
         callsign,
         airport: departureAirport.ident,
@@ -1373,7 +1373,7 @@ export class FlightRouteService {
         }
       }
 
-      logger.info('Returning departure only - arrival cannot be inferred for in-flight aircraft', { icao24 });
+      logger.debug('Returning departure only - arrival cannot be inferred for in-flight aircraft', { icao24 });
       return {
         departureAirport: {
           iata: departureAirport.iata_code || null,

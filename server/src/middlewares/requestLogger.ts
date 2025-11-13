@@ -11,10 +11,13 @@ const requestLogger = (req: Request, res: Response, next: NextFunction): void =>
   res.on('finish', () => {
     const duration = Date.now() - start;
     
-    // Use debug level for frequent/noisy endpoints (but NOT feeder endpoints - we want to see those)
+    // Use debug level for frequent/noisy endpoints (health checks, area, airports, starlink)
+    // Keep info level for important endpoints (feeder, auth, admin)
+    const isHealthCheck = req.path === '/health';
     const isAreaEndpoint = req.path.startsWith('/area/') || req.path.startsWith('/airports/bounds/');
     const isStarlinkEndpoint = req.path.startsWith('/starlink/');
-    const logLevel = (isAreaEndpoint || isStarlinkEndpoint) ? 'debug' : 'info';
+    const isNoisy = isHealthCheck || isAreaEndpoint || isStarlinkEndpoint;
+    const logLevel = isNoisy ? 'debug' : 'info';
     
     logger[logLevel]('HTTP Request', {
       method: req.method,

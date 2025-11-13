@@ -17,7 +17,7 @@ class RouteRepository {
   async cacheRoute(cacheKey: string, routeData: RouteData): Promise<void> {
     try {
       // Log source for debugging
-      logger.info('Caching route with source', {
+      logger.debug('Caching route with source', {
         cacheKey,
         callsign: routeData.callsign,
         source: routeData.source,
@@ -52,7 +52,7 @@ class RouteRepository {
         || routeData.aircraft_type
         || null;
 
-      logger.info('About to insert route with source value', {
+      logger.debug('About to insert route with source value', {
         cacheKey,
         sourceValue,
         sourceType: typeof sourceValue,
@@ -75,7 +75,7 @@ class RouteRepository {
         aircraftType,
       ]);
 
-      logger.info('Route cached successfully', { cacheKey, source: sourceValue });
+      logger.debug('Route cached successfully', { cacheKey, source: sourceValue });
     } catch (error) {
       const err = error as Error;
       logger.error('Error caching route', {

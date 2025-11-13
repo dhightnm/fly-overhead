@@ -26,7 +26,7 @@ class SatelliteService {
       const url = `${this.baseUrl}/satellite/above/${observerLat}/${observerLng}/${observerAlt}/45/52&apiKey=${this.apiKey}`;
       const response = await axios.get(url);
 
-      logger.info(`Fetched satellite data for observer at ${observerLat}, ${observerLng}`);
+      logger.debug(`Fetched satellite data for observer at ${observerLat}, ${observerLng}`);
       return response.data;
     } catch (error) {
       const err = error as Error;
