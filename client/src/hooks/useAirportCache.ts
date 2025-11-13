@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import aircraftService, { AirportSearchResult } from '../services/aircraft.service';
+import { aircraftService } from '../services';
+import type { AirportSearchResult } from '../types';
 
 interface QuadrantBounds {
   latMin: number;
