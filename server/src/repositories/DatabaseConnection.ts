@@ -3,34 +3,8 @@ import config from '../config';
 import logger from '../utils/logger';
 import PostGISService from '../services/PostGISService';
 
-// Configure pg-promise with timeout and pool settings
-const pgp = pgPromise({
-  // Connection timeout (30 seconds)
-  connect: (client: any, dc: any, useCount: number) => {
-    const cp = client.connectionParameters;
-    logger.debug('Database connection established', {
-      host: cp.host,
-      database: cp.database,
-      useCount,
-    });
-  },
-  // Query timeout (60 seconds)
-  query: (e: any) => {
-    if (e.error) {
-      logger.error('Database query error', {
-        query: e.query,
-        error: e.error.message,
-      });
-    }
-  },
-  // Error handling
-  error: (err: Error, e: any) => {
-    logger.error('Database connection error', {
-      error: err.message,
-      query: e?.query,
-    });
-  },
-});
+// Configure pg-promise
+const pgp = pgPromise();
 
 /**
  * Base database connection manager
