@@ -3,7 +3,34 @@ import config from '../config';
 import logger from '../utils/logger';
 import PostGISService from '../services/PostGISService';
 
-const pgp = pgPromise();
+// Configure pg-promise with timeout and pool settings
+const pgp = pgPromise({
+  // Connection timeout (30 seconds)
+  connect: (client: any, dc: any, useCount: number) => {
+    const cp = client.connectionParameters;
+    logger.debug('Database connection established', {
+      host: cp.host,
+      database: cp.database,
+      useCount,
+    });
+  },
+  // Query timeout (60 seconds)
+  query: (e: any) => {
+    if (e.error) {
+      logger.error('Database query error', {
+        query: e.query,
+        error: e.error.message,
+      });
+    }
+  },
+  // Error handling
+  error: (err: Error, e: any) => {
+    logger.error('Database connection error', {
+      error: err.message,
+      query: e?.query,
+    });
+  },
+});
 
 /**
  * Base database connection manager
@@ -34,17 +61,43 @@ class DatabaseConnection {
           ssl: {
             rejectUnauthorized: false, // AWS RDS certificates are trusted, but Node.js needs this for self-signed certs in the chain
           },
+          // Connection pool settings
+          max: config.database.postgres.pool.max || 10, // Maximum number of clients in the pool
+          min: config.database.postgres.pool.min || 2, // Minimum number of clients in the pool
+          idleTimeoutMillis: 60000, // Close idle clients after 60 seconds
+          connectionTimeoutMillis: 60000, // Return an error after 60 seconds if connection could not be established (increased for AWS RDS)
+          keepAlive: true, // Keep TCP connection alive
+          keepAliveInitialDelayMillis: 10000, // Start keepalive after 10 seconds
         };
 
         this.db = pgp(connectionConfig);
       } catch (error) {
-        // Fallback to connection string if parsing fails
-        logger.warn('Failed to parse connection string, using as-is', { error: (error as Error).message });
-        this.db = pgp(connectionString);
+        // Fallback to connection string if parsing fails, but still add timeout settings
+        logger.warn('Failed to parse connection string, using as-is with timeout settings', { error: (error as Error).message });
+        const fallbackConfig: any = {
+          connectionString,
+          max: config.database.postgres.pool.max || 10,
+          min: config.database.postgres.pool.min || 2,
+          idleTimeoutMillis: 60000,
+          connectionTimeoutMillis: 60000,
+          keepAlive: true,
+          keepAliveInitialDelayMillis: 10000,
+        };
+        this.db = pgp(fallbackConfig);
       }
     } else {
-      // For local/non-AWS connections, use connection string as-is
-      this.db = pgp(connectionString);
+      // For local/non-AWS connections, add timeout and pool settings
+      const connectionConfig: any = {
+        connectionString,
+        // Connection pool settings
+        max: config.database.postgres.pool.max || 10,
+        min: config.database.postgres.pool.min || 2,
+        idleTimeoutMillis: 60000,
+        connectionTimeoutMillis: 60000,
+        keepAlive: true,
+        keepAliveInitialDelayMillis: 10000,
+      };
+      this.db = pgp(connectionConfig);
     }
 
     this.postgis = new PostGISService(this.db);
