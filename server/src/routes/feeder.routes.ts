@@ -197,7 +197,7 @@ router.post(
  * 2. Unauthenticated: Creates standalone feeder (backward compatible)
  *
  * This endpoint is PUBLIC to allow new feeders to sign up
- * Rate limited to prevent abuse (anonymous tier: 50/hour)
+ * Rate limiting bypassed - feeder service already limits to 5/hour
  *
  * Expected payload (from feeder service):
  * - feeder_id: Unique identifier for the feeder
@@ -214,7 +214,8 @@ router.post(
   '/feeder/register',
   optionalAuthenticateToken, // Optional: Extract user from JWT if present
   optionalApiKeyAuth, // Allow but don't require (for new feeder registration)
-  rateLimitMiddleware,
+  // Note: Rate limiting bypassed for registration - feeder service already limits to 5/hour
+  // This is a one-time operation and shouldn't be blocked by anonymous tier limits
   async (req: AuthenticatedRequest, res: Response, _next: NextFunction) => {
     const { feeder_id, api_key_hash, key_prefix, name, latitude, longitude, metadata } = req.body;
 
