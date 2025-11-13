@@ -17,7 +17,9 @@ export async function rateLimitMiddleware(
   try {
     // Determine identifier (API key ID or IP address)
     const identifier = req.apiKey?.keyId || req.ip || 'unknown';
-    const keyType = req.apiKey?.type;
+    
+    // If same-origin request (web app), use 'webapp' tier for better limits
+    const keyType = req.isSameOrigin ? 'webapp' : req.apiKey?.type;
     const scopes = req.apiKey?.scopes;
 
     // Check rate limit

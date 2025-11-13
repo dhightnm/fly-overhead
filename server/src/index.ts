@@ -15,39 +15,41 @@ const app = express();
 const server = createServer(app);
 
 // Configure CORS
-app.use(cors({
-  origin: (origin, callback) => {
-    // Allow requests with no origin (e.g., mobile apps, Postman)
-    if (!origin) {
-      callback(null, true);
-      return;
-    }
-
-    // Check if origin is in allowed list
-    if (config.cors.allowedOrigins.includes(origin)) {
-      callback(null, true);
-      return;
-    }
-
-    // Check if origin is from an allowed IP address (for VPN access)
-    if (config.cors.allowedIPs && config.cors.allowedIPs.length > 0) {
-      try {
-        const originUrl = new URL(origin);
-        const originHostname = originUrl.hostname;
-
-        // Check if origin hostname matches any allowed IP
-        if (config.cors.allowedIPs.includes(originHostname)) {
-          callback(null, true);
-          return;
-        }
-      } catch (err) {
-        // Invalid URL format, continue with normal CORS check
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      // Allow requests with no origin (e.g., mobile apps, Postman)
+      if (!origin) {
+        callback(null, true);
+        return;
       }
-    }
 
-    callback(new Error('CORS policy violation'), false);
-  },
-}));
+      // Check if origin is in allowed list
+      if (config.cors.allowedOrigins.includes(origin)) {
+        callback(null, true);
+        return;
+      }
+
+      // Check if origin is from an allowed IP address (for VPN access)
+      if (config.cors.allowedIPs && config.cors.allowedIPs.length > 0) {
+        try {
+          const originUrl = new URL(origin);
+          const originHostname = originUrl.hostname;
+
+          // Check if origin hostname matches any allowed IP
+          if (config.cors.allowedIPs.includes(originHostname)) {
+            callback(null, true);
+            return;
+          }
+        } catch (err) {
+          // Invalid URL format, continue with normal CORS check
+        }
+      }
+
+      callback(new Error('CORS policy violation'), false);
+    },
+  }),
+);
 
 // Middleware
 app.use(express.json());
@@ -130,17 +132,21 @@ async function startServer(): Promise<void> {
       const io = webSocketService.getIO();
       const hasClients = io && io.sockets.sockets.size > 0;
 
-      if (hasClients) {
-        logger.debug(`Running periodic OpenSky fetch (${io.sockets.sockets.size} clients connected)`);
-      } else {
-        logger.debug('Running periodic OpenSky fetch (no clients connected, but keeping data fresh)');
-      }
+      logger.info('Starting periodic OpenSky fetch', {
+        hasClients,
+        clientCount: hasClients ? io.sockets.sockets.size : 0,
+        intervalMinutes: config.aircraft.updateInterval / 60000,
+      });
 
       aircraftService.fetchAndUpdateAllAircraft().catch((err: Error & { rateLimited?: boolean }) => {
         // Error already logged in fetchAndUpdateAllAircraft
         // Rate limit errors are handled gracefully (no throw)
         if (!err.rateLimited) {
-          logger.error('Error in periodic aircraft fetch', { error: err.message });
+          logger.error('Error in periodic aircraft fetch', { error: err.message, stack: err.stack });
+        } else {
+          logger.warn('Periodic OpenSky fetch skipped due to rate limiting', {
+            retryAfter: (err as any).retryAfter,
+          });
         }
       });
     }, config.aircraft.updateInterval);
@@ -220,4 +226,3 @@ process.on('unhandledRejection', (reason: unknown, promise: Promise<any>) => {
 
 // Start the server
 startServer();
-

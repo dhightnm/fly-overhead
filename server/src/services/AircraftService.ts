@@ -606,7 +606,7 @@ class AircraftService {
       }
 
       if (staleCount > 0) {
-        logger.info(`Returning ${staleCount} stale aircraft (dev mode, rate limited)`);
+        logger.warn(`Returning ${staleCount} stale aircraft (data may be outdated)`);
       }
 
       logger.info(`Returning ${enhanced.length} aircraft (${enhanced.length - staleCount} fresh, ${staleCount} stale)`);

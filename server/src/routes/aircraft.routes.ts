@@ -371,6 +371,37 @@ router.post(
 );
 
 /**
+ * Manually trigger OpenSky fetch for all aircraft (admin/debug endpoint)
+ * Requires API key authentication with rate limiting
+ */
+router.post(
+  '/fetch/all',
+  requireApiKeyAuth,
+  rateLimitMiddleware,
+  async (_req: Request, res: Response, next: NextFunction) => {
+    try {
+      logger.info('Manual OpenSky fetch triggered via API');
+      const result = await aircraftService.fetchAndUpdateAllAircraft();
+      return res.json({
+        success: true,
+        message: 'Aircraft data fetched and stored',
+        aircraftCount: result.length,
+      });
+    } catch (err) {
+      const error = err as Error & { rateLimited?: boolean };
+      if (error.rateLimited) {
+        return res.status(429).json({
+          success: false,
+          error: 'OpenSky API rate limited',
+          retryAfter: (error as any).retryAfter,
+        });
+      }
+      return next(err);
+    }
+  },
+);
+
+/**
  * Get satellites above observer location
  * Requires API key authentication with rate limiting
  */
@@ -488,6 +519,112 @@ router.get('/health', async (_req: Request, res: Response) => {
   const isHealthy = Object.values(health.checks).every((c) => c === true);
   res.status(isHealthy ? 200 : 503).json(health);
 });
+
+/**
+ * Diagnostic endpoint: Check data freshness and feeder status
+ * Requires API key authentication with rate limiting
+ */
+router.get(
+  '/diagnostics/data-freshness',
+  requireApiKeyAuth,
+  rateLimitMiddleware,
+  async (_req: Request, res: Response, next: NextFunction) => {
+    try {
+      const now = Math.floor(Date.now() / 1000);
+
+      // Get data freshness stats
+      const freshnessStats = await postgresRepository.getDb().one(
+        `
+        SELECT 
+          COUNT(*) as total_aircraft,
+          COUNT(CASE WHEN last_contact IS NOT NULL THEN 1 END) as aircraft_with_contact,
+          COUNT(CASE WHEN last_contact > $1 - 600 THEN 1 END) as fresh_10min,
+          COUNT(CASE WHEN last_contact > $1 - 1800 THEN 1 END) as fresh_30min,
+          COUNT(CASE WHEN last_contact > $1 - 3600 THEN 1 END) as fresh_1hour,
+          MAX(last_contact) as newest_contact,
+          MIN(last_contact) as oldest_contact,
+          AVG($1 - last_contact) as avg_age_seconds,
+          COUNT(CASE WHEN data_source = 'feeder' THEN 1 END) as from_feeder,
+          COUNT(CASE WHEN data_source = 'opensky' THEN 1 END) as from_opensky,
+          MAX(ingestion_timestamp) as newest_ingestion
+        FROM aircraft_states
+        WHERE last_contact IS NOT NULL
+      `,
+        [now],
+      );
+
+      // Get feeder stats
+      const feederStats = await postgresRepository.getDb().any(`
+        SELECT 
+          feeder_id,
+          name,
+          last_seen,
+          EXTRACT(EPOCH FROM (NOW() - last_seen)) as seconds_since_last_seen
+        FROM feeders
+        ORDER BY last_seen DESC
+        LIMIT 10
+      `);
+
+      // Get recent aircraft by source
+      const recentBySource = await postgresRepository.getDb().any(
+        `
+        SELECT 
+          data_source,
+          COUNT(*) as count,
+          AVG($1 - last_contact) as avg_age_seconds,
+          MAX(last_contact) as newest_contact
+        FROM aircraft_states
+        WHERE last_contact IS NOT NULL
+        GROUP BY data_source
+        ORDER BY count DESC
+      `,
+        [now],
+      );
+
+      return res.json({
+        timestamp: new Date().toISOString(),
+        currentTime: now,
+        freshness: {
+          totalAircraft: parseInt(freshnessStats.total_aircraft, 10),
+          aircraftWithContact: parseInt(freshnessStats.aircraft_with_contact, 10),
+          fresh10min: parseInt(freshnessStats.fresh_10min, 10),
+          fresh30min: parseInt(freshnessStats.fresh_30min, 10),
+          fresh1hour: parseInt(freshnessStats.fresh_1hour, 10),
+          newestContact: freshnessStats.newest_contact
+            ? new Date(freshnessStats.newest_contact * 1000).toISOString()
+            : null,
+          oldestContact: freshnessStats.oldest_contact
+            ? new Date(freshnessStats.oldest_contact * 1000).toISOString()
+            : null,
+          avgAgeSeconds: freshnessStats.avg_age_seconds ? Math.round(parseFloat(freshnessStats.avg_age_seconds)) : null,
+          newestIngestion: freshnessStats.newest_ingestion
+            ? new Date(freshnessStats.newest_ingestion).toISOString()
+            : null,
+        },
+        bySource: {
+          feeder: parseInt(freshnessStats.from_feeder, 10),
+          opensky: parseInt(freshnessStats.from_opensky, 10),
+        },
+        recentBySource: recentBySource.map((row: any) => ({
+          source: row.data_source,
+          count: parseInt(row.count, 10),
+          avgAgeSeconds: row.avg_age_seconds ? Math.round(parseFloat(row.avg_age_seconds)) : null,
+          newestContact: row.newest_contact ? new Date(row.newest_contact * 1000).toISOString() : null,
+        })),
+        feeders: feederStats.map((feeder: any) => ({
+          feederId: feeder.feeder_id,
+          name: feeder.name,
+          lastSeen: feeder.last_seen ? new Date(feeder.last_seen).toISOString() : null,
+          secondsSinceLastSeen: feeder.seconds_since_last_seen
+            ? Math.round(parseFloat(feeder.seconds_since_last_seen))
+            : null,
+        })),
+      });
+    } catch (err) {
+      return next(err);
+    }
+  },
+);
 
 /**
  * TEST ENDPOINT: Direct OpenSky API call (for debugging)

@@ -3,6 +3,10 @@
 # ---------------------------------------
 FROM node:16 AS build-frontend
 
+# Accept build argument for API URL
+ARG REACT_APP_API_URL
+ENV REACT_APP_API_URL=${REACT_APP_API_URL}
+
 # Set working directory inside container
 WORKDIR /app/client
 

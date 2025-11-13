@@ -49,10 +49,20 @@ cmd_build() {
     echo -e "${YELLOW}Building Docker image ($mode mode)...${NC}"
     echo ""
     
+    # Get API URL from environment or use default
+    local api_url="${REACT_APP_API_URL:-https://container-service-1.f199m4bz801f2.us-east-2.cs.amazonlightsail.com}"
+    echo "Using REACT_APP_API_URL: $api_url"
+    echo ""
+    
     if [ "$mode" = "dev" ]; then
         docker compose -f docker-compose.dev.yml build --pull server
     else
-        docker compose build --pull server
+        # Build with REACT_APP_API_URL as build argument
+        docker build \
+            --build-arg REACT_APP_API_URL="$api_url" \
+            --platform linux/amd64 \
+            -t fly-overhead-server:latest \
+            .
     fi
     
     if [ $? -eq 0 ]; then

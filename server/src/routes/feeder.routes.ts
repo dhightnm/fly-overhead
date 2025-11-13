@@ -230,11 +230,21 @@ router.post(
       // Check if feeder already exists
       const existing = await postgresRepository.getFeederById(feeder_id);
       if (existing) {
-        return res.status(400).json({
-          success: false,
-          error: 'Feeder already exists',
-          details: { feeder_id },
-        });
+        // Check if feeder already has an API key entry
+        const existingApiKeyId = existing.metadata?.api_key_id;
+        if (existingApiKeyId) {
+          // Check if API key still exists
+          const apiKeyExists = await postgresRepository.getApiKeyById(existingApiKeyId);
+          if (apiKeyExists) {
+            return res.status(400).json({
+              success: false,
+              error: 'Feeder already exists and has an API key',
+              details: { feeder_id, api_key_id: existingApiKeyId },
+            });
+          }
+        }
+        // Feeder exists but no API key - we'll create one below
+        logger.info('Feeder exists but missing API key entry, creating one', { feeder_id });
       }
 
       // Check if API key hash already exists (prevent duplicate keys)
@@ -271,19 +281,43 @@ router.post(
         expiresAt: null, // No expiration for feeder keys
       });
 
-      // Register the feeder in the feeders table
-      const feeder = await postgresRepository.registerFeeder({
-        feeder_id,
-        api_key_hash, // Store the hash for backward compatibility
-        name,
-        latitude,
-        longitude,
-        metadata: {
-          ...metadata,
-          api_key_id: apiKeyData.key_id, // Link to the API key record
-          user_id: userId, // Store user ID in metadata for easy lookup
-        },
-      });
+      // Register or update the feeder in the feeders table
+      let feeder;
+      if (existing) {
+        // Update existing feeder
+        await postgresRepository.getDb().none(
+          `UPDATE feeders 
+           SET name = COALESCE($1, name),
+               api_key_hash = COALESCE($2, api_key_hash),
+               metadata = jsonb_set(
+                 COALESCE(metadata, '{}'::jsonb),
+                 '{api_key_id}',
+                 to_jsonb($3::text)
+               )
+           WHERE feeder_id = $4`,
+          [name, api_key_hash, apiKeyData.key_id, feeder_id]
+        );
+        feeder = existing;
+        feeder.metadata = {
+          ...(feeder.metadata || {}),
+          api_key_id: apiKeyData.key_id,
+          user_id: userId,
+        };
+      } else {
+        // Register new feeder
+        feeder = await postgresRepository.registerFeeder({
+          feeder_id,
+          api_key_hash, // Store the hash for backward compatibility
+          name,
+          latitude,
+          longitude,
+          metadata: {
+            ...metadata,
+            api_key_id: apiKeyData.key_id, // Link to the API key record
+            user_id: userId, // Store user ID in metadata for easy lookup
+          },
+        });
+      }
 
       // If feeder is linked to a user, mark user as feeder provider
       if (userId) {
@@ -430,20 +464,65 @@ router.get(
   rateLimitMiddleware,
   async (req: AuthenticatedRequest, res: Response, _next: NextFunction) => {
     try {
-      // Get feeder ID from the authenticated request
-      // For feeders, we can look up by user_id or use a custom feeder lookup
-      const userId = req.apiKey?.userId;
-
-      if (!userId) {
+      // Get feeder by API key hash (works for both user-linked and standalone feeders)
+      const apiKeyHash = req.apiKey?.keyHash;
+      if (!apiKeyHash) {
         return res.status(400).json({
           success: false,
-          error: 'No user associated with this API key',
+          error: 'API key hash not found',
         });
       }
 
-      // For now, return basic info - you may want to add a method to get feeder by user_id
+      // Look up feeder by API key hash
+      const feeder = await postgresRepository.getFeederByApiKey(
+        req.headers.authorization?.replace('Bearer ', '') || '',
+      );
+
+      if (!feeder) {
+        // If not found by hash, try to find by metadata link
+        const userId = req.apiKey?.userId;
+        if (userId) {
+          // Try to find feeder linked to this user
+          const feeders = await postgresRepository.getDb().any(
+            `SELECT * FROM feeders WHERE metadata->>'user_id' = $1`,
+            [userId.toString()],
+          );
+          if (feeders.length > 0) {
+            return res.status(200).json({
+              success: true,
+              feeder_id: feeders[0].feeder_id,
+              name: feeders[0].name,
+              status: feeders[0].status,
+              apiKey: {
+                id: req.apiKey?.keyId,
+                name: req.apiKey?.name,
+                type: req.apiKey?.type,
+                scopes: req.apiKey?.scopes,
+              },
+              message: 'Feeder authentication successful',
+            });
+          }
+        }
+
+        // Fallback: return API key info even if feeder not found
+        return res.status(200).json({
+          success: true,
+          apiKey: {
+            id: req.apiKey?.keyId,
+            name: req.apiKey?.name,
+            type: req.apiKey?.type,
+            scopes: req.apiKey?.scopes,
+          },
+          message: 'Feeder authentication successful (API key valid)',
+        });
+      }
+
+      // Return feeder info
       return res.status(200).json({
         success: true,
+        feeder_id: feeder.feeder_id,
+        name: feeder.name,
+        status: feeder.status,
         apiKey: {
           id: req.apiKey?.keyId,
           name: req.apiKey?.name,

@@ -16,13 +16,15 @@ export interface AuthenticatedRequest extends Request {
     type: 'development' | 'production' | 'feeder';
     userId: number | null;
     scopes: string[];
+    keyHash: string;
   };
   auth?: {
     authenticated: boolean;
-    type: 'anonymous' | 'api_key';
-    keyType?: 'development' | 'production' | 'feeder';
+    type: 'anonymous' | 'api_key' | 'webapp';
+    keyType?: 'development' | 'production' | 'feeder' | 'webapp';
     scopes?: string[];
   };
+  isSameOrigin?: boolean; // Flag to indicate same-origin request
 }
 
 /**
@@ -40,7 +42,11 @@ export function extractApiKey(req: Request): string | null {
 
   // Method 2: X-API-Key header (fallback)
   const apiKeyHeader = req.headers['x-api-key'];
-  if (apiKeyHeader && typeof apiKeyHeader === 'string' && (apiKeyHeader.startsWith('sk_') || apiKeyHeader.startsWith('fd_'))) {
+  if (
+    apiKeyHeader &&
+    typeof apiKeyHeader === 'string' &&
+    (apiKeyHeader.startsWith('sk_') || apiKeyHeader.startsWith('fd_'))
+  ) {
     return apiKeyHeader.trim();
   }
 
@@ -76,7 +82,7 @@ function getKeyTypeFromPrefix(prefix: string): 'development' | 'production' | 'f
  */
 async function validateApiKeyInternal(
   apiKey: string,
-  _required: boolean
+  _required: boolean,
 ): Promise<{ valid: boolean; keyData?: ApiKey; error?: { code: string; message: string; status: number } }> {
   // Validate API key format
   const formatValidation = validateApiKeyFormat(apiKey);
@@ -124,11 +130,7 @@ async function validateApiKeyInternal(
  * Optional API key authentication middleware
  * Validates API key if provided, but doesn't block if missing
  */
-export async function optionalApiKeyAuth(
-  req: AuthenticatedRequest,
-  res: Response,
-  next: NextFunction
-): Promise<void> {
+export async function optionalApiKeyAuth(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   try {
     const apiKey = extractApiKey(req);
 
@@ -169,6 +171,7 @@ export async function optionalApiKeyAuth(
       type: getKeyTypeFromPrefix(keyData.key_prefix),
       userId: keyData.user_id,
       scopes: keyData.scopes || ['read'],
+      keyHash: keyData.key_hash,
     };
 
     req.auth = {
@@ -204,18 +207,116 @@ export async function optionalApiKeyAuth(
 }
 
 /**
- * Required API key authentication middleware
- * Requires a valid API key to proceed
+ * Check if request is from same origin (React app)
+ * Allows same-origin requests to bypass API key requirement
+ * Same-origin requests typically don't send Origin header, so we check:
+ * 1. No Origin header (same-origin request)
+ * 2. Origin matches current host
+ * 3. Referer matches current host or allowed domains
  */
-export async function requireApiKeyAuth(
-  req: AuthenticatedRequest,
-  res: Response,
-  next: NextFunction
-): Promise<void> {
+function isSameOriginRequest(req: Request): boolean {
+  const origin = req.headers.origin;
+  const referer = req.headers.referer;
+  const host = req.headers.host;
+
+  // Same-origin requests typically don't send Origin header
+  // If no origin and no referer, it's likely a same-origin request
+  if (!origin && !referer) {
+    return true;
+  }
+
+  // Allowed domains (where React app is served from)
+  const allowedDomains = [
+    'flyoverhead.com',
+    'www.flyoverhead.com',
+    'api.flyoverhead.com',
+    'container-service-1.f199m4bz801f2.us-east-2.cs.amazonlightsail.com',
+  ];
+
+  // Extract hostname from current request
+  const currentHostname = host ? host.split(':')[0] : '';
+
+  // Check origin
+  if (origin) {
+    try {
+      const originUrl = new URL(origin);
+      const originHostname = originUrl.hostname;
+
+      // If origin hostname matches current hostname, it's same-origin
+      if (currentHostname && originHostname === currentHostname) {
+        return true;
+      }
+
+      // Check if origin is from allowed domains
+      if (allowedDomains.some((domain) => originHostname === domain || originHostname.endsWith(`.${domain}`))) {
+        return true;
+      }
+    } catch {
+      // Invalid origin URL, continue checking
+    }
+  }
+
+  // Check referer (fallback for same-origin requests that might have referer)
+  if (referer) {
+    try {
+      const refererUrl = new URL(referer);
+      const refererHostname = refererUrl.hostname;
+
+      // If referer hostname matches current hostname, it's same-origin
+      if (currentHostname && refererHostname === currentHostname) {
+        return true;
+      }
+
+      // Check if referer is from allowed domains
+      if (allowedDomains.some((domain) => refererHostname === domain || refererHostname.endsWith(`.${domain}`))) {
+        return true;
+      }
+    } catch {
+      // Invalid referer URL, continue
+    }
+  }
+
+  // If we have a host but no origin/referer, and it's from allowed domain, allow it
+  if (
+    currentHostname &&
+    !origin &&
+    allowedDomains.some((domain) => currentHostname === domain || currentHostname.endsWith(`.${domain}`))
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * Required API key authentication middleware
+ * Allows same-origin requests (from React app) without API key
+ * Requires API key for external requests
+ */
+export async function requireApiKeyAuth(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   try {
+    // Check if request is from same origin (React app)
+    // If so, allow without API key but mark as webapp for better rate limits
+    if (isSameOriginRequest(req)) {
+      req.apiKey = undefined;
+      req.isSameOrigin = true;
+      req.auth = {
+        authenticated: false,
+        type: 'webapp',
+        keyType: 'webapp',
+      };
+      logger.debug('Same-origin request allowed without API key', {
+        path: req.path,
+        origin: req.headers.origin,
+        referer: req.headers.referer,
+      });
+      next();
+      return;
+    }
+
     const apiKey = extractApiKey(req);
 
-    // No API key provided - reject
+    // No API key provided - reject (for external requests)
     if (!apiKey) {
       res.status(401).json({
         error: {
@@ -263,6 +364,7 @@ export async function requireApiKeyAuth(
       type: getKeyTypeFromPrefix(keyData.key_prefix),
       userId: keyData.user_id,
       scopes: keyData.scopes || ['read'],
+      keyHash: keyData.key_hash,
     };
 
     req.auth = {
@@ -296,4 +398,3 @@ export async function requireApiKeyAuth(
     });
   }
 }
-

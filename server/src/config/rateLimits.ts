@@ -66,7 +66,17 @@ export const RATE_LIMIT_TIERS: Record<string, RateLimitTier> = {
     bypassRateLimit: false,
   },
 
-  // Anonymous (no API key) - very limited access
+  // Web app (same-origin requests from React app) - NO rate limits for seamless UX
+  webapp: {
+    name: 'Web App',
+    hourlyLimit: Infinity,
+    dailyLimit: Infinity,
+    burstLimit: Infinity,
+    concurrentLimit: Infinity,
+    bypassRateLimit: true, // Bypass rate limiting entirely for webapp
+  },
+
+  // Anonymous (no API key, external requests) - very limited access
   anonymous: {
     name: 'Anonymous',
     hourlyLimit: 50,
@@ -99,6 +109,11 @@ export function getRateLimitTier(keyType?: string, scopes?: string[]): RateLimit
   // Production keys
   if (keyType === 'production') {
     return RATE_LIMIT_TIERS.production;
+  }
+
+  // Web app (same-origin requests)
+  if (keyType === 'webapp') {
+    return RATE_LIMIT_TIERS.webapp;
   }
 
   // Restricted keys

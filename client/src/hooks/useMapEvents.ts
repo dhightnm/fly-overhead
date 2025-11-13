@@ -1,13 +1,13 @@
 /**
  * Hook for handling Leaflet map events and data fetching
  */
-import { useEffect, useCallback, useRef } from 'react';
-import { useMapEvents as useLeafletMapEvents } from 'react-leaflet';
-import type { Map as LeafletMap } from 'leaflet';
-import { aircraftService } from '../services';
-import { mergePlaneRecords } from '../utils/aircraftMerge';
-import type { Aircraft, StarlinkSatellite } from '../types';
-import type { AirportSearchResult } from '../types';
+import { useEffect, useCallback, useRef } from "react";
+import { useMapEvents as useLeafletMapEvents } from "react-leaflet";
+import type { Map as LeafletMap } from "leaflet";
+import { aircraftService } from "../services";
+import { mergePlaneRecords } from "../utils/aircraftMerge";
+import type { Aircraft, StarlinkSatellite } from "../types";
+import type { AirportSearchResult } from "../types";
 
 interface UseMapEventsProps {
   setUserPosition: (position: [number, number]) => void;
@@ -51,7 +51,7 @@ export const useMapDataFetcher = ({
       );
       setStarlink(satellites);
     } catch (error) {
-      console.error('Error fetching starlink data:', error);
+      console.error("Error fetching starlink data:", error);
       setStarlink([]);
     }
 
@@ -59,55 +59,59 @@ export const useMapDataFetcher = ({
     try {
       const southWest = wrapBounds.getSouthWest();
       const northEast = wrapBounds.getNorthEast();
-      const aircraft = await aircraftService.getAircraftInBounds(
-        {
-          southWest: { lat: southWest.lat, lng: southWest.lng },
-          northEast: { lat: northEast.lat, lng: northEast.lng },
-        }
-      );
+      const aircraft = await aircraftService.getAircraftInBounds({
+        southWest: { lat: southWest.lat, lng: southWest.lng },
+        northEast: { lat: northEast.lat, lng: northEast.lng },
+      });
 
       if (aircraft) {
         // Smart merge: only preserve recent planes, avoid accumulation
         setPlanes((prevPlanes) => {
           const currentTime = Math.floor(Date.now() / 1000);
-          // Backend polls every 10 minutes, preserve planes for 12 minutes (20% buffer)
-          // This prevents flickering when planes are at exactly 10min age
-          const MERGE_AGE_THRESHOLD = 12 * 60; // 12 minutes (backend poll interval + buffer)
+          // Backend polls every 10 minutes, preserve planes for 30 minutes
+          // This prevents flickering and shows planes even if update is delayed
+          const MERGE_AGE_THRESHOLD = 30 * 60; // 30 minutes
           const maxAge = MERGE_AGE_THRESHOLD;
-          
+
           const normalizedAircraft = aircraft.map((plane) => ({
             ...plane,
-            source: plane.source ?? 'database',
+            source: plane.source ?? "database",
             predicted: plane.predicted === true,
           }));
 
-          const existingPlanesMap = new Map(prevPlanes.map((p) => [p.icao24, p]));
-          const newPlanesMap = new Map(normalizedAircraft.map((p) => [p.icao24, p]));
-          
+          const existingPlanesMap = new Map(
+            prevPlanes.map((p) => [p.icao24, p])
+          );
+          const newPlanesMap = new Map(
+            normalizedAircraft.map((p) => [p.icao24, p])
+          );
+
           // Merge new data with existing metadata
           const mergedPlanes = normalizedAircraft.map((newPlane) => {
             const existing = existingPlanesMap.get(newPlane.icao24);
             return mergePlaneRecords(existing, newPlane);
           });
-          
+
           // Only preserve planes that:
           // 1. Are NOT in the new data
           // 2. Are less than 5 minutes old
           // 3. OR have valid position data
           const preservedPlanes = prevPlanes.filter((p) => {
             if (newPlanesMap.has(p.icao24)) return false; // Already in new data
-            
-            const isRecent = !p.last_contact || (currentTime - p.last_contact) <= maxAge;
-            const hasPosition = p.latitude !== undefined && p.longitude !== undefined;
-            
+
+            const isRecent =
+              !p.last_contact || currentTime - p.last_contact <= maxAge;
+            const hasPosition =
+              p.latitude !== undefined && p.longitude !== undefined;
+
             return isRecent && hasPosition;
           });
-          
+
           return [...mergedPlanes, ...preservedPlanes];
         });
       }
     } catch (error) {
-      console.error('Error fetching plane data:', error);
+      console.error("Error fetching plane data:", error);
       // Don't clear planes on error - preserve existing state
     }
 
@@ -125,7 +129,7 @@ export const useMapDataFetcher = ({
         );
         setAirports(airportData);
       } catch (error) {
-        console.error('Error fetching airport data:', error);
+        console.error("Error fetching airport data:", error);
         setAirports([]);
       }
     } else {
@@ -155,7 +159,11 @@ export const useMapDataFetcher = ({
       }
 
       const currentBounds = map.getBounds();
-      const boundsKey = `${currentBounds.getSouth().toFixed(2)},${currentBounds.getWest().toFixed(2)},${currentBounds.getNorth().toFixed(2)},${currentBounds.getEast().toFixed(2)}`;
+      const boundsKey = `${currentBounds.getSouth().toFixed(2)},${currentBounds
+        .getWest()
+        .toFixed(2)},${currentBounds.getNorth().toFixed(2)},${currentBounds
+        .getEast()
+        .toFixed(2)}`;
 
       if (lastBoundsRef.current === boundsKey) {
         return;
@@ -176,7 +184,7 @@ export const useMapDataFetcher = ({
       hasInitiallyLoaded.current = true;
       setTimeout(() => {
         fetchData();
-        console.log('Initial aircraft data fetch triggered');
+        console.log("Initial aircraft data fetch triggered");
       }, 100);
     }
   }, [map, fetchData]);
@@ -187,7 +195,11 @@ export const useMapDataFetcher = ({
     const interval = setInterval(() => {
       if (mapRef.current) {
         fetchData();
-        console.log(`Data fetched on interval (${websocketConnected ? 'WebSocket' : 'polling'} mode)`);
+        console.log(
+          `Data fetched on interval (${
+            websocketConnected ? "WebSocket" : "polling"
+          } mode)`
+        );
       }
     }, pollInterval);
 
@@ -197,4 +209,3 @@ export const useMapDataFetcher = ({
 
   return null;
 };
-
