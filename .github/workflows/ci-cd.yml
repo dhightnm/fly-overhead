@@ -39,7 +39,7 @@ jobs:
 
       - name: Install server dependencies
         working-directory: ./server
-        run: npm ci
+        run: npm ci --legacy-peer-deps
 
       - name: Run server tests
         working-directory: ./server
@@ -50,7 +50,7 @@ jobs:
 
       - name: Setup client dependencies
         working-directory: ./client
-        run: npm ci
+        run: npm ci --legacy-peer-deps
 
       - name: Run client tests
         working-directory: ./client
