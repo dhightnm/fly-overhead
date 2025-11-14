@@ -38,8 +38,65 @@ class SchemaRepository {
         spi BOOLEAN,
         position_source INT CHECK (position_source BETWEEN 0 AND 3),
         category INT CHECK (category BETWEEN 0 AND 19) NULL,
-        created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+        created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+        feeder_id TEXT,
+        ingestion_timestamp TIMESTAMPTZ,
+        data_source TEXT,
+        source_priority INT,
+        aircraft_type TEXT,
+        aircraft_description TEXT,
+        registration TEXT,
+        emergency_status TEXT,
+        nav_qnh FLOAT8,
+        nav_altitude_mcp FLOAT8,
+        nav_heading FLOAT8,
+        owner_operator TEXT,
+        year_built TEXT
       );
+      
+      -- Add missing columns to existing table (for migrations)
+      DO $$
+      BEGIN
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='aircraft_states' AND column_name='feeder_id') THEN
+          ALTER TABLE aircraft_states ADD COLUMN feeder_id TEXT;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='aircraft_states' AND column_name='ingestion_timestamp') THEN
+          ALTER TABLE aircraft_states ADD COLUMN ingestion_timestamp TIMESTAMPTZ;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='aircraft_states' AND column_name='data_source') THEN
+          ALTER TABLE aircraft_states ADD COLUMN data_source TEXT;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='aircraft_states' AND column_name='source_priority') THEN
+          ALTER TABLE aircraft_states ADD COLUMN source_priority INT;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='aircraft_states' AND column_name='aircraft_type') THEN
+          ALTER TABLE aircraft_states ADD COLUMN aircraft_type TEXT;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='aircraft_states' AND column_name='aircraft_description') THEN
+          ALTER TABLE aircraft_states ADD COLUMN aircraft_description TEXT;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='aircraft_states' AND column_name='registration') THEN
+          ALTER TABLE aircraft_states ADD COLUMN registration TEXT;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='aircraft_states' AND column_name='emergency_status') THEN
+          ALTER TABLE aircraft_states ADD COLUMN emergency_status TEXT;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='aircraft_states' AND column_name='nav_qnh') THEN
+          ALTER TABLE aircraft_states ADD COLUMN nav_qnh FLOAT8;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='aircraft_states' AND column_name='nav_altitude_mcp') THEN
+          ALTER TABLE aircraft_states ADD COLUMN nav_altitude_mcp FLOAT8;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='aircraft_states' AND column_name='nav_heading') THEN
+          ALTER TABLE aircraft_states ADD COLUMN nav_heading FLOAT8;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='aircraft_states' AND column_name='owner_operator') THEN
+          ALTER TABLE aircraft_states ADD COLUMN owner_operator TEXT;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='aircraft_states' AND column_name='year_built') THEN
+          ALTER TABLE aircraft_states ADD COLUMN year_built TEXT;
+        END IF;
+      END $$;
     `;
     await this.db.query(query);
     logger.info('Main table created or already exists');
@@ -112,8 +169,65 @@ class SchemaRepository {
         spi BOOLEAN,
         position_source INT CHECK (position_source BETWEEN 0 AND 3),
         category INT CHECK (category BETWEEN 0 AND 19) NULL,
-        created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+        created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+        feeder_id TEXT,
+        ingestion_timestamp TIMESTAMPTZ,
+        data_source TEXT,
+        source_priority INT,
+        aircraft_type TEXT,
+        aircraft_description TEXT,
+        registration TEXT,
+        emergency_status TEXT,
+        nav_qnh FLOAT8,
+        nav_altitude_mcp FLOAT8,
+        nav_heading FLOAT8,
+        owner_operator TEXT,
+        year_built TEXT
       );
+      
+      -- Add missing columns to existing table (for migrations)
+      DO $$
+      BEGIN
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='aircraft_states_history' AND column_name='feeder_id') THEN
+          ALTER TABLE aircraft_states_history ADD COLUMN feeder_id TEXT;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='aircraft_states_history' AND column_name='ingestion_timestamp') THEN
+          ALTER TABLE aircraft_states_history ADD COLUMN ingestion_timestamp TIMESTAMPTZ;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='aircraft_states_history' AND column_name='data_source') THEN
+          ALTER TABLE aircraft_states_history ADD COLUMN data_source TEXT;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='aircraft_states_history' AND column_name='source_priority') THEN
+          ALTER TABLE aircraft_states_history ADD COLUMN source_priority INT;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='aircraft_states_history' AND column_name='aircraft_type') THEN
+          ALTER TABLE aircraft_states_history ADD COLUMN aircraft_type TEXT;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='aircraft_states_history' AND column_name='aircraft_description') THEN
+          ALTER TABLE aircraft_states_history ADD COLUMN aircraft_description TEXT;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='aircraft_states_history' AND column_name='registration') THEN
+          ALTER TABLE aircraft_states_history ADD COLUMN registration TEXT;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='aircraft_states_history' AND column_name='emergency_status') THEN
+          ALTER TABLE aircraft_states_history ADD COLUMN emergency_status TEXT;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='aircraft_states_history' AND column_name='nav_qnh') THEN
+          ALTER TABLE aircraft_states_history ADD COLUMN nav_qnh FLOAT8;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='aircraft_states_history' AND column_name='nav_altitude_mcp') THEN
+          ALTER TABLE aircraft_states_history ADD COLUMN nav_altitude_mcp FLOAT8;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='aircraft_states_history' AND column_name='nav_heading') THEN
+          ALTER TABLE aircraft_states_history ADD COLUMN nav_heading FLOAT8;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='aircraft_states_history' AND column_name='owner_operator') THEN
+          ALTER TABLE aircraft_states_history ADD COLUMN owner_operator TEXT;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='aircraft_states_history' AND column_name='year_built') THEN
+          ALTER TABLE aircraft_states_history ADD COLUMN year_built TEXT;
+        END IF;
+      END $$;
     `;
     await this.db.query(query);
     logger.info('History table created or already exists');
