@@ -49,33 +49,34 @@ describe('AircraftRepository - Integration Tests', () => {
 
     it('should store altitude in METERS in the database', async () => {
       const state: AircraftStateArray = [
-        'test_alt_001', // icao24
-        'TEST001', // callsign
-        'United States', // origin_country
-        1763154000, // time_position
-        1763154000, // last_contact
-        -105.0, // longitude
-        40.0, // latitude
-        10668, // baro_altitude in METERS (35000 ft converted)
-        false, // on_ground
-        450, // velocity in knots
-        180, // true_track
-        0, // vertical_rate
-        null, // sensors
-        10668, // geo_altitude in METERS
-        null, // squawk
-        false, // spi
-        0, // position_source
-        3, // category
-        'B738', // aircraft_type
-        'BOEING 737-800', // aircraft_description
-        'N12345', // registration
-        null, // emergency_status
-        1013.2, // nav_qnh
-        null, // nav_altitude_mcp
-        null, // nav_heading
-        null, // owner_operator
-        null, // year_built
+        'test_alt_001', // 0: icao24
+        'TEST001', // 1: callsign
+        'United States', // 2: origin_country
+        1763154000, // 3: time_position
+        1763154000, // 4: last_contact
+        -105.0, // 5: longitude
+        40.0, // 6: latitude
+        10668, // 7: baro_altitude in METERS (35000 ft converted)
+        false, // 8: on_ground
+        450, // 9: velocity in knots
+        180, // 10: true_track
+        0, // 11: vertical_rate
+        null, // 12: sensors
+        10668, // 13: geo_altitude in METERS
+        null, // 14: squawk
+        false, // 15: spi
+        0, // 16: position_source
+        3, // 17: category
+        new Date(), // 18: created_at
+        'B738', // 19: aircraft_type
+        'BOEING 737-800', // 20: aircraft_description
+        'N12345', // 21: registration
+        null, // 22: emergency_status
+        1013.2, // 23: nav_qnh
+        null, // 24: nav_altitude_mcp
+        null, // 25: nav_heading
+        null, // 26: owner_operator
+        null, // 27: year_built
       ];
 
       await aircraftRepo.upsertAircraftStateWithPriority(
@@ -99,33 +100,34 @@ describe('AircraftRepository - Integration Tests', () => {
 
     it('should handle high-altitude aircraft correctly', async () => {
       const state: AircraftStateArray = [
-        'test_alt_002',
-        'BIZ001',
-        'United States',
-        1763154000,
-        1763154000,
-        -105.0,
-        40.0,
-        18288, // 60000 ft in meters (business jet altitude)
-        false,
-        500,
-        180,
-        0,
-        null,
-        18288,
-        null,
-        false,
-        0,
-        3,
-        'GLF6',
-        'GULFSTREAM G650',
-        'N54321',
-        null,
-        1013.2,
-        null,
-        null,
-        null,
-        null,
+        'test_alt_002', // 0: icao24
+        'BIZ001', // 1: callsign
+        'United States', // 2: origin_country
+        1763154000, // 3: time_position
+        1763154000, // 4: last_contact
+        -105.0, // 5: longitude
+        40.0, // 6: latitude
+        18288, // 7: baro_altitude (60000 ft in meters)
+        false, // 8: on_ground
+        500, // 9: velocity
+        180, // 10: true_track
+        0, // 11: vertical_rate
+        null, // 12: sensors
+        18288, // 13: geo_altitude
+        null, // 14: squawk
+        false, // 15: spi
+        0, // 16: position_source
+        3, // 17: category
+        new Date(), // 18: created_at
+        'GLF6', // 19: aircraft_type
+        'GULFSTREAM G650', // 20: aircraft_description
+        'N54321', // 21: registration
+        null, // 22: emergency_status
+        1013.2, // 23: nav_qnh
+        null, // 24: nav_altitude_mcp
+        null, // 25: nav_heading
+        null, // 26: owner_operator
+        null, // 27: year_built
       ];
 
       await aircraftRepo.upsertAircraftStateWithPriority(
@@ -178,15 +180,16 @@ describe('AircraftRepository - Integration Tests', () => {
         false,
         0,
         3,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
+        new Date(), // 18: created_at
+        null, // 19: aircraft_type
+        null, // 20: aircraft_description
+        null, // 21: registration
+        null, // 22: emergency_status
+        null, // 23: nav_qnh
+        null, // 24: nav_altitude_mcp
+        null, // 25: nav_heading
+        null, // 26: owner_operator
+        null, // 27: year_built
       ];
 
       const oldTimestamp = new Date('2025-11-14T20:00:00Z');
@@ -222,15 +225,16 @@ describe('AircraftRepository - Integration Tests', () => {
         false,
         0,
         3,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
+        new Date(), // 18: created_at
+        null, // 19: aircraft_type
+        null, // 20: aircraft_description
+        null, // 21: registration
+        null, // 22: emergency_status
+        null, // 23: nav_qnh
+        null, // 24: nav_altitude_mcp
+        null, // 25: nav_heading
+        null, // 26: owner_operator
+        null, // 27: year_built
       ];
 
       const newTimestamp = new Date('2025-11-14T20:00:05Z'); // 5 seconds later
@@ -276,15 +280,16 @@ describe('AircraftRepository - Integration Tests', () => {
         false,
         0,
         3,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
+        new Date(), // 18: created_at
+        null, // 19: aircraft_type
+        null, // 20: aircraft_description
+        null, // 21: registration
+        null, // 22: emergency_status
+        null, // 23: nav_qnh
+        null, // 24: nav_altitude_mcp
+        null, // 25: nav_heading
+        null, // 26: owner_operator
+        null, // 27: year_built
       ];
 
       await aircraftRepo.upsertAircraftStateWithPriority(
@@ -316,15 +321,16 @@ describe('AircraftRepository - Integration Tests', () => {
         false,
         0,
         3,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
+        new Date(), // 18: created_at
+        null, // 19: aircraft_type
+        null, // 20: aircraft_description
+        null, // 21: registration
+        null, // 22: emergency_status
+        null, // 23: nav_qnh
+        null, // 24: nav_altitude_mcp
+        null, // 25: nav_heading
+        null, // 26: owner_operator
+        null, // 27: year_built
       ];
 
       await aircraftRepo.upsertAircraftStateWithPriority(
@@ -370,15 +376,16 @@ describe('AircraftRepository - Integration Tests', () => {
         false,
         0,
         3,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
+        new Date(), // 18: created_at
+        null, // 19: aircraft_type
+        null, // 20: aircraft_description
+        null, // 21: registration
+        null, // 22: emergency_status
+        null, // 23: nav_qnh
+        null, // 24: nav_altitude_mcp
+        null, // 25: nav_heading
+        null, // 26: owner_operator
+        null, // 27: year_built
       ];
 
       await aircraftRepo.upsertAircraftStateWithPriority(
@@ -410,15 +417,16 @@ describe('AircraftRepository - Integration Tests', () => {
         false,
         0,
         3,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
+        new Date(), // 18: created_at
+        null, // 19: aircraft_type
+        null, // 20: aircraft_description
+        null, // 21: registration
+        null, // 22: emergency_status
+        null, // 23: nav_qnh
+        null, // 24: nav_altitude_mcp
+        null, // 25: nav_heading
+        null, // 26: owner_operator
+        null, // 27: year_built
       ];
 
       await aircraftRepo.upsertAircraftStateWithPriority(
@@ -464,15 +472,16 @@ describe('AircraftRepository - Integration Tests', () => {
         false,
         0,
         3,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
+        new Date(), // 18: created_at
+        null, // 19: aircraft_type
+        null, // 20: aircraft_description
+        null, // 21: registration
+        null, // 22: emergency_status
+        null, // 23: nav_qnh
+        null, // 24: nav_altitude_mcp
+        null, // 25: nav_heading
+        null, // 26: owner_operator
+        null, // 27: year_built
       ];
 
       await aircraftRepo.upsertAircraftStateWithPriority(
@@ -504,15 +513,16 @@ describe('AircraftRepository - Integration Tests', () => {
         false,
         0,
         3,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
+        new Date(), // 18: created_at
+        null, // 19: aircraft_type
+        null, // 20: aircraft_description
+        null, // 21: registration
+        null, // 22: emergency_status
+        null, // 23: nav_qnh
+        null, // 24: nav_altitude_mcp
+        null, // 25: nav_heading
+        null, // 26: owner_operator
+        null, // 27: year_built
       ];
 
       await aircraftRepo.upsertAircraftStateWithPriority(
@@ -556,15 +566,16 @@ describe('AircraftRepository - Integration Tests', () => {
         false,
         0,
         3,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
+        new Date(), // 18: created_at
+        null, // 19: aircraft_type
+        null, // 20: aircraft_description
+        null, // 21: registration
+        null, // 22: emergency_status
+        null, // 23: nav_qnh
+        null, // 24: nav_altitude_mcp
+        null, // 25: nav_heading
+        null, // 26: owner_operator
+        null, // 27: year_built
       ];
 
       await aircraftRepo.upsertAircraftStateWithPriority(
@@ -606,15 +617,16 @@ describe('AircraftRepository - Integration Tests', () => {
         false,
         0,
         3,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
+        new Date(), // 18: created_at
+        null, // 19: aircraft_type
+        null, // 20: aircraft_description
+        null, // 21: registration
+        null, // 22: emergency_status
+        null, // 23: nav_qnh
+        null, // 24: nav_altitude_mcp
+        null, // 25: nav_heading
+        null, // 26: owner_operator
+        null, // 27: year_built
       ];
 
       await aircraftRepo.upsertAircraftStateWithPriority(
@@ -661,15 +673,16 @@ describe('AircraftRepository - Integration Tests', () => {
         false,
         0,
         3,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
+        new Date(), // 18: created_at
+        null, // 19: aircraft_type
+        null, // 20: aircraft_description
+        null, // 21: registration
+        null, // 22: emergency_status
+        null, // 23: nav_qnh
+        null, // 24: nav_altitude_mcp
+        null, // 25: nav_heading
+        null, // 26: owner_operator
+        null, // 27: year_built
       ];
 
       await aircraftRepo.upsertAircraftStateWithPriority(

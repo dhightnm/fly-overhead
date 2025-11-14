@@ -2,7 +2,7 @@
 
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 const aerodataboxMock = {
-  getFlightByIcao24: jest.fn(),
+  getFlightByIcao24: jest.fn() as any,
 };
 
 const cacheRouteRepoMock = jest.fn();

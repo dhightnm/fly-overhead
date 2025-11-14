@@ -1,5 +1,6 @@
 import { getConnection } from '../DatabaseConnection';
 import AircraftRepository from '../AircraftRepository';
+import SchemaRepository from '../SchemaRepository';
 
 type AircraftStateArray = any[];
 
@@ -22,12 +23,18 @@ jest.mock('../../utils/logger', () => ({
 describe('AircraftRepository - Upsert Priority Logic (Integration)', () => {
   let repository: AircraftRepository;
   let db: any;
+  let schemaRepo: SchemaRepository;
 
-  beforeAll(() => {
+  beforeAll(async () => {
     const connection = getConnection();
     db = connection.getDb();
     const postgis = connection.getPostGIS();
     repository = new AircraftRepository(db, postgis);
+    schemaRepo = new SchemaRepository();
+
+    // Ensure tables exist
+    await schemaRepo.createMainTable();
+    await schemaRepo.createHistoryTable();
   });
 
   beforeEach(async () => {
