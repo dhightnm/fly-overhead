@@ -1,6 +1,7 @@
 import { getConnection } from '../DatabaseConnection';
 import AircraftRepository from '../AircraftRepository';
-import type { AircraftStateArray } from '../../types/aircraft.types';
+
+type AircraftStateArray = any[];
 
 /**
  * Integration tests for AircraftRepository upsert priority logic

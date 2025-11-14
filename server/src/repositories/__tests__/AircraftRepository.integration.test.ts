@@ -1,7 +1,8 @@
 import { getConnection } from '../DatabaseConnection';
 import AircraftRepository from '../AircraftRepository';
 import SchemaRepository from '../SchemaRepository';
-import type { AircraftStateArray } from '../../types/database.types';
+
+type AircraftStateArray = any[];
 
 // Mock logger
 jest.mock('../../utils/logger', () => ({
@@ -19,12 +20,12 @@ describe('AircraftRepository - Integration Tests', () => {
   beforeAll(async () => {
     const connection = getConnection();
     db = connection.getDb();
-    aircraftRepo = new AircraftRepository();
-    schemaRepo = new SchemaRepository();
+    aircraftRepo = new AircraftRepository(db);
+    schemaRepo = new SchemaRepository(db);
 
     // Ensure tables exist
-    await schemaRepo.createAircraftStatesTable();
-    await schemaRepo.createAircraftStatesHistoryTable();
+    await schemaRepo.createMainTable();
+    await schemaRepo.createHistoryTable();
   });
 
   beforeEach(async () => {

@@ -1,7 +1,6 @@
 import pgPromise from 'pg-promise';
 import type { AircraftState } from '../types/database.types';
 import PostGISService from '../services/PostGISService';
-import logger from '../utils/logger';
 
 /**
  * Aircraft state array format from OpenSky API + enriched data:
