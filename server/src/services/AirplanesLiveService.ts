@@ -150,11 +150,7 @@ class AirplanesLiveService {
   /**
    * Internal method to fetch aircraft data with rate limiting
    */
-  private async _fetchAircraftNearPoint(
-    lat: number,
-    lon: number,
-    radiusNm: number,
-  ): Promise<AirplanesLiveResponse> {
+  private async _fetchAircraftNearPoint(lat: number, lon: number, radiusNm: number): Promise<AirplanesLiveResponse> {
     // Enforce rate limit
     await this.enforceRateLimit();
 
@@ -228,15 +224,16 @@ class AirplanesLiveService {
 
     // airplanes.live sends altitude in FEET, but OpenSky uses METERS
     // Convert feet to meters: 1 ft = 0.3048 m
-    let altitude =
+    const rawBaroAltitude =
       typeof aircraft.alt_baro === 'number'
         ? aircraft.alt_baro
         : typeof aircraft.alt_baro === 'string'
         ? parseFloat(aircraft.alt_baro)
         : null;
-    if (altitude !== null && !isNaN(altitude)) {
+    let altitude = rawBaroAltitude;
+    if (altitude !== null && !Number.isNaN(altitude)) {
       altitude = altitude * 0.3048; // Convert feet to meters
-    } else if (altitude !== null && isNaN(altitude)) {
+    } else if (altitude !== null && Number.isNaN(altitude)) {
       altitude = null; // Handle "ground" or other string values that parseFloat to NaN
     }
 

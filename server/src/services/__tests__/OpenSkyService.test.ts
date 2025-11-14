@@ -97,14 +97,12 @@ describe('OpenSkyService', () => {
       timeoutError.code = 'ETIMEDOUT';
 
       mockRateLimitManager.isRateLimited.mockReturnValue(false);
-      mockAxios.get
-        .mockRejectedValueOnce(timeoutError)
-        .mockResolvedValueOnce({
-          data: {
-            time: Math.floor(Date.now() / 1000),
-            states: [],
-          },
-        });
+      mockAxios.get.mockRejectedValueOnce(timeoutError).mockResolvedValueOnce({
+        data: {
+          time: Math.floor(Date.now() / 1000),
+          states: [],
+        },
+      });
 
       const result = await openSkyService.getAllStates();
 
@@ -117,14 +115,12 @@ describe('OpenSkyService', () => {
       resetError.code = 'ECONNRESET';
 
       mockRateLimitManager.isRateLimited.mockReturnValue(false);
-      mockAxios.get
-        .mockRejectedValueOnce(resetError)
-        .mockResolvedValueOnce({
-          data: {
-            time: Math.floor(Date.now() / 1000),
-            states: [],
-          },
-        });
+      mockAxios.get.mockRejectedValueOnce(resetError).mockResolvedValueOnce({
+        data: {
+          time: Math.floor(Date.now() / 1000),
+          states: [],
+        },
+      });
 
       const result = await openSkyService.getAllStates();
 
@@ -137,14 +133,12 @@ describe('OpenSkyService', () => {
       dnsError.code = 'ENOTFOUND';
 
       mockRateLimitManager.isRateLimited.mockReturnValue(false);
-      mockAxios.get
-        .mockRejectedValueOnce(dnsError)
-        .mockResolvedValueOnce({
-          data: {
-            time: Math.floor(Date.now() / 1000),
-            states: [],
-          },
-        });
+      mockAxios.get.mockRejectedValueOnce(dnsError).mockResolvedValueOnce({
+        data: {
+          time: Math.floor(Date.now() / 1000),
+          states: [],
+        },
+      });
 
       const result = await openSkyService.getAllStates();
 
@@ -450,4 +444,3 @@ describe('OpenSkyService', () => {
     });
   });
 });
-

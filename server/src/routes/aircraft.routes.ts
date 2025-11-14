@@ -161,7 +161,7 @@ router.get(
           .filter((aircraft) => aircraft.lat && aircraft.lon)
           .map((aircraft) => {
             const preparedState = airplanesLiveService.prepareStateForDatabase(aircraft);
-            
+
             return postgresRepository
               .upsertAircraftStateWithPriority(preparedState, null, new Date(), 'airplanes.live', 20)
               .catch((err: Error) => {
