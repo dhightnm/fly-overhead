@@ -26,13 +26,16 @@ class RateLimitService {
   private dailyLimits: Map<string, RateLimitRecord>;
   private burstLimits: Map<string, RateLimitRecord>;
   private concurrentRequests: Map<string, number>;
+  private concurrentRequestTimestamps: Map<string, number[]>; // Track when requests started
   private cleanupInterval: NodeJS.Timeout | null;
+  private readonly STUCK_REQUEST_TIMEOUT = 60000; // 60 seconds - auto-release stuck requests
 
   constructor() {
     this.hourlyLimits = new Map();
     this.dailyLimits = new Map();
     this.burstLimits = new Map();
     this.concurrentRequests = new Map();
+    this.concurrentRequestTimestamps = new Map();
     this.cleanupInterval = null;
 
     // Start cleanup interval (every 5 minutes)
@@ -155,9 +158,14 @@ class RateLimitService {
     this.incrementWindow(this.hourlyLimits, identifier, RATE_LIMIT_WINDOWS.HOURLY, now);
     this.incrementWindow(this.dailyLimits, identifier, RATE_LIMIT_WINDOWS.DAILY, now);
 
-    // Increment concurrent requests
+    // Increment concurrent requests with timestamp tracking
     const current = this.concurrentRequests.get(identifier) || 0;
     this.concurrentRequests.set(identifier, current + 1);
+    
+    // Track timestamp for auto-cleanup of stuck requests
+    const timestamps = this.concurrentRequestTimestamps.get(identifier) || [];
+    timestamps.push(now);
+    this.concurrentRequestTimestamps.set(identifier, timestamps);
   }
 
   /**
@@ -167,6 +175,17 @@ class RateLimitService {
     const current = this.concurrentRequests.get(identifier) || 0;
     if (current > 0) {
       this.concurrentRequests.set(identifier, current - 1);
+      
+      // Remove oldest timestamp
+      const timestamps = this.concurrentRequestTimestamps.get(identifier) || [];
+      if (timestamps.length > 0) {
+        timestamps.shift(); // Remove oldest
+        if (timestamps.length > 0) {
+          this.concurrentRequestTimestamps.set(identifier, timestamps);
+        } else {
+          this.concurrentRequestTimestamps.delete(identifier);
+        }
+      }
     }
   }
 
@@ -293,6 +312,34 @@ class RateLimitService {
         }
       }
 
+      // Clean up stuck concurrent requests (older than timeout)
+      for (const [identifier, timestamps] of this.concurrentRequestTimestamps.entries()) {
+        const validTimestamps = timestamps.filter(ts => now - ts < this.STUCK_REQUEST_TIMEOUT);
+        const stuckCount = timestamps.length - validTimestamps.length;
+        
+        if (stuckCount > 0) {
+          logger.warn('Releasing stuck concurrent requests', {
+            identifier,
+            stuckCount,
+            currentCount: this.concurrentRequests.get(identifier),
+          });
+          
+          const current = this.concurrentRequests.get(identifier) || 0;
+          const newCount = Math.max(0, current - stuckCount);
+          if (newCount > 0) {
+            this.concurrentRequests.set(identifier, newCount);
+          } else {
+            this.concurrentRequests.delete(identifier);
+          }
+        }
+        
+        if (validTimestamps.length > 0) {
+          this.concurrentRequestTimestamps.set(identifier, validTimestamps);
+        } else {
+          this.concurrentRequestTimestamps.delete(identifier);
+        }
+      }
+
       logger.debug('Rate limit cleanup completed', {
         burst: this.burstLimits.size,
         hourly: this.hourlyLimits.size,
@@ -331,6 +378,7 @@ class RateLimitService {
     this.dailyLimits.clear();
     this.burstLimits.clear();
     this.concurrentRequests.clear();
+    this.concurrentRequestTimestamps.clear();
   }
 }
 

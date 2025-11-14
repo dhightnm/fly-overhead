@@ -1,9 +1,4 @@
-import {
-  generateApiKey,
-  validateApiKeyFormat,
-  maskApiKey,
-  generateSecureHex,
-} from '../apiKeyGenerator';
+import { generateApiKey, validateApiKeyFormat, maskApiKey, generateSecureHex } from '../apiKeyGenerator';
 
 describe('API Key Generator', () => {
   describe('generateApiKey', () => {
@@ -35,14 +30,14 @@ describe('API Key Generator', () => {
 
     it('should generate feeder key with fd_ prefix', () => {
       const result = generateApiKey('feeder');
-      expect(result.key).toMatch(/^fd_[a-f0-9]{32}$/);
+      expect(result.key).toMatch(/^fd_[a-f0-9]{64}$/);
       expect(result.prefix).toBe('fd_');
-      expect(result.key.length).toBe(35);
+      expect(result.key.length).toBe(67);
     });
 
     it('should generate feeder key with fd alias', () => {
       const result = generateApiKey('fd');
-      expect(result.key).toMatch(/^fd_[a-f0-9]{32}$/);
+      expect(result.key).toMatch(/^fd_[a-f0-9]{64}$/);
       expect(result.prefix).toBe('fd_');
     });
 
@@ -54,7 +49,7 @@ describe('API Key Generator', () => {
 
     it('should throw error for invalid key type', () => {
       expect(() => generateApiKey('invalid')).toThrow(
-        "Invalid API key type: invalid. Use 'development', 'production', or 'feeder'"
+        "Invalid API key type: invalid. Use 'development', 'production', or 'feeder'",
       );
     });
 
@@ -102,7 +97,7 @@ describe('API Key Generator', () => {
 
     describe('Feeder keys', () => {
       it('should validate correct feeder key', () => {
-        const key = 'fd_' + 'c'.repeat(32);
+        const key = 'fd_' + 'c'.repeat(64);
         const result = validateApiKeyFormat(key);
         expect(result.valid).toBe(true);
         expect(result.type).toBe('feeder');
@@ -110,7 +105,7 @@ describe('API Key Generator', () => {
       });
 
       it('should reject feeder key with wrong length', () => {
-        const key = 'fd_' + 'c'.repeat(31);
+        const key = 'fd_' + 'c'.repeat(63);
         const result = validateApiKeyFormat(key);
         expect(result.valid).toBe(false);
         expect(result.error).toContain('Invalid feeder key length');
@@ -124,7 +119,7 @@ describe('API Key Generator', () => {
       });
 
       it('should reject feeder key that is too long', () => {
-        const key = 'fd_' + 'c'.repeat(33);
+        const key = 'fd_' + 'c'.repeat(65);
         const result = validateApiKeyFormat(key);
         expect(result.valid).toBe(false);
         expect(result.error).toContain('Invalid feeder key length');
@@ -174,10 +169,10 @@ describe('API Key Generator', () => {
     });
 
     it('should mask feeder key', () => {
-      const key = 'fd_' + 'c'.repeat(32);
+      const key = 'fd_' + 'c'.repeat(64);
       const masked = maskApiKey(key);
-      expect(masked).toMatch(/^fd_\*{28}[a-f0-9]{4}$/);
-      expect(masked.length).toBe(35);
+      expect(masked).toMatch(/^fd_\*{60}[a-f0-9]{4}$/);
+      expect(masked.length).toBe(67);
     });
 
     it('should handle short keys', () => {
@@ -220,4 +215,3 @@ describe('API Key Generator', () => {
     });
   });
 });
-

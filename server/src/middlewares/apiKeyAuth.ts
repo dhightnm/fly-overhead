@@ -33,26 +33,23 @@ export interface AuthenticatedRequest extends Request {
 export function extractApiKey(req: Request): string | null {
   // Method 1: Authorization Bearer header (preferred)
   const authHeader = req.headers.authorization;
-  if (authHeader && authHeader.startsWith('Bearer ')) {
+  if (authHeader && authHeader.toLowerCase().startsWith('bearer ')) {
     const key = authHeader.substring(7).trim();
-    if (key.startsWith('sk_') || key.startsWith('fd_')) {
+
+    if (key) {
       return key;
     }
   }
 
   // Method 2: X-API-Key header (fallback)
   const apiKeyHeader = req.headers['x-api-key'];
-  if (
-    apiKeyHeader &&
-    typeof apiKeyHeader === 'string' &&
-    (apiKeyHeader.startsWith('sk_') || apiKeyHeader.startsWith('fd_'))
-  ) {
+  if (apiKeyHeader && typeof apiKeyHeader === 'string' && apiKeyHeader.trim()) {
     return apiKeyHeader.trim();
   }
 
   // Method 3: Query parameter (not recommended, but supported for testing)
   const queryKey = req.query.api_key;
-  if (queryKey && typeof queryKey === 'string' && (queryKey.startsWith('sk_') || queryKey.startsWith('fd_'))) {
+  if (queryKey && typeof queryKey === 'string' && queryKey.trim()) {
     logger.warn('API key provided in query string (not recommended)', {
       path: req.path,
       ip: req.ip,
@@ -132,6 +129,25 @@ async function validateApiKeyInternal(
  */
 export async function optionalApiKeyAuth(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   try {
+    // Check if request is from same origin (React app) first
+    // If so, mark as webapp for better rate limits
+    if (isSameOriginRequest(req)) {
+      req.apiKey = undefined;
+      req.isSameOrigin = true;
+      req.auth = {
+        authenticated: false,
+        type: 'webapp',
+        keyType: 'webapp',
+      };
+      logger.debug('Same-origin request (optional auth)', {
+        path: req.path,
+        origin: req.headers.origin,
+        referer: req.headers.referer,
+      });
+      next();
+      return;
+    }
+
     const apiKey = extractApiKey(req);
 
     // No API key provided - pass through
@@ -209,19 +225,44 @@ export async function optionalApiKeyAuth(req: AuthenticatedRequest, res: Respons
 /**
  * Check if request is from same origin (React app)
  * Allows same-origin requests to bypass API key requirement
- * Same-origin requests typically don't send Origin header, so we check:
- * 1. No Origin header (same-origin request)
- * 2. Origin matches current host
- * 3. Referer matches current host or allowed domains
+ * Same-origin requests typically include browser signals (cookies/origin/referrer)
  */
 function isSameOriginRequest(req: Request): boolean {
   const origin = req.headers.origin;
   const referer = req.headers.referer;
   const host = req.headers.host;
+  const hasCookies = !!req.headers.cookie;
 
-  // Same-origin requests typically don't send Origin header
-  // If no origin and no referer, it's likely a same-origin request
-  if (!origin && !referer) {
+  // Extract hostname from current request
+  const currentHostname = host ? host.split(':')[0] : '';
+
+  // In development, allow localhost requests (React dev server on 3000 → backend on 3005)
+  const isDevelopment = process.env.NODE_ENV === 'development';
+  if (isDevelopment) {
+    const localhostPatterns = ['localhost', '127.0.0.1', '0.0.0.0'];
+    const isLocalhostHost = currentHostname && localhostPatterns.some((pattern) => currentHostname.includes(pattern));
+
+    if (isLocalhostHost) {
+      // If origin is also localhost (even different port), allow it in dev
+      if (origin) {
+        try {
+          const originUrl = new URL(origin);
+          if (localhostPatterns.some((pattern) => originUrl.hostname.includes(pattern))) {
+            return true; // localhost to localhost in dev = same origin
+          }
+        } catch {
+          // Invalid origin URL, continue checking
+        }
+      }
+      // If no origin/referer but we're on localhost in dev, allow it
+      if (!origin && !referer) {
+        return true;
+      }
+    }
+  }
+
+  // Browser-based requests generally include cookies
+  if (hasCookies) {
     return true;
   }
 
@@ -232,9 +273,6 @@ function isSameOriginRequest(req: Request): boolean {
     'api.flyoverhead.com',
     'container-service-1.f199m4bz801f2.us-east-2.cs.amazonlightsail.com',
   ];
-
-  // Extract hostname from current request
-  const currentHostname = host ? host.split(':')[0] : '';
 
   // Check origin
   if (origin) {
@@ -274,15 +312,6 @@ function isSameOriginRequest(req: Request): boolean {
     } catch {
       // Invalid referer URL, continue
     }
-  }
-
-  // If we have a host but no origin/referer, and it's from allowed domain, allow it
-  if (
-    currentHostname &&
-    !origin &&
-    allowedDomains.some((domain) => currentHostname === domain || currentHostname.endsWith(`.${domain}`))
-  ) {
-    return true;
   }
 
   return false;

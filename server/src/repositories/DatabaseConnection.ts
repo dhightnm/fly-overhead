@@ -3,8 +3,41 @@ import config from '../config';
 import logger from '../utils/logger';
 import PostGISService from '../services/PostGISService';
 
-// Configure pg-promise
-const pgp = pgPromise();
+// Configure pg-promise with connection pool monitoring
+const pgp = pgPromise({
+  // Log connection pool events for debugging
+  connect: (e: any) => {
+    const client = e.client;
+    logger.debug('New database connection established', {
+      totalCount: client?.totalCount,
+      idleCount: client?.idleCount,
+      waitingCount: client?.waitingCount,
+    });
+  },
+  disconnect: (e: any) => {
+    const err = e.client?.error;
+    if (err) {
+      logger.warn('Database connection closed with error', { error: err.message || String(err) });
+    } else {
+      logger.debug('Database connection closed normally');
+    }
+  },
+  query: (e: any) => {
+    // Log slow queries (> 5 seconds)
+    if (e.duration > 5000) {
+      logger.warn('Slow database query detected', {
+        duration: `${e.duration}ms`,
+        query: e.query?.substring(0, 100),
+      });
+    }
+  },
+  error: (err: Error, e: any) => {
+    logger.error('Database query error', {
+      error: err.message,
+      query: e?.query?.substring(0, 100),
+    });
+  },
+});
 
 /**
  * Base database connection manager
@@ -36,10 +69,10 @@ class DatabaseConnection {
             rejectUnauthorized: false, // AWS RDS certificates are trusted, but Node.js needs this for self-signed certs in the chain
           },
           // Connection pool settings
-          max: config.database.postgres.pool.max || 10, // Maximum number of clients in the pool
+          max: config.database.postgres.pool.max || 10, // Maximum number of clients in the pool (keep below database max_connections limit)
           min: config.database.postgres.pool.min || 2, // Minimum number of clients in the pool
-          idleTimeoutMillis: 60000, // Close idle clients after 60 seconds
-          connectionTimeoutMillis: 60000, // Return an error after 60 seconds if connection could not be established (increased for AWS RDS)
+          idleTimeoutMillis: 30000, // Close idle clients after 30 seconds (reduced to free up connections faster)
+          connectionTimeoutMillis: 30000, // Return an error after 30 seconds if connection could not be established
           keepAlive: true, // Keep TCP connection alive
           keepAliveInitialDelayMillis: 10000, // Start keepalive after 10 seconds
         };
@@ -47,13 +80,15 @@ class DatabaseConnection {
         this.db = pgp(connectionConfig);
       } catch (error) {
         // Fallback to connection string if parsing fails, but still add timeout settings
-        logger.warn('Failed to parse connection string, using as-is with timeout settings', { error: (error as Error).message });
+        logger.warn('Failed to parse connection string, using as-is with timeout settings', {
+          error: (error as Error).message,
+        });
         const fallbackConfig: any = {
           connectionString,
           max: config.database.postgres.pool.max || 10,
           min: config.database.postgres.pool.min || 2,
-          idleTimeoutMillis: 60000,
-          connectionTimeoutMillis: 60000,
+          idleTimeoutMillis: 30000,
+          connectionTimeoutMillis: 30000,
           keepAlive: true,
           keepAliveInitialDelayMillis: 10000,
         };
@@ -66,8 +101,8 @@ class DatabaseConnection {
         // Connection pool settings
         max: config.database.postgres.pool.max || 10,
         min: config.database.postgres.pool.min || 2,
-        idleTimeoutMillis: 60000,
-        connectionTimeoutMillis: 60000,
+        idleTimeoutMillis: 30000,
+        connectionTimeoutMillis: 30000,
         keepAlive: true,
         keepAliveInitialDelayMillis: 10000,
       };

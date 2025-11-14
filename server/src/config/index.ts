@@ -24,8 +24,8 @@ const config: AppConfig = {
     postgres: {
       url: process.env.POSTGRES_URL || 'postgresql://example:example@localhost:5432/fly_overhead',
       pool: {
-        min: 2,
-        max: 15, // Increased from 10 to handle multiple concurrent webapp users
+        min: 2, // Keep minimal connections ready
+        max: 35, // Use ~60% of ~55 max_connections, leaving room for admin/monitoring
       },
     },
   },
@@ -51,7 +51,9 @@ const config: AppConfig = {
     aerodatabox: {
       baseUrl: process.env.AERODATABOX_BASE_URL || 'https://prod.api.market/api/v1/aedbx/aerodatabox',
       apiKey: process.env.AERODATABOX_API_KEY,
-      dailyBudget: process.env.AERODATABOX_DAILY_BUDGET ? parseInt(process.env.AERODATABOX_DAILY_BUDGET, 10) : undefined,
+      dailyBudget: process.env.AERODATABOX_DAILY_BUDGET
+        ? parseInt(process.env.AERODATABOX_DAILY_BUDGET, 10)
+        : undefined,
     },
   },
   cors: {
@@ -80,4 +82,3 @@ const config: AppConfig = {
 };
 
 export default config;
-

@@ -74,15 +74,22 @@ export async function rateLimitMiddleware(
     // Record the request
     await rateLimitService.recordRequest(identifier, keyType, scopes);
 
-    // Release concurrent slot on response finish
-    res.on('finish', () => {
-      rateLimitService.releaseRequest(identifier).catch((err: Error) => {
-        logger.warn('Failed to release rate limit slot', {
-          identifier,
-          error: err.message,
+    // Release concurrent slot on BOTH finish AND close (handles timeouts/errors)
+    let released = false;
+    const releaseSlot = () => {
+      if (!released) {
+        released = true;
+        rateLimitService.releaseRequest(identifier).catch((err: Error) => {
+          logger.warn('Failed to release rate limit slot', {
+            identifier,
+            error: err.message,
+          });
         });
-      });
-    });
+      }
+    };
+
+    res.on('finish', releaseSlot);
+    res.on('close', releaseSlot); // Also release on connection close (handles timeouts)
 
     // Log for development keys
     if (keyType === 'development') {
@@ -99,6 +106,12 @@ export async function rateLimitMiddleware(
       error: err.message,
       stack: err.stack,
       path: req.path,
+    });
+
+    // Release the slot if we recorded it (shouldn't happen, but safety check)
+    const identifier = req.apiKey?.keyId || req.ip || 'unknown';
+    rateLimitService.releaseRequest(identifier).catch(() => {
+      // Ignore errors during cleanup
     });
 
     // On error, allow the request but log it

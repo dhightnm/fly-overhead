@@ -995,4 +995,128 @@ router.get(
   },
 );
 
+// Diagnostic endpoint to test network connectivity from inside the container
+router.get('/diagnostics/network', async (_req: Request, res: Response, next: NextFunction) => {
+  try {
+    const dns = require('dns');
+    const { promisify } = require('util');
+    const axios = require('axios');
+    const dnsLookup = promisify(dns.lookup);
+
+    const results: any = {
+      timestamp: new Date().toISOString(),
+      tests: [],
+    };
+
+    // Test 1: DNS Resolution for OpenSky
+    try {
+      const startTime = Date.now();
+      const addresses = await dnsLookup('opensky-network.org');
+      const duration = Date.now() - startTime;
+      results.tests.push({
+        name: 'DNS Resolution (OpenSky)',
+        status: 'success',
+        duration: `${duration}ms`,
+        details: `Resolved to ${addresses.address}`,
+      });
+    } catch (error: any) {
+      results.tests.push({
+        name: 'DNS Resolution (OpenSky)',
+        status: 'failed',
+        error: error.message,
+      });
+    }
+
+    // Test 2: OpenSky API connectivity (30s timeout)
+    const openskyUser = process.env.OPENSKY_USER;
+    const openskyPass = process.env.OPENSKY_PASS;
+
+    if (openskyUser && openskyPass) {
+      try {
+        const auth = Buffer.from(`${openskyUser}:${openskyPass}`).toString('base64');
+        const startTime = Date.now();
+        const response = await axios.get('https://opensky-network.org/api/states/all', {
+          headers: { Authorization: `Basic ${auth}` },
+          params: { extended: 1 },
+          timeout: 30000,
+        });
+        const duration = Date.now() - startTime;
+        results.tests.push({
+          name: 'OpenSky API Call',
+          status: 'success',
+          duration: `${duration}ms`,
+          details: `Received ${response.data.states?.length || 0} aircraft states`,
+        });
+      } catch (error: any) {
+        results.tests.push({
+          name: 'OpenSky API Call',
+          status: 'failed',
+          error: error.message,
+          code: error.code,
+          details: error.code === 'ETIMEDOUT' ? 'Connection timeout after 30s' : 'Request failed',
+        });
+      }
+    } else {
+      results.tests.push({
+        name: 'OpenSky API Call',
+        status: 'skipped',
+        details: 'OpenSky credentials not configured',
+      });
+    }
+
+    // Test 3: Other external services for comparison
+    const testServices = [
+      { name: 'Google DNS', url: 'https://8.8.8.8', timeout: 5000 },
+      { name: 'FlightAware', url: 'https://aeroapi.flightaware.com/aeroapi', timeout: 10000 },
+      { name: 'Aerodatabox', url: 'https://prod.api.market/api/v1/aedbx/aerodatabox', timeout: 10000 },
+    ];
+
+    for (const service of testServices) {
+      try {
+        const startTime = Date.now();
+        await axios.get(service.url, {
+          timeout: service.timeout,
+          validateStatus: () => true, // Accept any status code
+        });
+        const duration = Date.now() - startTime;
+        results.tests.push({
+          name: `External Service: ${service.name}`,
+          status: 'success',
+          duration: `${duration}ms`,
+        });
+      } catch (error: any) {
+        results.tests.push({
+          name: `External Service: ${service.name}`,
+          status: 'failed',
+          error: error.message,
+          code: error.code,
+          duration: error.code === 'ETIMEDOUT' ? `Timeout after ${service.timeout}ms` : 'Failed',
+        });
+      }
+    }
+
+    // Test 4: Database connectivity
+    try {
+      const startTime = Date.now();
+      await postgresRepository.getDb().one('SELECT NOW() as current_time');
+      const duration = Date.now() - startTime;
+      results.tests.push({
+        name: 'Database Connection',
+        status: 'success',
+        duration: `${duration}ms`,
+      });
+    } catch (error: any) {
+      results.tests.push({
+        name: 'Database Connection',
+        status: 'failed',
+        error: error.message,
+      });
+    }
+
+    return res.json(results);
+  } catch (err) {
+    return next(err);
+  }
+});
+
 export default router;

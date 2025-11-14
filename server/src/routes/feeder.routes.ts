@@ -296,7 +296,7 @@ router.post(
                  to_jsonb($3::text)
                )
            WHERE feeder_id = $4`,
-          [name, api_key_hash, apiKeyData.key_id, feeder_id]
+          [name, api_key_hash, apiKeyData.key_id, feeder_id],
         );
         feeder = existing;
         feeder.metadata = {
@@ -484,10 +484,9 @@ router.get(
         const userId = req.apiKey?.userId;
         if (userId) {
           // Try to find feeder linked to this user
-          const feeders = await postgresRepository.getDb().any(
-            `SELECT * FROM feeders WHERE metadata->>'user_id' = $1`,
-            [userId.toString()],
-          );
+          const feeders = await postgresRepository
+            .getDb()
+            .any(`SELECT * FROM feeders WHERE metadata->>'user_id' = $1`, [userId.toString()]);
           if (feeders.length > 0) {
             return res.status(200).json({
               success: true,

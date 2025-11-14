@@ -486,17 +486,28 @@ class AircraftService {
    */
   async getAircraftInBounds(latmin: number, lonmin: number, latmax: number, lonmax: number): Promise<any[]> {
     try {
-      // Use a reasonable threshold - max 30 minutes for active flights
-      // Extended thresholds (24 hours) are too permissive and show stale aircraft
+      // Use a reasonable threshold - temporarily increased to 2 hours to show stale data
+      // while OpenSky timeout issues are being resolved
+      // TODO: Reduce back to 30 minutes once OpenSky connectivity is fixed
       let contactThreshold = config.aircraft.recentContactThreshold; // 30 minutes default
 
-      // Cap the threshold at 30 minutes even in dev mode to prevent showing hours-old aircraft
-      // If we need to test with old data, we can use a separate test endpoint
-      const MAX_REASONABLE_THRESHOLD = 30 * 60; // 30 minutes max
+      // Temporarily allow up to 2 hours to show aircraft while OpenSky is timing out
+      // This ensures users see planes even when OpenSky is unreachable
+      const MAX_REASONABLE_THRESHOLD = 2 * 60 * 60; // 2 hours (temporary - will reduce to 30 min after OpenSky fix)
       if (contactThreshold > MAX_REASONABLE_THRESHOLD) {
         logger.warn('Capping contact threshold to prevent showing very old aircraft', {
           requested: contactThreshold,
           capped: MAX_REASONABLE_THRESHOLD,
+        });
+        contactThreshold = MAX_REASONABLE_THRESHOLD;
+      }
+
+      // If threshold is less than 2 hours, increase it temporarily to show stale data
+      // This is a workaround for OpenSky timeout issues
+      if (contactThreshold < MAX_REASONABLE_THRESHOLD) {
+        logger.warn('Temporarily increasing contact threshold to show stale data (OpenSky timeout workaround)', {
+          original: contactThreshold,
+          temporary: MAX_REASONABLE_THRESHOLD,
         });
         contactThreshold = MAX_REASONABLE_THRESHOLD;
       }
