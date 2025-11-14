@@ -54,7 +54,7 @@ jobs:
 
       - name: Run client tests
         working-directory: ./client
-        run: npm test -- --watchAll=false --testEnvironment=jsdom --passWithNoTests
+        run: npm test -- --watchAll=false --passWithNoTests
 
       - name: Type check server
         working-directory: ./server
