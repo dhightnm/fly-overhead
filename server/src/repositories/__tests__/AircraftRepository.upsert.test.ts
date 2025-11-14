@@ -200,12 +200,13 @@ describe('AircraftRepository - Upsert Priority Logic (Integration)', () => {
 
   describe('same-priority source conflict resolution', () => {
     it('should update when same priority and newer last_contact', async () => {
+      const currentTime = Math.floor(Date.now() / 1000);
       const olderState: AircraftStateArray = [
         'test003',
         'TST003',
         'United States',
-        1731600000,
-        1731600000, // older
+        currentTime - 200,
+        currentTime - 200, // older
         -105.0,
         40.0,
         10000,
@@ -244,8 +245,8 @@ describe('AircraftRepository - Upsert Priority Logic (Integration)', () => {
         'test003',
         'TST003',
         'United States',
-        1731600100,
-        1731600100, // 100 seconds newer
+        currentTime - 100,
+        currentTime - 100, // 100 seconds newer
         -106.0, // Updated position
         41.0,
         11000, // Updated altitude
@@ -292,12 +293,13 @@ describe('AircraftRepository - Upsert Priority Logic (Integration)', () => {
     });
 
     it('should update when same priority, same last_contact, but newer ingestion_timestamp', async () => {
+      const currentTime = Math.floor(Date.now() / 1000);
       const firstState: AircraftStateArray = [
         'test004',
         'TST004',
         'United States',
-        1731600000,
-        1731600000,
+        currentTime - 100,
+        currentTime - 100,
         -105.0,
         40.0,
         10000,
@@ -337,8 +339,8 @@ describe('AircraftRepository - Upsert Priority Logic (Integration)', () => {
         'test004',
         'TST004',
         'United States',
-        1731600000,
-        1731600000, // SAME last_contact
+        currentTime - 100,
+        currentTime - 100, // SAME last_contact
         -105.0,
         40.0,
         10668, // Better/corrected altitude
@@ -386,12 +388,13 @@ describe('AircraftRepository - Upsert Priority Logic (Integration)', () => {
     });
 
     it('should NOT update when same priority, same last_contact, older ingestion_timestamp', async () => {
+      const currentTime = Math.floor(Date.now() / 1000);
       const newerIngestion: AircraftStateArray = [
         'test005',
         'TST005',
         'United States',
-        1731600000,
-        1731600000,
+        currentTime - 100,
+        currentTime - 100,
         -105.0,
         40.0,
         10668, // Correct altitude
@@ -431,8 +434,8 @@ describe('AircraftRepository - Upsert Priority Logic (Integration)', () => {
         'test005',
         'TST005',
         'United States',
-        1731600000,
-        1731600000, // Same last_contact
+        currentTime - 100,
+        currentTime - 100, // Same last_contact
         -105.0,
         40.0,
         9999, // Wrong altitude
@@ -479,13 +482,14 @@ describe('AircraftRepository - Upsert Priority Logic (Integration)', () => {
 
   describe('priority-based overwrites', () => {
     it('should allow higher priority source to overwrite lower priority', async () => {
+      const currentTime = Math.floor(Date.now() / 1000);
       // Lower priority data (OpenSky = 30)
       const lowerPriority: AircraftStateArray = [
         'test006',
         'TST006',
         'United States',
-        1731600000,
-        1731600000,
+        currentTime - 100,
+        currentTime - 100,
         -105.0,
         40.0,
         10000,
@@ -525,8 +529,8 @@ describe('AircraftRepository - Upsert Priority Logic (Integration)', () => {
         'test006',
         'TST006',
         'United States',
-        1731599900, // Even with OLDER timestamp
-        1731599900,
+        currentTime - 200, // Even with OLDER timestamp (100 seconds older)
+        currentTime - 200,
         -106.0, // Different data
         41.0,
         11000,
@@ -572,13 +576,14 @@ describe('AircraftRepository - Upsert Priority Logic (Integration)', () => {
     });
 
     it('should NOT allow lower priority source to overwrite higher priority', async () => {
+      const currentTime = Math.floor(Date.now() / 1000);
       // Higher priority data (feeder = 10)
       const higherPriority: AircraftStateArray = [
         'test007',
         'TST007',
         'United States',
-        1731600000,
-        1731600000,
+        currentTime - 100,
+        currentTime - 100,
         -105.0,
         40.0,
         10668,
@@ -618,8 +623,8 @@ describe('AircraftRepository - Upsert Priority Logic (Integration)', () => {
         'test007',
         'TST007',
         'United States',
-        1731600100, // Even with NEWER timestamp
-        1731600100,
+        currentTime - 50, // Even with NEWER timestamp (50 seconds newer)
+        currentTime - 50,
         -106.0,
         41.0,
         11000,

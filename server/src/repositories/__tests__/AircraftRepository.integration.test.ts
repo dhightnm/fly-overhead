@@ -259,14 +259,15 @@ describe('AircraftRepository - Integration Tests', () => {
 
     it('should NOT allow older data to overwrite newer data even with newer ingestion_timestamp', async () => {
       const icao24 = 'test_race_002';
+      const currentTime = Math.floor(Date.now() / 1000);
 
       // First insert: fresh data
       const freshState: AircraftStateArray = [
         icao24,
         'TEST002',
         'United States',
-        1763154100, // Newer last_contact
-        1763154100,
+        currentTime - 50, // Newer last_contact (50 seconds ago)
+        currentTime - 50,
         -105.0,
         40.0,
         10668, // Correct altitude in meters
@@ -306,8 +307,8 @@ describe('AircraftRepository - Integration Tests', () => {
         icao24,
         'TEST002',
         'United States',
-        1763154000, // Older last_contact (100 seconds earlier)
-        1763154000,
+        currentTime - 150, // Older last_contact (150 seconds ago, 100 seconds older than fresh)
+        currentTime - 150,
         -105.0,
         40.0,
         9144, // Different altitude
@@ -349,12 +350,12 @@ describe('AircraftRepository - Integration Tests', () => {
       );
 
       expect(result.baro_altitude).toBeCloseTo(10668, 1); // Original value preserved
-      expect(result.last_contact).toBe(1763154100); // Fresher last_contact preserved
+      expect(result.last_contact).toBe(currentTime - 50); // Fresher last_contact preserved
     });
 
     it('should allow higher priority source to overwrite lower priority', async () => {
       const icao24 = 'test_priority_001';
-      const lastContact = 1763154000;
+      const lastContact = Math.floor(Date.now() / 1000) - 60; // 1 minute ago
 
       // First insert: lower priority (airplanes.live = 20)
       const lowPriorityState: AircraftStateArray = [

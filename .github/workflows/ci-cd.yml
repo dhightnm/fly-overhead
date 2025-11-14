@@ -46,7 +46,7 @@ jobs:
         env:
           POSTGRES_URL: postgresql://postgres:postgres@localhost:5432/fly_overhead_test
           NODE_ENV: test
-        run: npm test -- --maxWorkers=2 --passWithNoTests || echo "Some tests may have failed - check logs"
+        run: npm test -- --maxWorkers=2
 
       - name: Setup client dependencies
         working-directory: ./client
@@ -54,33 +54,33 @@ jobs:
 
       - name: Run client tests
         working-directory: ./client
-        run: npm test -- --watchAll=false --testEnvironment=jsdom || echo "Client tests may have issues - check logs"
+        run: npm test -- --watchAll=false --testEnvironment=jsdom --passWithNoTests
 
       - name: Type check server
         working-directory: ./server
-        run: npm run type-check || echo "Type check completed with warnings"
+        run: npm run type-check
 
       - name: Lint server
         working-directory: ./server
-        run: npm run lint || echo "Lint completed with warnings"
+        run: npm run lint
 
       - name: Lint client
         working-directory: ./client
-        run: npm run lint || echo "Lint completed with warnings"
+        run: npm run lint
 
       - name: Build server (staging)
         if: github.ref == 'refs/heads/staging' && github.event_name == 'push'
         working-directory: ./server
         run: |
           echo "Building server for staging..."
-          npm run build || echo "Build completed with warnings"
+          npm run build
 
       - name: Build client (staging)
         if: github.ref == 'refs/heads/staging' && github.event_name == 'push'
         working-directory: ./client
         run: |
           echo "Building client for staging..."
-          npm run build || echo "Build completed with warnings"
+          npm run build
 
   build-production:
     name: Build for Production
