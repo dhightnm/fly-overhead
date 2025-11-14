@@ -1,7 +1,6 @@
 import openSkyService from '../OpenSkyService';
 import rateLimitManager from '../RateLimitManager';
 import axios from 'axios';
-import config from '../../config';
 
 // Mock dependencies
 jest.mock('axios');

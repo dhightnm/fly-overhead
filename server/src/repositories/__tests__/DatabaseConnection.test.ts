@@ -1,6 +1,5 @@
-import { DatabaseConnection, getConnection } from '../DatabaseConnection';
+import { DatabaseConnection } from '../DatabaseConnection';
 import config from '../../config';
-import PostGISService from '../../services/PostGISService';
 
 // Mock dependencies
 jest.mock('../../config', () => ({
@@ -15,7 +14,6 @@ jest.mock('../../config', () => ({
   },
 }));
 
-jest.mock('../../services/PostGISService');
 jest.mock('../../utils/logger', () => ({
   debug: jest.fn(),
   warn: jest.fn(),

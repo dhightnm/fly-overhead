@@ -15,14 +15,9 @@ jest.mock('../../utils/logger', () => ({
 
 const mockPostgresRepository = postgresRepository as jest.Mocked<typeof postgresRepository>;
 
-// Import the router after mocking
-let feederRouter: any;
-let registerHandler: any;
-
 beforeAll(async () => {
   // Dynamically import the router after mocks are set up
-  const module = await import('../feeder.routes');
-  feederRouter = module.default;
+  await import('../feeder.routes');
   
   // We'll test the handler directly by importing the route logic
   // For now, we'll create a test that simulates the registration endpoint
@@ -98,6 +93,7 @@ describe('Feeder Registration Endpoint', () => {
           api_key_id: 'key_feeder_123',
         },
         created_at: new Date(),
+        updated_at: new Date(),
         last_seen_at: null,
         is_active: true,
       };
@@ -108,11 +104,8 @@ describe('Feeder Registration Endpoint', () => {
       mockPostgresRepository.registerFeeder = jest.fn().mockResolvedValue(mockFeeder);
 
       // Import and call the handler directly
-      const { optionalApiKeyAuth } = await import('../../middlewares/apiKeyAuth');
-      const { rateLimitMiddleware } = await import('../../middlewares/rateLimitMiddleware');
-
       // Create a mock handler that simulates the registration endpoint
-      const handler = async (req: any, res: any, next: any) => {
+      const handler = async (req: any, res: any, _next: any) => {
         const { feeder_id, api_key_hash, key_prefix, name, latitude, longitude, metadata } = req.body;
 
         if (!feeder_id || !api_key_hash || !name) {
@@ -254,6 +247,7 @@ describe('Feeder Registration Endpoint', () => {
           api_key_id: 'key_feeder_456',
         },
         created_at: new Date(),
+        updated_at: new Date(),
         last_seen_at: null,
         is_active: true,
       };
@@ -264,7 +258,7 @@ describe('Feeder Registration Endpoint', () => {
       mockPostgresRepository.registerFeeder = jest.fn().mockResolvedValue(mockFeeder);
 
       // Same handler as above
-      const handler = async (req: any, res: any, next: any) => {
+      const handler = async (req: any, res: any, _next: any) => {
         const { feeder_id, api_key_hash, key_prefix, name, latitude, longitude, metadata } = req.body;
 
         if (!feeder_id || !api_key_hash || !name) {
@@ -351,7 +345,7 @@ describe('Feeder Registration Endpoint', () => {
         // Missing api_key_hash and name
       };
 
-      const handler = async (req: any, res: any, next: any) => {
+      const handler = async (req: any, res: any, _next: any) => {
         const { feeder_id, api_key_hash, name } = req.body;
 
         if (!feeder_id || !api_key_hash || !name) {
@@ -399,7 +393,7 @@ describe('Feeder Registration Endpoint', () => {
 
       mockPostgresRepository.getFeederById = jest.fn().mockResolvedValue(existingFeeder);
 
-      const handler = async (req: any, res: any, next: any) => {
+      const handler = async (req: any, res: any, _next: any) => {
         const { feeder_id, api_key_hash, name } = req.body;
 
         if (!feeder_id || !api_key_hash || !name) {
@@ -473,7 +467,7 @@ describe('Feeder Registration Endpoint', () => {
       mockPostgresRepository.getFeederById = jest.fn().mockResolvedValue(null);
       mockPostgresRepository.getApiKeyByHash = jest.fn().mockResolvedValue(existingApiKey);
 
-      const handler = async (req: any, res: any, next: any) => {
+      const handler = async (req: any, res: any, _next: any) => {
         const { feeder_id, api_key_hash, name } = req.body;
 
         if (!feeder_id || !api_key_hash || !name) {
@@ -571,6 +565,7 @@ describe('Feeder Registration Endpoint', () => {
           user_id: userId,
         },
         created_at: new Date(),
+        updated_at: new Date(),
         last_seen_at: null,
         is_active: true,
       };
@@ -590,7 +585,7 @@ describe('Feeder Registration Endpoint', () => {
       mockPostgresRepository.registerFeeder = jest.fn().mockResolvedValue(mockFeeder);
       mockPostgresRepository.updateUserFeederProviderStatus = jest.fn().mockResolvedValue(mockUser);
 
-      const handler = async (req: any, res: any, next: any) => {
+      const handler = async (req: any, res: any, _next: any) => {
         const { feeder_id, api_key_hash, key_prefix, name, latitude, longitude, metadata } = req.body;
         const authenticatedUser = req.user;
         const userId = authenticatedUser?.userId || null;

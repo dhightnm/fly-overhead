@@ -7,7 +7,7 @@ const aerodataboxMock = {
 
 const cacheRouteRepoMock = jest.fn();
 const updateAircraftCallsignMock = jest.fn();
-const storeRouteHistoryMock = jest.fn();
+const storeRouteHistoryMock = jest.fn() as any;
 const dbOneOrNoneMock = jest.fn();
 const getDbMock = jest.fn(() => ({ oneOrNone: dbOneOrNoneMock }));
 
@@ -57,7 +57,7 @@ describe('FlightRouteService - Aerodatabox integration', () => {
     storeRouteHistoryMock.mockReset();
     dbOneOrNoneMock.mockReset().mockResolvedValue(null);
     getDbMock.mockReset().mockReturnValue({ oneOrNone: dbOneOrNoneMock });
-    flightRouteService = new FlightRouteService({ flightAwareApiKey: null, flightAwareBaseUrl: null });
+    flightRouteService = new FlightRouteService({ flightAwareApiKey: undefined, flightAwareBaseUrl: undefined });
   });
 
   it('returns Aerodatabox route data when expensive API calls are allowed', async () => {

@@ -75,10 +75,8 @@ jest.mock('../../routes/aircraft.routes', () => ({
 }));
 
 import aircraftService from '../AircraftService';
-import openSkyService from '../OpenSkyService';
 import postgresRepository from '../../repositories/PostgresRepository';
 import rateLimitManager from '../RateLimitManager';
-import config from '../../config';
 
 // Type the mocks - use the actual mock functions
 const mockOpenSkyService = {
