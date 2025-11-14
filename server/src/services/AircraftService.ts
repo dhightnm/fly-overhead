@@ -504,13 +504,13 @@ class AircraftService {
 
       // If threshold is less than 2 hours, increase it temporarily to show stale data
       // This is a workaround for OpenSky timeout issues
-      if (contactThreshold < MAX_REASONABLE_THRESHOLD) {
-        logger.warn('Temporarily increasing contact threshold to show stale data (OpenSky timeout workaround)', {
-          original: contactThreshold,
-          temporary: MAX_REASONABLE_THRESHOLD,
-        });
-        contactThreshold = MAX_REASONABLE_THRESHOLD;
-      }
+      // if (contactThreshold < MAX_REASONABLE_THRESHOLD) {
+      //   logger.warn('Temporarily increasing contact threshold to show stale data (OpenSky timeout workaround)', {
+      //     original: contactThreshold,
+      //     temporary: MAX_REASONABLE_THRESHOLD,
+      //   });
+      //   contactThreshold = MAX_REASONABLE_THRESHOLD;
+      // }
 
       const thresholdTimestamp = Math.floor(Date.now() / 1000) - contactThreshold;
 

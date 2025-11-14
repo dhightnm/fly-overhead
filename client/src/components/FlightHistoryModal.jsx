@@ -1,8 +1,8 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { useAuth } from '../contexts/AuthContext';
-import PremiumModal from './PremiumModal';
-import { historyService, aircraftService } from '../services';
-import './FlightHistoryModal.css';
+import React, { useState, useEffect, useCallback, useMemo } from "react";
+import { useAuth } from "../contexts/AuthContext";
+import PremiumModal from "./PremiumModal";
+import { historyService, aircraftService } from "../services";
+import "./FlightHistoryModal.css";
 
 const FlightHistoryModal = ({ icao24, callsign, isOpen, onClose }) => {
   const { isPremium } = useAuth();
@@ -15,7 +15,7 @@ const FlightHistoryModal = ({ icao24, callsign, isOpen, onClose }) => {
   const fetchHistory = useCallback(async () => {
     setLoading(true);
     setError(null);
-    
+
     try {
       // Fetch both history and route in parallel
       const [historyData, routeData] = await Promise.allSettled([
@@ -23,18 +23,18 @@ const FlightHistoryModal = ({ icao24, callsign, isOpen, onClose }) => {
         aircraftService.getRoute(icao24, callsign),
       ]);
 
-      if (historyData.status === 'fulfilled') {
+      if (historyData.status === "fulfilled") {
         setHistory(historyData.value);
       } else {
-        throw new Error('Failed to fetch history');
+        throw new Error("Failed to fetch history");
       }
 
-      if (routeData.status === 'fulfilled') {
+      if (routeData.status === "fulfilled") {
         setRoute(routeData.value);
       }
     } catch (err) {
-      console.error('Error fetching flight history:', err);
-      setError('Failed to load flight history');
+      console.error("Error fetching flight history:", err);
+      setError("Failed to load flight history");
     } finally {
       setLoading(false);
     }
@@ -49,31 +49,31 @@ const FlightHistoryModal = ({ icao24, callsign, isOpen, onClose }) => {
   // Calculate current flight duration from route ETE
   const currentFlightDuration = useMemo(() => {
     if (!route) return null;
-    
+
     // Check for actual_ete first (from database)
     if (route.actual_ete) {
       return route.actual_ete;
     }
-    
+
     // Check flightData for ETE
     if (route.flightData?.actualEte) {
       return route.flightData.actualEte;
     }
-    
+
     // Calculate from actual start/end times
     if (route.flightData?.actualDeparture && route.flightData?.actualArrival) {
       const start = route.flightData.actualDeparture * 1000; // Convert to ms if in seconds
       const end = route.flightData.actualArrival * 1000;
       return Math.round((end - start) / 1000); // seconds
     }
-    
+
     // Try actual_flight_start and actual_flight_end from database
     if (route.actual_flight_start && route.actual_flight_end) {
       const start = new Date(route.actual_flight_start);
       const end = new Date(route.actual_flight_end);
       return Math.round((end - start) / 1000); // seconds
     }
-    
+
     return null;
   }, [route]);
 
@@ -96,7 +96,9 @@ const FlightHistoryModal = ({ icao24, callsign, isOpen, onClose }) => {
       return point.timestamp >= twentyFourHoursAgo;
     });
 
-    const locked = allData.filter((point) => point.timestamp < twentyFourHoursAgo);
+    const locked = allData.filter(
+      (point) => point.timestamp < twentyFourHoursAgo
+    );
 
     return {
       visibleData: visible,
@@ -105,19 +107,19 @@ const FlightHistoryModal = ({ icao24, callsign, isOpen, onClose }) => {
   }, [history, isPremium]);
 
   const formatTimestamp = (timestamp) => {
-    if (!timestamp) return 'N/A';
+    if (!timestamp) return "N/A";
     const date = new Date(timestamp);
-    return date.toLocaleString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
+    return date.toLocaleString("en-US", {
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
     });
   };
 
   const formatDuration = (seconds) => {
-    if (!seconds && seconds !== 0) return 'N/A';
+    if (!seconds && seconds !== 0) return "N/A";
     const hours = Math.floor(seconds / 3600);
     const minutes = Math.floor((seconds % 3600) / 60);
     const secs = seconds % 60;
@@ -128,29 +130,29 @@ const FlightHistoryModal = ({ icao24, callsign, isOpen, onClose }) => {
   };
 
   const formatAltitude = (alt) => {
-    if (!alt && alt !== 0) return 'N/A';
+    if (!alt && alt !== 0) return "N/A";
     return `${Math.round(alt * 3.28084).toLocaleString()} ft`;
   };
 
   const formatSpeed = (vel) => {
-    if (!vel && vel !== 0) return 'N/A';
-    return `${Math.round(vel * 1.94384)} kts`;
+    if (!vel && vel !== 0) return "N/A";
+    return `${Math.round(vel).toLocaleString()} kts`;
   };
 
   const formatHeading = (heading) => {
-    if (!heading && heading !== 0) return 'N/A';
+    if (!heading && heading !== 0) return "N/A";
     return `${Math.round(heading)}°`;
   };
 
   const formatVerticalRate = (vr) => {
-    if (!vr && vr !== 0) return 'N/A';
+    if (!vr && vr !== 0) return "N/A";
     const fpm = Math.round(vr * 196.85); // m/s to ft/min
-    return `${fpm > 0 ? '+' : ''}${fpm} fpm`;
+    return `${fpm > 0 ? "+" : ""}${fpm} fpm`;
   };
 
   const formatSquawk = (squawk) => {
-    if (!squawk) return 'N/A';
-    return squawk.toString().padStart(4, '0');
+    if (!squawk) return "N/A";
+    return squawk.toString().padStart(4, "0");
   };
 
   if (!isOpen) return null;
@@ -158,7 +160,10 @@ const FlightHistoryModal = ({ icao24, callsign, isOpen, onClose }) => {
   return (
     <>
       <div className="modal-overlay" onClick={onClose}>
-        <div className="modal-content flight-history-modal" onClick={(e) => e.stopPropagation()}>
+        <div
+          className="modal-content flight-history-modal"
+          onClick={(e) => e.stopPropagation()}
+        >
           <div className="modal-header">
             <div>
               <h2>Flight History</h2>
@@ -166,7 +171,9 @@ const FlightHistoryModal = ({ icao24, callsign, isOpen, onClose }) => {
                 {callsign || icao24} • {history?.dataPoints || 0} data points
               </div>
             </div>
-            <button className="modal-close" onClick={onClose}>×</button>
+            <button className="modal-close" onClick={onClose}>
+              ×
+            </button>
           </div>
 
           <div className="modal-body">
@@ -196,37 +203,57 @@ const FlightHistoryModal = ({ icao24, callsign, isOpen, onClose }) => {
                         <td className="summary-label">ICAO24:</td>
                         <td className="summary-value">{icao24}</td>
                       </tr>
-                      {route && (() => {
-                        const hasDeparture = route.departureAirport?.icao || route.departureAirport?.iata || route.departureAirport?.name;
-                        const hasArrival = route.arrivalAirport?.icao || route.arrivalAirport?.iata || route.arrivalAirport?.name;
-                        
-                        if (hasDeparture || hasArrival) {
-                          return (
-                            <>
-                              <tr>
-                                <td className="summary-label">Route:</td>
-                                <td className="summary-value route-display">
-                                  {route.departureAirport?.icao || route.departureAirport?.iata || route.departureAirport?.name || 'N/A'} 
-                                  → {route.arrivalAirport?.icao || route.arrivalAirport?.iata || route.arrivalAirport?.name || 'N/A'}
-                                </td>
-                              </tr>
-                              <tr>
-                                <td className="summary-label">Departure:</td>
-                                <td className="summary-value">
-                                  {route.departureAirport?.name || route.departureAirport?.icao || route.departureAirport?.iata || 'N/A'}
-                                </td>
-                              </tr>
-                              <tr>
-                                <td className="summary-label">Arrival:</td>
-                                <td className="summary-value">
-                                  {route.arrivalAirport?.name || route.arrivalAirport?.icao || route.arrivalAirport?.iata || 'N/A'}
-                                </td>
-                              </tr>
-                            </>
-                          );
-                        }
-                        return null;
-                      })()}
+                      {route &&
+                        (() => {
+                          const hasDeparture =
+                            route.departureAirport?.icao ||
+                            route.departureAirport?.iata ||
+                            route.departureAirport?.name;
+                          const hasArrival =
+                            route.arrivalAirport?.icao ||
+                            route.arrivalAirport?.iata ||
+                            route.arrivalAirport?.name;
+
+                          if (hasDeparture || hasArrival) {
+                            return (
+                              <>
+                                <tr>
+                                  <td className="summary-label">Route:</td>
+                                  <td className="summary-value route-display">
+                                    {route.departureAirport?.icao ||
+                                      route.departureAirport?.iata ||
+                                      route.departureAirport?.name ||
+                                      "N/A"}
+                                    →{" "}
+                                    {route.arrivalAirport?.icao ||
+                                      route.arrivalAirport?.iata ||
+                                      route.arrivalAirport?.name ||
+                                      "N/A"}
+                                  </td>
+                                </tr>
+                                <tr>
+                                  <td className="summary-label">Departure:</td>
+                                  <td className="summary-value">
+                                    {route.departureAirport?.name ||
+                                      route.departureAirport?.icao ||
+                                      route.departureAirport?.iata ||
+                                      "N/A"}
+                                  </td>
+                                </tr>
+                                <tr>
+                                  <td className="summary-label">Arrival:</td>
+                                  <td className="summary-value">
+                                    {route.arrivalAirport?.name ||
+                                      route.arrivalAirport?.icao ||
+                                      route.arrivalAirport?.iata ||
+                                      "N/A"}
+                                  </td>
+                                </tr>
+                              </>
+                            );
+                          }
+                          return null;
+                        })()}
                       <tr>
                         <td className="summary-label">Total Points:</td>
                         <td className="summary-value">{history.dataPoints}</td>
@@ -234,7 +261,9 @@ const FlightHistoryModal = ({ icao24, callsign, isOpen, onClose }) => {
                       <tr>
                         <td className="summary-label">Flight Duration:</td>
                         <td className="summary-value">
-                          {currentFlightDuration ? formatDuration(currentFlightDuration) : 'N/A'}
+                          {currentFlightDuration
+                            ? formatDuration(currentFlightDuration)
+                            : "N/A"}
                         </td>
                       </tr>
                     </tbody>
@@ -247,14 +276,15 @@ const FlightHistoryModal = ({ icao24, callsign, isOpen, onClose }) => {
                     <div className="premium-lock-content">
                       <span className="premium-icon">⭐</span>
                       <span className="premium-text">
-                        {lockedCount} data point{lockedCount !== 1 ? 's' : ''} older than 24 hours are locked. 
-                        <button 
-                          className="premium-link" 
+                        {lockedCount} data point{lockedCount !== 1 ? "s" : ""}{" "}
+                        older than 24 hours are locked.
+                        <button
+                          className="premium-link"
                           onClick={() => setShowPremiumModal(true)}
                         >
                           Upgrade to Premium
-                        </button>
-                        {' '}to view full history.
+                        </button>{" "}
+                        to view full history.
                       </span>
                     </div>
                   </div>
@@ -283,16 +313,26 @@ const FlightHistoryModal = ({ icao24, callsign, isOpen, onClose }) => {
                         <tbody>
                           {visibleData.map((point, idx) => (
                             <tr key={idx}>
-                              <td className="point-time">{formatTimestamp(point.timestamp)}</td>
-                              <td className="point-coords">{point.lat?.toFixed(6)}</td>
-                              <td className="point-coords">{point.lng?.toFixed(6)}</td>
+                              <td className="point-time">
+                                {formatTimestamp(point.timestamp)}
+                              </td>
+                              <td className="point-coords">
+                                {point.lat?.toFixed(6)}
+                              </td>
+                              <td className="point-coords">
+                                {point.lng?.toFixed(6)}
+                              </td>
                               <td>{formatAltitude(point.altitude)}</td>
                               <td>{formatAltitude(point.geoAltitude)}</td>
                               <td>{formatSpeed(point.velocity)}</td>
                               <td>{formatHeading(point.heading)}</td>
                               <td>{formatVerticalRate(point.verticalRate)}</td>
-                              <td className="point-squawk">{formatSquawk(point.squawk)}</td>
-                              <td className="point-status">{point.onGround ? 'Yes' : 'No'}</td>
+                              <td className="point-squawk">
+                                {formatSquawk(point.squawk)}
+                              </td>
+                              <td className="point-status">
+                                {point.onGround ? "Yes" : "No"}
+                              </td>
                             </tr>
                           ))}
                         </tbody>

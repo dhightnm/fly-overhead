@@ -24,6 +24,8 @@ export interface Aircraft {
   aircraft_model?: string | null;
   model?: string | null;
   manufacturer?: string | null;
+  aircraft_description?: string | null;
+  registration?: string | null;
   description?: string | null;
   source?: 'manual' | 'live' | 'websocket' | 'database' | string;
   data_source?: 'opensky' | 'feeder' | 'flightaware' | string; // Data source from backend (opensky, feeder, etc.)

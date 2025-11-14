@@ -16,6 +16,8 @@ import './planeMarker.css';
 import { inferAircraftCategory } from '../utils/aircraft';
 import type { Aircraft, Route } from '../types';
 
+const MS_TO_FPM = 196.850394;
+
 const CATEGORY_ICON_MAP: Record<number | 'default', string> = {
   1: planeDefault,
   2: planeSmall,
@@ -104,8 +106,29 @@ function getAircraftDisplayType(plane: Aircraft, route?: Route) {
   if (route?.aircraft?.type && route.aircraft.type !== 'Plane') {
     return route.aircraft.type;
   }
+  if (plane.aircraft_description) {
+    return plane.aircraft_description;
+  }
+  if (plane.model) {
+    return plane.model;
+  }
+  if (plane.aircraft_model) {
+    return plane.aircraft_model;
+  }
+  if (plane.aircraft_type && plane.aircraft_type !== 'Plane') {
+    return plane.aircraft_type;
+  }
   // Fallback to category label
   return getCategoryLabel(plane);
+}
+
+function formatVerticalRateValue(verticalRate?: number | null) {
+  if (verticalRate === null || verticalRate === undefined) {
+    return 'N/A';
+  }
+  const fpm = Math.round(verticalRate * MS_TO_FPM);
+  const prefix = fpm > 0 ? '+' : '';
+  return `${prefix}${fpm.toLocaleString()} fpm`;
 }
 
 const PlaneMarker: React.FC<PlaneMarkerProps> = ({
@@ -127,7 +150,7 @@ const PlaneMarker: React.FC<PlaneMarkerProps> = ({
     return null;
   }
 
-  const { latitude, longitude, callsign, icao24, baro_altitude, velocity, true_track, isStale, ageMinutes, data_age_seconds, position_source } = plane;
+  const { latitude, longitude, callsign, icao24, baro_altitude, velocity, true_track, isStale, ageMinutes, data_age_seconds, position_source, registration, vertical_rate } = plane;
   const zIndexOffset = isSelected ? 1000 : isHighlighted ? 800 : 0;
   
   // Calculate staleness
@@ -271,12 +294,25 @@ const PlaneMarker: React.FC<PlaneMarkerProps> = ({
           </div>
           <div>
             <strong>Speed:</strong>{' '}
-            <span>{velocity ? `${Math.round(velocity * 1.944)}kts` : 'N/A'}</span>
+            <span>
+              {velocity || velocity === 0
+                ? `${Math.round(velocity).toLocaleString()} kts`
+                : 'N/A'}
+            </span>
+          </div>
+          <div>
+            <strong>Vertical Rate:</strong>{' '}
+            <span>{formatVerticalRateValue(vertical_rate)}</span>
           </div>
           <div>
             <strong>Heading:</strong>{' '}
             <span>{true_track ? Math.round(true_track) : 'N/A'}</span>
           </div>
+          {registration && (
+            <div>
+              <strong>Registration:</strong> <span>{registration}</span>
+            </div>
+          )}
         </div>
       </Popup>
     </Marker>

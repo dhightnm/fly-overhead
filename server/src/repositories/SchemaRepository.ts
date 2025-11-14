@@ -251,6 +251,8 @@ class SchemaRepository {
         id SERIAL PRIMARY KEY,
         icao24 TEXT NOT NULL,
         callsign TEXT,
+        flight_key TEXT,
+        route_key TEXT,
         departure_iata TEXT,
         departure_icao TEXT,
         departure_name TEXT,
@@ -270,10 +272,102 @@ class SchemaRepository {
         first_seen TIMESTAMPTZ,
         last_seen TIMESTAMPTZ,
         source TEXT,
+        registration TEXT,
+        flight_status TEXT,
+        route TEXT,
+        route_distance NUMERIC,
+        baggage_claim TEXT,
+        gate_origin TEXT,
+        gate_destination TEXT,
+        terminal_origin TEXT,
+        terminal_destination TEXT,
+        actual_runway_off TIMESTAMPTZ,
+        actual_runway_on TIMESTAMPTZ,
+        progress_percent NUMERIC,
+        filed_airspeed NUMERIC,
+        blocked BOOLEAN DEFAULT false,
+        diverted BOOLEAN DEFAULT false,
+        cancelled BOOLEAN DEFAULT false,
+        departure_delay INTEGER,
+        arrival_delay INTEGER,
+        scheduled_ete NUMERIC,
+        actual_ete NUMERIC,
         created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
       );
       
+      -- Add missing columns to existing table
+      DO $$
+      BEGIN
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='flight_routes_history' AND column_name='flight_key') THEN
+          ALTER TABLE flight_routes_history ADD COLUMN flight_key TEXT;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='flight_routes_history' AND column_name='route_key') THEN
+          ALTER TABLE flight_routes_history ADD COLUMN route_key TEXT;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='flight_routes_history' AND column_name='registration') THEN
+          ALTER TABLE flight_routes_history ADD COLUMN registration TEXT;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='flight_routes_history' AND column_name='flight_status') THEN
+          ALTER TABLE flight_routes_history ADD COLUMN flight_status TEXT;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='flight_routes_history' AND column_name='route') THEN
+          ALTER TABLE flight_routes_history ADD COLUMN route TEXT;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='flight_routes_history' AND column_name='route_distance') THEN
+          ALTER TABLE flight_routes_history ADD COLUMN route_distance NUMERIC;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='flight_routes_history' AND column_name='baggage_claim') THEN
+          ALTER TABLE flight_routes_history ADD COLUMN baggage_claim TEXT;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='flight_routes_history' AND column_name='gate_origin') THEN
+          ALTER TABLE flight_routes_history ADD COLUMN gate_origin TEXT;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='flight_routes_history' AND column_name='gate_destination') THEN
+          ALTER TABLE flight_routes_history ADD COLUMN gate_destination TEXT;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='flight_routes_history' AND column_name='terminal_origin') THEN
+          ALTER TABLE flight_routes_history ADD COLUMN terminal_origin TEXT;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='flight_routes_history' AND column_name='terminal_destination') THEN
+          ALTER TABLE flight_routes_history ADD COLUMN terminal_destination TEXT;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='flight_routes_history' AND column_name='actual_runway_off') THEN
+          ALTER TABLE flight_routes_history ADD COLUMN actual_runway_off TIMESTAMPTZ;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='flight_routes_history' AND column_name='actual_runway_on') THEN
+          ALTER TABLE flight_routes_history ADD COLUMN actual_runway_on TIMESTAMPTZ;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='flight_routes_history' AND column_name='progress_percent') THEN
+          ALTER TABLE flight_routes_history ADD COLUMN progress_percent NUMERIC;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='flight_routes_history' AND column_name='filed_airspeed') THEN
+          ALTER TABLE flight_routes_history ADD COLUMN filed_airspeed NUMERIC;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='flight_routes_history' AND column_name='blocked') THEN
+          ALTER TABLE flight_routes_history ADD COLUMN blocked BOOLEAN DEFAULT false;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='flight_routes_history' AND column_name='diverted') THEN
+          ALTER TABLE flight_routes_history ADD COLUMN diverted BOOLEAN DEFAULT false;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='flight_routes_history' AND column_name='cancelled') THEN
+          ALTER TABLE flight_routes_history ADD COLUMN cancelled BOOLEAN DEFAULT false;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='flight_routes_history' AND column_name='departure_delay') THEN
+          ALTER TABLE flight_routes_history ADD COLUMN departure_delay INTEGER;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='flight_routes_history' AND column_name='arrival_delay') THEN
+          ALTER TABLE flight_routes_history ADD COLUMN arrival_delay INTEGER;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='flight_routes_history' AND column_name='scheduled_ete') THEN
+          ALTER TABLE flight_routes_history ADD COLUMN scheduled_ete NUMERIC;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='flight_routes_history' AND column_name='actual_ete') THEN
+          ALTER TABLE flight_routes_history ADD COLUMN actual_ete NUMERIC;
+        END IF;
+      END $$;
+      
+      CREATE UNIQUE INDEX IF NOT EXISTS uniq_flight_routes_history_flight_key ON flight_routes_history(flight_key);
       CREATE INDEX IF NOT EXISTS idx_routes_history_icao24 ON flight_routes_history(icao24);
       CREATE INDEX IF NOT EXISTS idx_routes_history_callsign ON flight_routes_history(callsign);
       CREATE INDEX IF NOT EXISTS idx_routes_history_created_at ON flight_routes_history(created_at DESC);

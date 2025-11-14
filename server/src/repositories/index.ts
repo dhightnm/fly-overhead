@@ -100,7 +100,7 @@ class PostgresRepository {
   async findAircraftHistory(icao24: string, startTime?: Date | null, endTime?: Date | null): Promise<any> { return this.aircraft.findAircraftHistory(icao24, startTime, endTime); }
   async findMultipleAircraftHistory(icao24s: string[], startTime?: Date | null, endTime?: Date | null): Promise<any> { return this.aircraft.findMultipleAircraftHistory(icao24s, startTime, endTime); }
   async findRecentAircraftWithoutRoutes(minLastContact: number, limit?: number): Promise<any> { return this.aircraft.findRecentAircraftWithoutRoutes(minLastContact, limit); }
-  async upsertAircraftStateWithPriority(state: any, feederId: string | null, ingestionTimestamp: Date | null, dataSource?: string, sourcePriority?: number): Promise<void> { return this.aircraft.upsertAircraftStateWithPriority(state, feederId, ingestionTimestamp, dataSource, sourcePriority); }
+  async upsertAircraftStateWithPriority(state: any, feederId: string | null, ingestionTimestamp: Date | null, dataSource?: string, sourcePriority?: number, skipHistory?: boolean): Promise<void> { return this.aircraft.upsertAircraftStateWithPriority(state, feederId, ingestionTimestamp, dataSource, sourcePriority, skipHistory); }
 
   // Delegate route methods
   async cacheRoute(cacheKey: string, routeData: any): Promise<void> { return this.route.cacheRoute(cacheKey, routeData); }

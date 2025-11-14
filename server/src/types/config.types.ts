@@ -30,6 +30,13 @@ export interface ExternalApiConfig {
     user?: string;
     pass?: string;
   };
+  airplanesLive: {
+    baseUrl: string;
+    maxRadiusNm: number;
+    rateLimit: {
+      requestsPerSecond: number;
+    };
+  };
   n2yo: {
     baseUrl: string;
     apiKey?: string;
@@ -65,4 +72,3 @@ export interface AppConfig {
   cors: CorsConfig;
   aircraft: AircraftConfig;
 }
-
