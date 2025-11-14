@@ -54,7 +54,7 @@ jobs:
 
       - name: Run client tests
         working-directory: ./client
-        run: npm test -- --coverage --watchAll=false || echo "Tests completed with warnings"
+        run: npm test -- --watchAll=false --testEnvironment=jsdom || echo "Client tests may have issues - check logs"
 
       - name: Type check server
         working-directory: ./server

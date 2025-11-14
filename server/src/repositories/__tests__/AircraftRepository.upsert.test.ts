@@ -26,7 +26,8 @@ describe('AircraftRepository - Upsert Priority Logic (Integration)', () => {
   beforeAll(() => {
     const connection = getConnection();
     db = connection.getDb();
-    repository = new AircraftRepository(db);
+    const postgis = connection.getPostGIS();
+    repository = new AircraftRepository(db, postgis);
   });
 
   beforeEach(async () => {

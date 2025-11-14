@@ -20,8 +20,9 @@ describe('AircraftRepository - Integration Tests', () => {
   beforeAll(async () => {
     const connection = getConnection();
     db = connection.getDb();
-    aircraftRepo = new AircraftRepository(db);
-    schemaRepo = new SchemaRepository(db);
+    const postgis = connection.getPostGIS();
+    aircraftRepo = new AircraftRepository(db, postgis);
+    schemaRepo = new SchemaRepository();
 
     // Ensure tables exist
     await schemaRepo.createMainTable();

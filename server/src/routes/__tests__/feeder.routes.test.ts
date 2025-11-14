@@ -387,6 +387,7 @@ describe('Feeder Registration Endpoint', () => {
         longitude: null,
         metadata: {},
         created_at: new Date(),
+        updated_at: new Date(),
         last_seen_at: null,
         is_active: true,
       };

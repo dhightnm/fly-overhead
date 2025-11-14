@@ -8,7 +8,7 @@ const aerodataboxMock = {
 const cacheRouteRepoMock = jest.fn();
 const updateAircraftCallsignMock = jest.fn();
 const storeRouteHistoryMock = jest.fn() as any;
-const dbOneOrNoneMock = jest.fn();
+const dbOneOrNoneMock = jest.fn() as any;
 const getDbMock = jest.fn(() => ({ oneOrNone: dbOneOrNoneMock }));
 
 jest.mock('../AerodataboxService', () => ({
