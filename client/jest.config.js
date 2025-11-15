@@ -16,6 +16,7 @@ module.exports = {
       },
     },
   },
+  testEnvironmentOptions: {},
   collectCoverageFrom: [
     'src/**/*.{js,jsx,ts,tsx}',
     '!src/**/*.d.ts',
