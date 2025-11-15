@@ -29,7 +29,16 @@
       "no-promise-executor-return": "off",
       "no-plusplus": "off",
       "import/no-extraneous-dependencies": "off",
-      "import/extensions": "off",
+      "import/extensions": [
+        "error",
+        "ignorePackages",
+        {
+          "js": "never",
+          "jsx": "never",
+          "ts": "never",
+          "tsx": "never"
+        }
+      ],
       "quotes": ["error", "single"],
       "semi": ["error", "always"],
       "no-unused-vars": ["warn"],
@@ -61,7 +70,8 @@
           "no-shadow": "off",
           "@typescript-eslint/no-shadow": "error",
           "no-restricted-syntax": "off",
-          "no-continue": "off"
+          "no-continue": "off",
+          "import/extensions": "off"
         }
       },
       {
@@ -83,7 +93,8 @@
           "@typescript-eslint/no-non-null-assertion": "off",
           "no-shadow": "off",
           "@typescript-eslint/no-shadow": "error",
-          "import/no-extraneous-dependencies": "off"
+          "import/no-extraneous-dependencies": "off",
+          "import/extensions": "off"
         }
       }
     ]
