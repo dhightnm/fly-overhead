@@ -1,4 +1,6 @@
-import { getRateLimitTier, RATE_LIMIT_TIERS, RATE_LIMIT_WINDOWS, RATE_LIMIT_HEADERS } from '../rateLimits';
+import {
+  getRateLimitTier, RATE_LIMIT_TIERS, RATE_LIMIT_WINDOWS, RATE_LIMIT_HEADERS,
+} from '../rateLimits';
 
 describe('Rate Limits Configuration', () => {
   describe('RATE_LIMIT_TIERS', () => {
@@ -181,4 +183,3 @@ describe('Rate Limits Configuration', () => {
     });
   });
 });
-

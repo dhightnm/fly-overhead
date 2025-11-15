@@ -99,4 +99,3 @@ export interface IPostGISService {
     radiusKm?: number
   ): Promise<any>;
 }
-

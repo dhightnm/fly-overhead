@@ -1,4 +1,6 @@
-import { Router, Request, Response, NextFunction } from 'express';
+import {
+  Router, Request, Response, NextFunction,
+} from 'express';
 import NodeCache from 'node-cache';
 import aircraftService from '../services/AircraftService';
 import airplanesLiveService from '../services/AirplanesLiveService';
@@ -40,7 +42,9 @@ function createBoundingBox(lat: number, lon: number, radiusNm: number) {
   const lonMin = clamp(lon - lonRadius, -180, 180);
   const lonMax = clamp(lon + lonRadius, -180, 180);
 
-  return { latMin, latMax, lonMin, lonMax };
+  return {
+    latMin, latMax, lonMin, lonMax,
+  };
 }
 
 const CURRENT_FLIGHT_THRESHOLD_SECONDS = 15 * 60; // 15 minutes
@@ -66,8 +70,7 @@ const maybeOverrideWithArrivalLocation = (aircraft: any, route: any, dataAgeSeco
 
   const normalizedStatus = normalizeStatus(route?.flightStatus);
   const hasArrivalStatus = normalizedStatus ? LANDED_STATUSES.has(normalizedStatus) : false;
-  const actualArrivalTimestamp =
-    typeof route?.flightData?.actualArrival === 'number' ? route.flightData.actualArrival : null;
+  const actualArrivalTimestamp = typeof route?.flightData?.actualArrival === 'number' ? route.flightData.actualArrival : null;
   const nowSeconds = Math.floor(Date.now() / 1000);
   const actualArrivalAgeSeconds = actualArrivalTimestamp ? Math.max(0, nowSeconds - actualArrivalTimestamp) : null;
   const hasActualArrival = actualArrivalAgeSeconds !== null;
@@ -175,7 +178,9 @@ router.get(
         await Promise.all(statePromises);
       }
 
-      const { latMin, latMax, lonMin, lonMax } = createBoundingBox(latitude, longitude, clampedRadius);
+      const {
+        latMin, latMax, lonMin, lonMax,
+      } = createBoundingBox(latitude, longitude, clampedRadius);
       const nowSeconds = Math.floor(Date.now() / 1000);
       const recentThreshold = nowSeconds - BOUNDS_RECENT_WINDOW_SECONDS;
       const aircraftStates = await postgresRepository.findAircraftInBounds(
@@ -414,8 +419,8 @@ router.get(
       if (aircraftIcao24 && (route.aircraft?.type || route.aircraft?.model)) {
         const inferredCategory = mapAircraftTypeToCategory(route.aircraft?.type, route.aircraft?.model);
         if (
-          inferredCategory !== null &&
-          (!currentAircraft || currentAircraft.category === null || currentAircraft.category === 0)
+          inferredCategory !== null
+          && (!currentAircraft || currentAircraft.category === null || currentAircraft.category === 0)
         ) {
           try {
             await postgresRepository.updateAircraftCategory(aircraftIcao24, inferredCategory);
@@ -446,7 +451,9 @@ router.get(
   requireApiKeyAuth,
   rateLimitMiddleware,
   async (req: Request, res: Response, next: NextFunction) => {
-    const { latmin, lonmin, latmax, lonmax } = req.params;
+    const {
+      latmin, lonmin, latmax, lonmax,
+    } = req.params;
 
     const roundedLatMin = Math.floor(parseFloat(latmin) * 100) / 100;
     const roundedLonMin = Math.floor(parseFloat(lonmin) * 100) / 100;
@@ -490,7 +497,9 @@ router.post(
   requireApiKeyAuth,
   rateLimitMiddleware,
   async (req: Request, res: Response, next: NextFunction) => {
-    const { latmin, lonmin, latmax, lonmax } = req.params;
+    const {
+      latmin, lonmin, latmax, lonmax,
+    } = req.params;
 
     const boundingBox = {
       lamin: parseFloat(latmin),
@@ -888,12 +897,16 @@ router.get(
   requireApiKeyAuth,
   rateLimitMiddleware,
   async (req: Request, res: Response, next: NextFunction) => {
-    const { latmin, lonmin, latmax, lonmax } = req.params;
+    const {
+      latmin, lonmin, latmax, lonmax,
+    } = req.params;
     const { cellSize = 0.01 } = req.query;
 
     try {
       // TODO: Implement getTrafficDensity in repository
-      logger.warn('getTrafficDensity not yet implemented', { latmin, lonmin, latmax, lonmax, cellSize });
+      logger.warn('getTrafficDensity not yet implemented', {
+        latmin, lonmin, latmax, lonmax, cellSize,
+      });
       return res.status(501).json({ error: 'Not implemented' });
     } catch (err) {
       return next(err);
@@ -968,7 +981,9 @@ router.get(
   requireApiKeyAuth,
   rateLimitMiddleware,
   async (req: Request, res: Response, next: NextFunction) => {
-    const { latmin, lonmin, latmax, lonmax } = req.params;
+    const {
+      latmin, lonmin, latmax, lonmax,
+    } = req.params;
     const { type, limit = 100 } = req.query;
 
     try {

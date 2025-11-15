@@ -1,4 +1,6 @@
-import { Router, Request, Response, NextFunction } from 'express';
+import {
+  Router, Request, Response, NextFunction,
+} from 'express';
 import bcrypt from 'bcryptjs';
 import postgresRepository from '../repositories/PostgresRepository';
 import logger from '../utils/logger';
@@ -21,7 +23,9 @@ interface AuthenticatedRequest extends Request {
  */
 router.post('/keys', authenticateToken, async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
   try {
-    const { name, description, type = 'production', scopes = ['read'], expiresAt } = req.body;
+    const {
+      name, description, type = 'production', scopes = ['read'], expiresAt,
+    } = req.body;
 
     if (!name) {
       return res.status(400).json({
@@ -69,7 +73,7 @@ router.post('/keys', authenticateToken, async (req: AuthenticatedRequest, res: R
       keyId: apiKeyData.key_id,
       name: apiKeyData.name,
       prefix: apiKeyData.key_prefix,
-      type: type,
+      type,
       scopes: apiKeyData.scopes,
       createdAt: apiKeyData.created_at,
       expiresAt: apiKeyData.expires_at,
@@ -88,7 +92,9 @@ router.post('/keys', authenticateToken, async (req: AuthenticatedRequest, res: R
  */
 router.get('/keys', authenticateToken, async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
   try {
-    const { status, type, limit = 100, offset = 0 } = req.query;
+    const {
+      status, type, limit = 100, offset = 0,
+    } = req.query;
 
     const filters = {
       userId: req.user!.userId,
@@ -278,7 +284,7 @@ router.delete('/keys/:keyId', authenticateToken, async (req: AuthenticatedReques
     const revokedKey = await postgresRepository.revokeApiKey(
       keyId,
       req.user!.userId,
-      reason || 'Revoked by user'
+      reason || 'Revoked by user',
     );
 
     res.json({
@@ -302,4 +308,3 @@ router.delete('/keys/:keyId', authenticateToken, async (req: AuthenticatedReques
 router.get('/rate-limit-status', authenticateToken, getRateLimitStatusHandler as any);
 
 export default router;
-

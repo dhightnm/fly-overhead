@@ -64,8 +64,11 @@ interface PointRequest {
  */
 class AirplanesLiveService {
   private baseUrl: string;
+
   private lastRequestTime: number = 0;
+
   private readonly MIN_REQUEST_INTERVAL_MS = 1000; // 1 request per second
+
   private readonly MAX_RADIUS_NM = 250;
 
   // Cache most recent response for 2 seconds
@@ -224,24 +227,22 @@ class AirplanesLiveService {
 
     // airplanes.live sends altitude in FEET, but OpenSky uses METERS
     // Convert feet to meters: 1 ft = 0.3048 m
-    const rawBaroAltitude =
-      typeof aircraft.alt_baro === 'number'
-        ? aircraft.alt_baro
-        : typeof aircraft.alt_baro === 'string'
+    const rawBaroAltitude = typeof aircraft.alt_baro === 'number'
+      ? aircraft.alt_baro
+      : typeof aircraft.alt_baro === 'string'
         ? parseFloat(aircraft.alt_baro)
         : null;
     let altitude = rawBaroAltitude;
     if (altitude !== null && !Number.isNaN(altitude)) {
-      altitude = altitude * 0.3048; // Convert feet to meters
+      altitude *= 0.3048; // Convert feet to meters
     } else if (altitude !== null && Number.isNaN(altitude)) {
       altitude = null; // Handle "ground" or other string values that parseFloat to NaN
     }
 
     // airplanes.live sends ground speed in KNOTS (store/display as-is)
-    const velocity =
-      typeof aircraft.gs === 'number'
-        ? aircraft.gs
-        : typeof aircraft.gs === 'string' && !Number.isNaN(parseFloat(aircraft.gs))
+    const velocity = typeof aircraft.gs === 'number'
+      ? aircraft.gs
+      : typeof aircraft.gs === 'string' && !Number.isNaN(parseFloat(aircraft.gs))
         ? parseFloat(aircraft.gs)
         : null;
     const track = aircraft.track || null;
@@ -250,13 +251,13 @@ class AirplanesLiveService {
     // 1 ft/min = 0.00508 m/s
     let verticalRate = aircraft.baro_rate || null;
     if (verticalRate !== null) {
-      verticalRate = verticalRate * 0.00508; // Convert ft/min to m/s
+      verticalRate *= 0.00508; // Convert ft/min to m/s
     }
 
     // Geometric altitude also in feet - convert to meters
     let geoAltitude = aircraft.alt_geom || null;
     if (geoAltitude !== null) {
-      geoAltitude = geoAltitude * 0.3048; // Convert feet to meters
+      geoAltitude *= 0.3048; // Convert feet to meters
     }
 
     const squawk = aircraft.squawk || null;
@@ -282,7 +283,7 @@ class AirplanesLiveService {
     // Selected altitude in feet - convert to meters
     let navAltitudeMcp = aircraft.nav_altitude_mcp || null;
     if (navAltitudeMcp !== null) {
-      navAltitudeMcp = navAltitudeMcp * 0.3048; // Convert feet to meters
+      navAltitudeMcp *= 0.3048; // Convert feet to meters
     }
 
     const navHeading = aircraft.nav_heading || null; // Selected heading

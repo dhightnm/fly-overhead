@@ -60,7 +60,7 @@ class FeederRepository {
   async upsertFeederStats(
     feederId: string,
     messagesReceived: number,
-    uniqueAircraft: number
+    uniqueAircraft: number,
   ): Promise<void> {
     // Use date column to match existing table schema
     const query = `
@@ -117,4 +117,3 @@ class FeederRepository {
 }
 
 export default FeederRepository;
-

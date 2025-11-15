@@ -176,7 +176,7 @@ export async function optionalApiKeyAuth(req: AuthenticatedRequest, res: Respons
       return;
     }
 
-    const keyData = validation.keyData;
+    const { keyData } = validation;
 
     // API key is valid - attach to request
     req.apiKey = {
@@ -228,9 +228,9 @@ export async function optionalApiKeyAuth(req: AuthenticatedRequest, res: Respons
  * Same-origin requests typically include browser signals (cookies/origin/referrer)
  */
 function isSameOriginRequest(req: Request): boolean {
-  const origin = req.headers.origin;
-  const referer = req.headers.referer;
-  const host = req.headers.host;
+  const { origin } = req.headers;
+  const { referer } = req.headers;
+  const { host } = req.headers;
   const hasCookies = !!req.headers.cookie;
 
   // Extract hostname from current request
@@ -382,7 +382,7 @@ export async function requireApiKeyAuth(req: AuthenticatedRequest, res: Response
       return;
     }
 
-    const keyData = validation.keyData;
+    const { keyData } = validation;
 
     // API key is valid - attach to request
     req.apiKey = {

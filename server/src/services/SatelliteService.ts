@@ -7,6 +7,7 @@ import logger from '../utils/logger';
  */
 class SatelliteService {
   private baseUrl: string;
+
   private apiKey: string | undefined;
 
   constructor() {
@@ -20,7 +21,7 @@ class SatelliteService {
   async getSatellitesAbove(
     observerLat: number,
     observerLng: number,
-    observerAlt: number
+    observerAlt: number,
   ): Promise<any> {
     try {
       const url = `${this.baseUrl}/satellite/above/${observerLat}/${observerLng}/${observerAlt}/45/52&apiKey=${this.apiKey}`;
@@ -40,4 +41,3 @@ class SatelliteService {
 }
 
 export default new SatelliteService();
-

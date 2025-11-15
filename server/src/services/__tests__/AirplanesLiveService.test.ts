@@ -1,5 +1,5 @@
-import airplanesLiveService from '../AirplanesLiveService';
 import axios from 'axios';
+import airplanesLiveService from '../AirplanesLiveService';
 
 // Mock dependencies
 jest.mock('axios');
@@ -36,7 +36,7 @@ describe('AirplanesLiveService', () => {
     jest.useRealTimers();
   });
 
-  // Note: Rate limiting and caching tests are difficult to test in isolation 
+  // Note: Rate limiting and caching tests are difficult to test in isolation
   // due to the singleton pattern and internal state. Tested manually in integration.
 
   describe('prepareStateForDatabase', () => {
@@ -72,23 +72,23 @@ describe('AirplanesLiveService', () => {
       expect(result[1]).toBe('AAL123'); // callsign (trimmed)
       expect(result[5]).toBe(-74.0060); // longitude
       expect(result[6]).toBe(40.7128); // latitude
-      
+
       // Altitude: 35000 ft * 0.3048 = 10668 meters
       expect(result[7]).toBeCloseTo(10668, 0); // baro_altitude in meters
-      
+
       expect(result[9]).toBe(450); // velocity in knots (no conversion)
-      
+
       // Vertical rate: 2000 ft/min * 0.00508 = 10.16 m/s
       expect(result[11]).toBeCloseTo(10.16, 1); // vertical_rate in m/s
-      
+
       // Geo altitude: 35100 ft * 0.3048 = 10698 meters
       expect(result[13]).toBeCloseTo(10698, 0); // geo_altitude in meters
-      
+
       expect(result[19]).toBe('B738'); // aircraft_type
       expect(result[20]).toBe('BOEING 737-800'); // aircraft_description
       expect(result[21]).toBe('N12345'); // registration
       expect(result[22]).toBe('none'); // emergency_status
-      
+
       // Nav altitude MCP: 35000 ft * 0.3048 = 10668 meters
       expect(result[24]).toBeCloseTo(10668, 0); // nav_altitude_mcp in meters
     });
@@ -160,16 +160,16 @@ describe('AirplanesLiveService', () => {
       };
       mockedAxios.get.mockResolvedValue(mockResponse);
 
-      await airplanesLiveService.getAircraftNearPoint({ 
-        lat: 40.0, 
-        lon: -105.0, 
-        radiusNm: 300 // Exceeds max of 250
+      await airplanesLiveService.getAircraftNearPoint({
+        lat: 40.0,
+        lon: -105.0,
+        radiusNm: 300, // Exceeds max of 250
       });
 
       // Should clamp to 250nm
       expect(mockedAxios.get).toHaveBeenCalledWith(
         expect.stringContaining('/250'),
-        expect.any(Object)
+        expect.any(Object),
       );
     });
   });
@@ -205,7 +205,7 @@ describe('AirplanesLiveService', () => {
         const actualMeters = result[7];
 
         expect(actualMeters).toBeCloseTo(expectedMeters, 1);
-        
+
         // Critical: Ensure the value stored is NOT the raw feet value
         if (feet > 15000) {
           expect(actualMeters).toBeLessThan(feet); // Meters should be < feet for high altitudes
@@ -387,11 +387,10 @@ describe('AirplanesLiveService', () => {
       const altitudeMeters = result[7];
 
       expect(altitudeMeters).toBeCloseTo(21336, 0); // 70000 ft = 21336 m
-      
+
       // Verify frontend would display correctly
       const frontendDisplay = altitudeMeters * 3.28084;
       expect(frontendDisplay).toBeCloseTo(70000, 0);
     });
   });
 });
-

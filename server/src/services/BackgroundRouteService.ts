@@ -9,10 +9,15 @@ import { mapAircraftTypeToCategory } from '../utils/aircraftCategoryMapper';
  */
 class BackgroundRouteService {
   private isRunning: boolean = false;
+
   private intervalId: NodeJS.Timeout | null = null;
+
   private readonly BATCH_SIZE: number = 5;
+
   private readonly INTERVAL_MS: number = 5 * 60 * 1000; // 5 minutes
+
   private readonly BACKFILL_BATCH: number = 10;
+
   private readonly FLIGHTAWARE_CALLS_CAP: number;
 
   constructor() {
@@ -116,7 +121,7 @@ class BackgroundRouteService {
   private async _fetchRouteForFlight(
     flight: any,
     flightAwareRemaining: number,
-    logContext: string = ''
+    logContext: string = '',
   ): Promise<{ route: any | null; flightAwareRemaining: number }> {
     let route: any | null = null;
     let faRemaining = flightAwareRemaining;
@@ -277,7 +282,7 @@ class BackgroundRouteService {
   private async _processFlightBackfill(
     flight: any,
     flightAwareRemaining: number,
-    logContext: string = ''
+    logContext: string = '',
   ): Promise<number> {
     const { route, flightAwareRemaining: faRemaining } = await this._fetchRouteForFlight(
       flight,
@@ -396,4 +401,3 @@ class BackgroundRouteService {
 // Export singleton instance
 const backgroundRouteService = new BackgroundRouteService();
 export default backgroundRouteService;
-

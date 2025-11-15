@@ -1,4 +1,8 @@
 // Mock config FIRST before any other imports
+import aircraftService from '../AircraftService';
+import postgresRepository from '../../repositories/PostgresRepository';
+import rateLimitManager from '../RateLimitManager';
+
 jest.mock('../../config', () => {
   const mockConfig = {
     database: {
@@ -73,10 +77,6 @@ jest.mock('../../routes/aircraft.routes', () => ({
     flushAll: jest.fn(),
   },
 }));
-
-import aircraftService from '../AircraftService';
-import postgresRepository from '../../repositories/PostgresRepository';
-import rateLimitManager from '../RateLimitManager';
 
 // Type the mocks - use the actual mock functions
 const mockOpenSkyService = {
@@ -404,4 +404,3 @@ describe('AircraftService', () => {
     });
   });
 });
-

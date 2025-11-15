@@ -217,7 +217,9 @@ router.post(
   // Note: Rate limiting bypassed for registration - feeder service already limits to 5/hour
   // This is a one-time operation and shouldn't be blocked by anonymous tier limits
   async (req: AuthenticatedRequest, res: Response, _next: NextFunction) => {
-    const { feeder_id, api_key_hash, key_prefix, name, latitude, longitude, metadata } = req.body;
+    const {
+      feeder_id, api_key_hash, key_prefix, name, latitude, longitude, metadata,
+    } = req.body;
 
     if (!feeder_id || !api_key_hash || !name) {
       return res.status(400).json({
@@ -486,7 +488,7 @@ router.get(
           // Try to find feeder linked to this user
           const feeders = await postgresRepository
             .getDb()
-            .any(`SELECT * FROM feeders WHERE metadata->>'user_id' = $1`, [userId.toString()]);
+            .any('SELECT * FROM feeders WHERE metadata->>\'user_id\' = $1', [userId.toString()]);
           if (feeders.length > 0) {
             return res.status(200).json({
               success: true,

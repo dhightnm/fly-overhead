@@ -6,7 +6,7 @@ type AircraftStateArray = any[];
 
 /**
  * Integration tests for AircraftRepository upsert priority logic
- * 
+ *
  * These tests prevent regression of the bug where:
  * - Unconverted altitude data was overwriting converted data
  * - Stale data was overwriting fresh data due to identical timestamps
@@ -86,13 +86,13 @@ describe('AircraftRepository - Upsert Priority Logic (Integration)', () => {
         new Date(),
         'airplanes.live',
         20,
-        true
+        true,
       );
 
       // Verify stored values
       const result = await db.oneOrNone(
         'SELECT baro_altitude, velocity, vertical_rate FROM aircraft_states WHERE icao24 = $1',
-        ['test001']
+        ['test001'],
       );
 
       expect(result).not.toBeNull();
@@ -140,7 +140,7 @@ describe('AircraftRepository - Upsert Priority Logic (Integration)', () => {
         new Date('2024-11-14T10:00:00Z'),
         'airplanes.live',
         20,
-        true
+        true,
       );
 
       // Attempt to overwrite with unconverted data (feet) - same timestamp
@@ -181,18 +181,18 @@ describe('AircraftRepository - Upsert Priority Logic (Integration)', () => {
         new Date('2024-11-14T10:00:01Z'), // 1 second later ingestion
         'airplanes.live',
         20,
-        true
+        true,
       );
 
       // Verify the NEWER ingestion_timestamp allowed the update
       const result = await db.oneOrNone(
         'SELECT baro_altitude FROM aircraft_states WHERE icao24 = $1',
-        ['test002']
+        ['test002'],
       );
 
       // With the fix, newer ingestion_timestamp should overwrite even with same last_contact
       expect(result.baro_altitude).toBe(35000);
-      
+
       // NOTE: In production, this scenario shouldn't happen because conversion happens
       // before upsert. This test verifies the conflict resolution logic works.
     });
@@ -238,7 +238,7 @@ describe('AircraftRepository - Upsert Priority Logic (Integration)', () => {
         new Date('2024-11-14T10:00:00Z'),
         'airplanes.live',
         20,
-        true
+        true,
       );
 
       const newerState: AircraftStateArray = [
@@ -278,12 +278,12 @@ describe('AircraftRepository - Upsert Priority Logic (Integration)', () => {
         new Date('2024-11-14T10:01:40Z'),
         'airplanes.live',
         20,
-        true
+        true,
       );
 
       const result = await db.oneOrNone(
         'SELECT baro_altitude, velocity, longitude, latitude FROM aircraft_states WHERE icao24 = $1',
-        ['test003']
+        ['test003'],
       );
 
       expect(result.baro_altitude).toBe(11000); // Updated
@@ -331,7 +331,7 @@ describe('AircraftRepository - Upsert Priority Logic (Integration)', () => {
         new Date('2024-11-14T10:00:00.000Z'),
         'airplanes.live',
         20,
-        true
+        true,
       );
 
       // Same last_contact, but ingested later (converted data replacing unconverted)
@@ -372,18 +372,18 @@ describe('AircraftRepository - Upsert Priority Logic (Integration)', () => {
         new Date('2024-11-14T10:00:00.500Z'), // 500ms later ingestion
         'airplanes.live',
         20,
-        true
+        true,
       );
 
       const result = await db.oneOrNone(
         'SELECT baro_altitude, ingestion_timestamp FROM aircraft_states WHERE icao24 = $1',
-        ['test004']
+        ['test004'],
       );
 
       // The newer ingestion should have updated the altitude
       expect(result.baro_altitude).toBe(10668);
       expect(new Date(result.ingestion_timestamp).getTime()).toBeGreaterThan(
-        new Date('2024-11-14T10:00:00.000Z').getTime()
+        new Date('2024-11-14T10:00:00.000Z').getTime(),
       );
     });
 
@@ -426,7 +426,7 @@ describe('AircraftRepository - Upsert Priority Logic (Integration)', () => {
         new Date('2024-11-14T10:00:01Z'),
         'airplanes.live',
         20,
-        true
+        true,
       );
 
       // Attempt to write with older ingestion timestamp
@@ -467,12 +467,12 @@ describe('AircraftRepository - Upsert Priority Logic (Integration)', () => {
         new Date('2024-11-14T10:00:00Z'), // 1 second EARLIER
         'airplanes.live',
         20,
-        true
+        true,
       );
 
       const result = await db.oneOrNone(
         'SELECT baro_altitude FROM aircraft_states WHERE icao24 = $1',
-        ['test005']
+        ['test005'],
       );
 
       // Should still have the correct altitude from the newer ingestion
@@ -521,7 +521,7 @@ describe('AircraftRepository - Upsert Priority Logic (Integration)', () => {
         new Date(),
         'opensky',
         30, // Lower priority
-        true
+        true,
       );
 
       // Higher priority data (airplanes.live = 20)
@@ -562,12 +562,12 @@ describe('AircraftRepository - Upsert Priority Logic (Integration)', () => {
         new Date(),
         'airplanes.live',
         20, // Higher priority
-        true
+        true,
       );
 
       const result = await db.oneOrNone(
         'SELECT baro_altitude, velocity, data_source FROM aircraft_states WHERE icao24 = $1',
-        ['test006']
+        ['test006'],
       );
 
       expect(result.baro_altitude).toBe(11000); // From higher priority
@@ -615,7 +615,7 @@ describe('AircraftRepository - Upsert Priority Logic (Integration)', () => {
         new Date(),
         'feeder',
         10, // Highest priority
-        true
+        true,
       );
 
       // Lower priority data (airplanes.live = 20)
@@ -656,12 +656,12 @@ describe('AircraftRepository - Upsert Priority Logic (Integration)', () => {
         new Date(),
         'airplanes.live',
         20, // Lower priority
-        true
+        true,
       );
 
       const result = await db.oneOrNone(
         'SELECT baro_altitude, velocity, data_source FROM aircraft_states WHERE icao24 = $1',
-        ['test007']
+        ['test007'],
       );
 
       // Should still have data from higher priority source
@@ -712,7 +712,7 @@ describe('AircraftRepository - Upsert Priority Logic (Integration)', () => {
         new Date(staleTimestamp * 1000),
         'feeder',
         10, // High priority
-        true
+        true,
       );
 
       const freshTimestamp = Math.floor(Date.now() / 1000) - 5; // 5 seconds ago
@@ -754,12 +754,12 @@ describe('AircraftRepository - Upsert Priority Logic (Integration)', () => {
         new Date(),
         'opensky',
         30, // Low priority, but data is fresh
-        true
+        true,
       );
 
       const result = await db.oneOrNone(
         'SELECT baro_altitude, velocity, last_contact FROM aircraft_states WHERE icao24 = $1',
-        ['test008']
+        ['test008'],
       );
 
       // Fresh data should overwrite stale data
@@ -769,4 +769,3 @@ describe('AircraftRepository - Upsert Priority Logic (Integration)', () => {
     });
   });
 });
-

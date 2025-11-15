@@ -331,12 +331,11 @@ class RouteRepository {
 
     // Calculate ETE if available (reserved for future use)
     // Note: Currently not used in query, but calculated for potential future use
-    const _eteSeconds: number | null = 
-      typeof routeData.flightData?.duration === 'number' 
-        ? routeData.flightData.duration
-        : typeof routeData.flightData?.filedEte === 'number'
-          ? routeData.flightData.filedEte
-          : null;
+    const _eteSeconds: number | null = typeof routeData.flightData?.duration === 'number'
+      ? routeData.flightData.duration
+      : typeof routeData.flightData?.filedEte === 'number'
+        ? routeData.flightData.filedEte
+        : null;
     void _eteSeconds; // Suppress unused variable warning - reserved for future use
 
     const scheduledEte = (scheduledStart && scheduledEnd)
@@ -468,7 +467,7 @@ class RouteRepository {
   async findFlightsNeedingBackfillInRange(
     startDate: string,
     endDate: string,
-    limit: number = 50
+    limit: number = 50,
   ): Promise<FlightRouteHistory[]> {
     const query = `
       SELECT id, icao24, callsign, created_at,
@@ -559,7 +558,7 @@ class RouteRepository {
     icao24: string,
     startDate?: Date | null,
     endDate?: Date | null,
-    limit: number = 100
+    limit: number = 100,
   ): Promise<any[]> {
     let query = `
       SELECT
@@ -646,4 +645,3 @@ class RouteRepository {
 }
 
 export default RouteRepository;
-

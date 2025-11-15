@@ -7,7 +7,7 @@ import PostGISService from '../services/PostGISService';
 const pgp = pgPromise({
   // Log connection pool events for debugging
   connect: (e: any) => {
-    const client = e.client;
+    const { client } = e;
     logger.debug('New database connection established', {
       totalCount: client?.totalCount,
       idleCount: client?.idleCount,
@@ -45,6 +45,7 @@ const pgp = pgPromise({
  */
 class DatabaseConnection {
   private db: pgPromise.IDatabase<any>;
+
   private postgis: PostGISService;
 
   constructor() {
@@ -122,9 +123,9 @@ class DatabaseConnection {
     // - .lightsail.aws
     // - ls- prefix (Lightsail)
     return (
-      connectionString.includes('.rds.amazonaws.com') ||
-      connectionString.includes('.lightsail.aws') ||
-      connectionString.includes('ls-')
+      connectionString.includes('.rds.amazonaws.com')
+      || connectionString.includes('.lightsail.aws')
+      || connectionString.includes('ls-')
     );
   }
 

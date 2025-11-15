@@ -1,7 +1,7 @@
 /**
  * Maps aircraft type codes (ICAO type codes) to OpenSky category codes, model names, and display types
  * Uses lookup table for common codes + pattern matching fallback
- * 
+ *
  * OpenSky Categories:
  * 0: Unknown
  * 1: Light (small GA)
@@ -29,85 +29,85 @@ interface AircraftMapping {
 // Lookup table for common ICAO codes -> model names (fast O(1) lookup)
 const ICAO_MODEL_LOOKUP: Record<string, string> = {
   // Boeing
-  'B738': '737-800',
-  'B737': '737-700',
-  'B739': '737-900',
-  'B736': '737-600',
-  'B735': '737-500',
-  'B734': '737-400',
-  'B733': '737-300',
-  'B732': '737-200',
-  'B77W': '777-300ER',
-  'B77L': '777-200LR',
-  'B772': '777-200',
-  'B773': '777-300',
-  'B788': '787-8',
-  'B789': '787-9',
-  'B78X': '787-10',
-  'B748': '747-8',
-  'B744': '747-400',
-  'B763': '767-300',
-  'B762': '767-200',
-  'B764': '767-400',
-  'B752': '757-200',
-  'B753': '757-300',
-  'B757': '757',
+  B738: '737-800',
+  B737: '737-700',
+  B739: '737-900',
+  B736: '737-600',
+  B735: '737-500',
+  B734: '737-400',
+  B733: '737-300',
+  B732: '737-200',
+  B77W: '777-300ER',
+  B77L: '777-200LR',
+  B772: '777-200',
+  B773: '777-300',
+  B788: '787-8',
+  B789: '787-9',
+  B78X: '787-10',
+  B748: '747-8',
+  B744: '747-400',
+  B763: '767-300',
+  B762: '767-200',
+  B764: '767-400',
+  B752: '757-200',
+  B753: '757-300',
+  B757: '757',
   // Airbus
-  'A319': 'A319',
-  'A320': 'A320',
-  'A321': 'A321',
-  'A332': 'A330-200',
-  'A333': 'A330-300',
-  'A339': 'A330-900',
-  'A343': 'A340-300',
-  'A346': 'A340-600',
-  'A350': 'A350',
-  'A359': 'A350-900',
-  'A35K': 'A350-1000',
-  'A380': 'A380',
-  'A388': 'A380-800',
+  A319: 'A319',
+  A320: 'A320',
+  A321: 'A321',
+  A332: 'A330-200',
+  A333: 'A330-300',
+  A339: 'A330-900',
+  A343: 'A340-300',
+  A346: 'A340-600',
+  A350: 'A350',
+  A359: 'A350-900',
+  A35K: 'A350-1000',
+  A380: 'A380',
+  A388: 'A380-800',
   // Regional jets
-  'E190': 'E190',
-  'E195': 'E195',
-  'E170': 'E170',
-  'E175': 'E175',
-  'CRJ9': 'CRJ-900',
-  'CRJ7': 'CRJ-700',
-  'CRJ2': 'CRJ-200',
+  E190: 'E190',
+  E195: 'E195',
+  E170: 'E170',
+  E175: 'E175',
+  CRJ9: 'CRJ-900',
+  CRJ7: 'CRJ-700',
+  CRJ2: 'CRJ-200',
   // Cessna
-  'C172': 'C172',
-  'C152': 'C152',
-  'C182': 'C182',
-  'C206': 'C206',
-  'C208': 'C208',
+  C172: 'C172',
+  C152: 'C152',
+  C182: 'C182',
+  C206: 'C206',
+  C208: 'C208',
   // Military
-  'F16': 'F-16',
-  'F18': 'F-18',
-  'F22': 'F-22',
-  'F35': 'F-35',
-  'A10': 'A-10',
-  'C130': 'C-130',
+  F16: 'F-16',
+  F18: 'F-18',
+  F22: 'F-22',
+  F35: 'F-35',
+  A10: 'A-10',
+  C130: 'C-130',
   // Helicopters
-  'R44': 'R44',
-  'R66': 'R66',
-  'H60': 'UH-60',
-  'H47': 'CH-47',
+  R44: 'R44',
+  R66: 'R66',
+  H60: 'UH-60',
+  H47: 'CH-47',
 };
 
 // Display type mapping (category -> user-friendly type name)
 const DISPLAY_TYPE_MAP: Record<number, string> = {
-  1: 'Plane',      // Light
-  2: 'Plane',      // Small
-  3: 'Plane',      // Large
-  4: 'Plane',      // High vortex (B757)
-  5: 'Heavy',      // Heavy
+  1: 'Plane', // Light
+  2: 'Plane', // Small
+  3: 'Plane', // Large
+  4: 'Plane', // High vortex (B757)
+  5: 'Heavy', // Heavy
   7: 'Helicopter', // Rotorcraft
-  8: 'Glider',     // Glider
-  9: 'Balloon',    // Lighter-than-air
+  8: 'Glider', // Glider
+  9: 'Balloon', // Lighter-than-air
   11: 'Ultralight', // Ultralight
-  13: 'Drone',     // UAV
-  18: 'Military',  // Military
-  19: 'Military',  // Military/Unknown
+  13: 'Drone', // UAV
+  18: 'Military', // Military
+  19: 'Military', // Military/Unknown
 };
 
 const CATEGORY_PATTERNS: Record<string, RegExp[]> = {
@@ -268,14 +268,14 @@ const CATEGORY_MAP: Record<string, number> = {
  */
 function extractModelFromICAO(icaoCode: string | null | undefined): string | null {
   if (!icaoCode) return null;
-  
+
   const code = icaoCode.toUpperCase().trim();
-  
+
   // Fast lookup for common codes
   if (ICAO_MODEL_LOOKUP[code]) {
     return ICAO_MODEL_LOOKUP[code];
   }
-  
+
   // Pattern-based extraction for unknown codes
   // Boeing: B738 -> 737-800, B77W -> 777-300ER
   if (code.startsWith('B')) {
@@ -327,7 +327,7 @@ function extractModelFromICAO(icaoCode: string | null | undefined): string | nul
       return '757';
     }
   }
-  
+
   // Airbus: A320 -> A320, A332 -> A330-200
   if (code.startsWith('A')) {
     if (code.startsWith('A3')) {
@@ -362,7 +362,7 @@ function extractModelFromICAO(icaoCode: string | null | undefined): string | nul
       }
     }
   }
-  
+
   // Cessna: C172 -> C172
   if (code.startsWith('C1')) {
     if (code === 'C172') return 'C172';
@@ -371,7 +371,7 @@ function extractModelFromICAO(icaoCode: string | null | undefined): string | nul
     if (code === 'C206') return 'C206';
     if (code === 'C208') return 'C208';
   }
-  
+
   // Return original code if we can't extract a better model name
   return code;
 }
@@ -381,7 +381,7 @@ function extractModelFromICAO(icaoCode: string | null | undefined): string | nul
  */
 function mapAircraftTypeToCategory(
   aircraftType: string | null | undefined,
-  aircraftModel: string | null | undefined
+  aircraftModel: string | null | undefined,
 ): number | null {
   if (!aircraftType && !aircraftModel) {
     return null;
@@ -417,11 +417,11 @@ function mapAircraftTypeToCategory(
  */
 export function mapAircraftType(
   aircraftType: string | null | undefined,
-  aircraftModel: string | null | undefined
+  aircraftModel: string | null | undefined,
 ): AircraftMapping {
   // Determine category first
   const category = mapAircraftTypeToCategory(aircraftType, aircraftModel);
-  
+
   // Extract model name
   let model: string | null = null;
   if (aircraftType) {
@@ -430,19 +430,18 @@ export function mapAircraftType(
     // Use provided model if available, otherwise try to extract from it
     model = extractModelFromICAO(aircraftModel) || aircraftModel;
   }
-  
+
   // Determine display type from category
   let type: string | null = null;
   if (category !== null && category !== undefined) {
     type = DISPLAY_TYPE_MAP[category] || 'Plane';
   }
-  
+
   return {
     model: model || aircraftType || aircraftModel || null,
     type: type || null,
-    category: category,
+    category,
   };
 }
 
 export { mapAircraftTypeToCategory };
-

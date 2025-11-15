@@ -538,7 +538,7 @@ class SchemaRepository {
       );
     `;
     await this.db.query(createTableQuery);
-    
+
     // Add any missing columns for existing tables
     const addColumnsQuery = `
       DO $$
@@ -569,13 +569,13 @@ class SchemaRepository {
       END $$;
     `;
     await this.db.query(addColumnsQuery);
-    
+
     // Create indexes
     const indexQueries = [
       'CREATE INDEX IF NOT EXISTS idx_feeder_stats_feeder_id ON feeder_stats(feeder_id)',
       'CREATE INDEX IF NOT EXISTS idx_feeder_stats_date ON feeder_stats(date DESC)',
     ];
-    
+
     for (const indexQuery of indexQueries) {
       try {
         await this.db.query(indexQuery);
@@ -584,7 +584,7 @@ class SchemaRepository {
         logger.warn('Index creation warning (may already exist)', { error: err.message });
       }
     }
-    
+
     logger.info('Feeder stats table created or already exists');
   }
 
@@ -785,4 +785,3 @@ class SchemaRepository {
 }
 
 export default SchemaRepository;
-

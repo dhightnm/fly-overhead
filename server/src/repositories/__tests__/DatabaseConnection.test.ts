@@ -54,7 +54,7 @@ describe('DatabaseConnection', () => {
 
     it('should detect AWS RDS endpoint (.rds.amazonaws.com)', () => {
       const connectionString = 'postgresql://user:pass@db.rds.amazonaws.com:5432/dbname';
-      
+
       // Create a minimal instance just to test the private method
       const dbConnection = Object.create(DatabaseConnection.prototype);
       const isAwsRds = (dbConnection as any).isAwsRdsEndpoint(connectionString);
@@ -131,4 +131,3 @@ describe('DatabaseConnection', () => {
     });
   });
 });
-

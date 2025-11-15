@@ -212,7 +212,7 @@ class ApiKeyRepository {
   async revokeApiKey(
     keyId: string,
     revokedBy: number | null = null,
-    reason: string | null = null
+    reason: string | null = null,
   ): Promise<ApiKey> {
     const query = `
       UPDATE api_keys
@@ -288,4 +288,3 @@ class ApiKeyRepository {
 }
 
 export default ApiKeyRepository;
-

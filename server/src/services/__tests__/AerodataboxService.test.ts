@@ -1,6 +1,8 @@
 /* eslint-env jest */
 
-import { afterEach, describe, expect, it, jest } from '@jest/globals';
+import {
+  afterEach, describe, expect, it, jest,
+} from '@jest/globals';
 import type { Mocked } from 'jest-mock';
 import axios from 'axios';
 import { AerodataboxService } from '../AerodataboxService';

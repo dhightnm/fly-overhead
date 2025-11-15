@@ -14,8 +14,8 @@ async function migrateFeederApiKey(feederId: string, plainApiKey: string): Promi
   try {
     // Get the feeder
     const feeder = await db.oneOrNone(
-      `SELECT feeder_id, name, api_key_hash, metadata FROM feeders WHERE feeder_id = $1`,
-      [feederId]
+      'SELECT feeder_id, name, api_key_hash, metadata FROM feeders WHERE feeder_id = $1',
+      [feederId],
     );
 
     if (!feeder) {
@@ -26,8 +26,8 @@ async function migrateFeederApiKey(feederId: string, plainApiKey: string): Promi
 
     // Check if API key already exists
     const existingKey = await db.oneOrNone(
-      `SELECT key_id FROM api_keys WHERE key_hash = $1`,
-      [feeder.api_key_hash]
+      'SELECT key_id FROM api_keys WHERE key_hash = $1',
+      [feeder.api_key_hash],
     );
 
     if (existingKey) {
@@ -68,7 +68,7 @@ async function migrateFeederApiKey(feederId: string, plainApiKey: string): Promi
         [API_SCOPES.FEEDER_WRITE, API_SCOPES.FEEDER_READ, API_SCOPES.AIRCRAFT_WRITE],
         userId,
         null,
-      ]
+      ],
     );
 
     // Update feeder metadata to link to API key
@@ -80,7 +80,7 @@ async function migrateFeederApiKey(feederId: string, plainApiKey: string): Promi
          to_jsonb($1::text)
        )
        WHERE feeder_id = $2`,
-      [apiKeyData.key_id, feederId]
+      [apiKeyData.key_id, feederId],
     );
 
     logger.info('Successfully migrated feeder API key', {
@@ -128,4 +128,3 @@ if (require.main === module) {
 }
 
 export { migrateFeederApiKey };
-

@@ -12,6 +12,13 @@ import errorHandler from './middlewares/errorHandler';
 import requestLogger from './middlewares/requestLogger';
 import logger from './utils/logger';
 
+// API Routes - All migrated to TypeScript
+import authRoutes from './routes/auth.routes';
+import adminRoutes from './routes/admin.routes';
+import aircraftRoutes from './routes/aircraft.routes';
+import healthRoutes from './routes/health.routes';
+import feederRoutes from './routes/feeder.routes';
+
 const app = express();
 const server = createServer(app);
 
@@ -69,13 +76,6 @@ if (buildExists) {
   logger.warn('React build directory not found. Static file serving disabled.');
   logger.warn('Run "npm run build" in the client directory to create the build.');
 }
-
-// API Routes - All migrated to TypeScript
-import authRoutes from './routes/auth.routes';
-import adminRoutes from './routes/admin.routes';
-import aircraftRoutes from './routes/aircraft.routes';
-import healthRoutes from './routes/health.routes';
-import feederRoutes from './routes/feeder.routes';
 
 app.use('/api/auth', authRoutes);
 app.use('/api/admin', adminRoutes);

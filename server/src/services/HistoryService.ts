@@ -12,7 +12,7 @@ class HistoryService {
   async getAircraftHistory(
     icao24: string,
     startTime: Date | null = null,
-    endTime: Date | null = null
+    endTime: Date | null = null,
   ): Promise<any[]> {
     try {
       logger.info('Fetching historical flight data', { icao24, startTime, endTime });
@@ -41,7 +41,7 @@ class HistoryService {
   async getFlightPath(
     icao24: string,
     startTime: Date | null = null,
-    endTime: Date | null = null
+    endTime: Date | null = null,
   ): Promise<any> {
     try {
       const history = await this.getAircraftHistory(icao24, startTime, endTime);
@@ -106,7 +106,7 @@ class HistoryService {
   async searchFlightsByTimeRange(
     startTime: Date,
     endTime: Date,
-    limit: number = 100
+    limit: number = 100,
   ): Promise<any[]> {
     try {
       const query = `
@@ -134,4 +134,3 @@ class HistoryService {
 // Export singleton instance
 const historyService = new HistoryService();
 export default historyService;
-

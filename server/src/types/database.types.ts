@@ -197,4 +197,3 @@ export interface Navaid {
   geom: any; // PostGIS geometry
   distance_km?: number;
 }
-

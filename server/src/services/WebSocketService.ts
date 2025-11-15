@@ -28,6 +28,7 @@ interface IncrementalChanges {
  */
 class WebSocketService {
   private io: Server | null = null;
+
   private connectedClients: number = 0;
 
   /**
@@ -175,4 +176,3 @@ class WebSocketService {
 // Export singleton instance
 const webSocketService = new WebSocketService();
 export default webSocketService;
-

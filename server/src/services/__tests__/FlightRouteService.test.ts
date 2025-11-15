@@ -1,6 +1,11 @@
 /* eslint-env jest */
 
-import { beforeEach, describe, expect, it, jest } from '@jest/globals';
+import {
+  beforeEach, describe, expect, it, jest,
+} from '@jest/globals';
+
+import { FlightRouteService, shouldFilterAsLanded } from '../FlightRouteService';
+
 const aerodataboxMock = {
   getFlightByIcao24: jest.fn() as any,
 };
@@ -44,8 +49,6 @@ jest.mock('../../utils/logger', () => ({
     error: jest.fn(),
   },
 }));
-
-import { FlightRouteService, shouldFilterAsLanded } from '../FlightRouteService';
 
 describe('FlightRouteService - Aerodatabox integration', () => {
   let flightRouteService: FlightRouteService;
@@ -146,4 +149,3 @@ describe('shouldFilterAsLanded', () => {
     expect(shouldFilterAsLanded(now, now - 24 * 60 * minute)).toBe(false);
   });
 });
-

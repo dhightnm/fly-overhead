@@ -16,4 +16,3 @@ export async function initializeAirportSchema(_db: pgPromise.IDatabase<any>): Pr
     throw error;
   }
 }
-

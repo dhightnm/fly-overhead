@@ -85,13 +85,13 @@ describe('AircraftRepository - Integration Tests', () => {
         new Date(),
         'airplanes.live',
         20,
-        true // skipHistory
+        true, // skipHistory
       );
 
       // Verify stored value
       const result = await db.one(
         'SELECT baro_altitude, geo_altitude FROM aircraft_states WHERE icao24 = $1',
-        ['test_alt_001']
+        ['test_alt_001'],
       );
 
       expect(result.baro_altitude).toBeCloseTo(10668, 1); // Stored in meters
@@ -136,12 +136,12 @@ describe('AircraftRepository - Integration Tests', () => {
         new Date(),
         'airplanes.live',
         20,
-        true
+        true,
       );
 
       const result = await db.one(
         'SELECT baro_altitude FROM aircraft_states WHERE icao24 = $1',
-        ['test_alt_002']
+        ['test_alt_002'],
       );
 
       expect(result.baro_altitude).toBeCloseTo(18288, 1);
@@ -199,11 +199,11 @@ describe('AircraftRepository - Integration Tests', () => {
         oldTimestamp,
         'airplanes.live',
         20,
-        true
+        true,
       );
 
       // Wait a moment to ensure timestamp difference
-      await new Promise(resolve => setTimeout(resolve, 10));
+      await new Promise((resolve) => setTimeout(resolve, 10));
 
       // Second insert: converted altitude (correct)
       const newState: AircraftStateArray = [
@@ -244,13 +244,13 @@ describe('AircraftRepository - Integration Tests', () => {
         newTimestamp,
         'airplanes.live',
         20,
-        true
+        true,
       );
 
       // Verify the converted value won
       const result = await db.one(
         'SELECT baro_altitude, ingestion_timestamp FROM aircraft_states WHERE icao24 = $1',
-        [icao24]
+        [icao24],
       );
 
       expect(result.baro_altitude).toBeCloseTo(10668, 1); // Should be meters, not feet
@@ -299,7 +299,7 @@ describe('AircraftRepository - Integration Tests', () => {
         new Date('2025-11-14T20:00:00Z'),
         'airplanes.live',
         20,
-        true
+        true,
       );
 
       // Second insert: stale data (older last_contact but newer ingestion_timestamp)
@@ -340,13 +340,13 @@ describe('AircraftRepository - Integration Tests', () => {
         new Date('2025-11-14T20:01:00Z'), // Newer ingestion time
         'airplanes.live',
         20,
-        true
+        true,
       );
 
       // Verify the fresh data was NOT overwritten by stale data
       const result = await db.one(
         'SELECT baro_altitude, last_contact FROM aircraft_states WHERE icao24 = $1',
-        [icao24]
+        [icao24],
       );
 
       expect(result.baro_altitude).toBeCloseTo(10668, 1); // Original value preserved
@@ -395,7 +395,7 @@ describe('AircraftRepository - Integration Tests', () => {
         new Date(),
         'airplanes.live',
         20,
-        true
+        true,
       );
 
       // Second insert: higher priority (feeder = 10)
@@ -436,13 +436,13 @@ describe('AircraftRepository - Integration Tests', () => {
         new Date(),
         'feeder',
         10, // Higher priority (lower number)
-        true
+        true,
       );
 
       // Verify higher priority data won
       const result = await db.one(
         'SELECT baro_altitude, longitude, latitude, source_priority FROM aircraft_states WHERE icao24 = $1',
-        [icao24]
+        [icao24],
       );
 
       expect(result.baro_altitude).toBeCloseTo(10700, 1);
@@ -491,7 +491,7 @@ describe('AircraftRepository - Integration Tests', () => {
         new Date('2025-11-14T19:50:00Z'),
         'feeder',
         10, // High priority
-        true
+        true,
       );
 
       // Second insert: fresh data from lower priority source
@@ -532,13 +532,13 @@ describe('AircraftRepository - Integration Tests', () => {
         new Date(),
         'airplanes.live',
         20, // Lower priority
-        true
+        true,
       );
 
       // Verify fresh data from lower priority source overwrote stale high-priority data
       const result = await db.one(
         'SELECT baro_altitude, longitude FROM aircraft_states WHERE icao24 = $1',
-        [icao24]
+        [icao24],
       );
 
       expect(result.baro_altitude).toBeCloseTo(10700, 1);
@@ -585,12 +585,12 @@ describe('AircraftRepository - Integration Tests', () => {
         new Date(),
         'airplanes.live',
         20,
-        true
+        true,
       );
 
       const result = await db.one(
         'SELECT velocity FROM aircraft_states WHERE icao24 = $1',
-        ['test_vel_001']
+        ['test_vel_001'],
       );
 
       expect(result.velocity).toBe(450); // Stored as-is in knots
@@ -636,20 +636,20 @@ describe('AircraftRepository - Integration Tests', () => {
         new Date(),
         'airplanes.live',
         20,
-        true // skipHistory = true
+        true, // skipHistory = true
       );
 
       // Verify main table has data
       const mainResult = await db.oneOrNone(
         'SELECT icao24 FROM aircraft_states WHERE icao24 = $1',
-        ['test_hist_001']
+        ['test_hist_001'],
       );
       expect(mainResult).not.toBeNull();
 
       // Verify history table does NOT have data
       const historyResult = await db.oneOrNone(
         'SELECT icao24 FROM aircraft_states_history WHERE icao24 = $1',
-        ['test_hist_001']
+        ['test_hist_001'],
       );
       expect(historyResult).toBeNull();
     });
@@ -692,22 +692,21 @@ describe('AircraftRepository - Integration Tests', () => {
         new Date(),
         'airplanes.live',
         20,
-        false // skipHistory = false
+        false, // skipHistory = false
       );
 
       // Verify both tables have data
       const mainResult = await db.oneOrNone(
         'SELECT icao24 FROM aircraft_states WHERE icao24 = $1',
-        ['test_hist_002']
+        ['test_hist_002'],
       );
       expect(mainResult).not.toBeNull();
 
       const historyResult = await db.oneOrNone(
         'SELECT icao24 FROM aircraft_states_history WHERE icao24 = $1',
-        ['test_hist_002']
+        ['test_hist_002'],
       );
       expect(historyResult).not.toBeNull();
     });
   });
 });
-

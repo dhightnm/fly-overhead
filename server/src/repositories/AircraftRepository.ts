@@ -19,6 +19,7 @@ type AircraftStateArray = any[];
  */
 class AircraftRepository {
   private db: pgPromise.IDatabase<any>;
+
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   // @ts-ignore - postgis reserved for future use
   private _postgis: PostGISService;
@@ -318,7 +319,6 @@ class AircraftRepository {
     const navHeading = state[25] || null;
     const ownerOperator = state[26] || null;
     const yearBuilt = state[27] || null;
-
 
     // Only write history if not skipped (skip for background polling)
     if (!skipHistory) {

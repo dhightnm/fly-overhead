@@ -1,7 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
+import bcrypt from 'bcryptjs';
 import { extractApiKey, optionalApiKeyAuth, requireApiKeyAuth } from '../apiKeyAuth';
 import postgresRepository from '../../repositories/PostgresRepository';
-import bcrypt from 'bcryptjs';
 import type { ApiKey } from '../../types/database.types';
 
 // Mock dependencies
@@ -48,58 +48,58 @@ describe('API Key Authentication', () => {
   describe('extractApiKey', () => {
     it('should extract API key from Authorization Bearer header (sk_live_)', () => {
       mockRequest.headers = {
-        authorization: 'Bearer sk_live_' + 'a'.repeat(32),
+        authorization: `Bearer sk_live_${'a'.repeat(32)}`,
       };
       const key = extractApiKey(mockRequest as Request);
-      expect(key).toBe('sk_live_' + 'a'.repeat(32));
+      expect(key).toBe(`sk_live_${'a'.repeat(32)}`);
     });
 
     it('should extract API key from Authorization Bearer header (sk_dev_)', () => {
       mockRequest.headers = {
-        authorization: 'Bearer sk_dev_' + 'b'.repeat(32),
+        authorization: `Bearer sk_dev_${'b'.repeat(32)}`,
       };
       const key = extractApiKey(mockRequest as Request);
-      expect(key).toBe('sk_dev_' + 'b'.repeat(32));
+      expect(key).toBe(`sk_dev_${'b'.repeat(32)}`);
     });
 
     it('should extract feeder API key from Authorization Bearer header (fd_)', () => {
       mockRequest.headers = {
-        authorization: 'Bearer fd_' + 'c'.repeat(32),
+        authorization: `Bearer fd_${'c'.repeat(32)}`,
       };
       const key = extractApiKey(mockRequest as Request);
-      expect(key).toBe('fd_' + 'c'.repeat(32));
+      expect(key).toBe(`fd_${'c'.repeat(32)}`);
     });
 
     it('should extract API key from X-API-Key header', () => {
       mockRequest.headers = {
-        'x-api-key': 'sk_live_' + 'd'.repeat(32),
+        'x-api-key': `sk_live_${'d'.repeat(32)}`,
       };
       const key = extractApiKey(mockRequest as Request);
-      expect(key).toBe('sk_live_' + 'd'.repeat(32));
+      expect(key).toBe(`sk_live_${'d'.repeat(32)}`);
     });
 
     it('should extract feeder API key from X-API-Key header', () => {
       mockRequest.headers = {
-        'x-api-key': 'fd_' + 'e'.repeat(32),
+        'x-api-key': `fd_${'e'.repeat(32)}`,
       };
       const key = extractApiKey(mockRequest as Request);
-      expect(key).toBe('fd_' + 'e'.repeat(32));
+      expect(key).toBe(`fd_${'e'.repeat(32)}`);
     });
 
     it('should extract API key from query parameter', () => {
       mockRequest.query = {
-        api_key: 'sk_live_' + 'f'.repeat(32),
+        api_key: `sk_live_${'f'.repeat(32)}`,
       };
       const key = extractApiKey(mockRequest as Request);
-      expect(key).toBe('sk_live_' + 'f'.repeat(32));
+      expect(key).toBe(`sk_live_${'f'.repeat(32)}`);
     });
 
     it('should extract feeder API key from query parameter', () => {
       mockRequest.query = {
-        api_key: 'fd_' + 'g'.repeat(32),
+        api_key: `fd_${'g'.repeat(32)}`,
       };
       const key = extractApiKey(mockRequest as Request);
-      expect(key).toBe('fd_' + 'g'.repeat(32));
+      expect(key).toBe(`fd_${'g'.repeat(32)}`);
     });
 
     it('should return null when no API key is provided', () => {
@@ -136,7 +136,7 @@ describe('API Key Authentication', () => {
     });
 
     it('should authenticate valid development API key', async () => {
-      const apiKey = 'sk_dev_' + 'a'.repeat(32);
+      const apiKey = `sk_dev_${'a'.repeat(32)}`;
       const keyHash = await bcrypt.hash(apiKey, 10);
       const mockApiKey: ApiKey = {
         id: 1,
@@ -174,7 +174,7 @@ describe('API Key Authentication', () => {
     });
 
     it('should authenticate valid production API key', async () => {
-      const apiKey = 'sk_live_' + 'b'.repeat(32);
+      const apiKey = `sk_live_${'b'.repeat(32)}`;
       const keyHash = await bcrypt.hash(apiKey, 10);
       const mockApiKey: ApiKey = {
         id: 2,
@@ -212,7 +212,7 @@ describe('API Key Authentication', () => {
     });
 
     it('should authenticate valid feeder API key', async () => {
-      const apiKey = 'fd_' + 'c'.repeat(64); // Feeder keys use 64 hex chars
+      const apiKey = `fd_${'c'.repeat(64)}`; // Feeder keys use 64 hex chars
       const keyHash = await bcrypt.hash(apiKey, 10);
       const mockApiKey: ApiKey = {
         id: 3,
@@ -252,7 +252,7 @@ describe('API Key Authentication', () => {
 
     it('should reject invalid API key format', async () => {
       // Use a key with valid prefix but wrong length (will fail format validation)
-      const invalidKey = 'sk_live_' + 'a'.repeat(31); // Should be 32 chars, only 31
+      const invalidKey = `sk_live_${'a'.repeat(31)}`; // Should be 32 chars, only 31
       mockRequest.headers = {
         authorization: `Bearer ${invalidKey}`,
       };
@@ -271,7 +271,7 @@ describe('API Key Authentication', () => {
     });
 
     it('should reject non-existent API key', async () => {
-      const apiKey = 'sk_live_' + 'd'.repeat(32);
+      const apiKey = `sk_live_${'d'.repeat(32)}`;
       mockRequest.headers = {
         authorization: `Bearer ${apiKey}`,
       };
@@ -285,7 +285,7 @@ describe('API Key Authentication', () => {
     });
 
     it('should reject expired API key', async () => {
-      const apiKey = 'sk_live_' + 'e'.repeat(32);
+      const apiKey = `sk_live_${'e'.repeat(32)}`;
       const keyHash = await bcrypt.hash(apiKey, 10);
       const expiredDate = new Date();
       expiredDate.setDate(expiredDate.getDate() - 1);
@@ -333,7 +333,7 @@ describe('API Key Authentication', () => {
     });
 
     it('should authenticate valid feeder API key', async () => {
-      const apiKey = 'fd_' + 'f'.repeat(64); // Feeder keys use 64 hex chars
+      const apiKey = `fd_${'f'.repeat(64)}`; // Feeder keys use 64 hex chars
       const keyHash = await bcrypt.hash(apiKey, 10);
       const mockApiKey: ApiKey = {
         id: 5,
@@ -492,7 +492,7 @@ describe('API Key Authentication', () => {
       });
 
       it('should prioritize API key over same-origin detection', async () => {
-        const apiKey = 'sk_live_' + 'a'.repeat(32);
+        const apiKey = `sk_live_${'a'.repeat(32)}`;
         const keyHash = await bcrypt.hash(apiKey, 10);
         const mockApiKey: ApiKey = {
           id: 1,
