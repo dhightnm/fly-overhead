@@ -4,4 +4,3 @@
  */
 export { default } from './index';
 export { PostgresRepository } from './index';
-

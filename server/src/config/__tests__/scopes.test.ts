@@ -1,4 +1,6 @@
-import { hasScope, hasAnyScope, getRequiredScopes, API_SCOPES } from '../scopes';
+import {
+  hasScope, hasAnyScope, getRequiredScopes, API_SCOPES,
+} from '../scopes';
 
 describe('Scopes Configuration', () => {
   describe('hasScope', () => {
@@ -117,4 +119,3 @@ describe('Scopes Configuration', () => {
     });
   });
 });
-

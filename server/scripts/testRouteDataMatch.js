@@ -50,13 +50,15 @@ async function testRouteDataMatching() {
         if (waypoint) {
           found++;
           foundCodes++;
-          lookupResults.push({ code, status: '✅', source: waypoint.source, name: waypoint.name });
+          lookupResults.push({
+            code, status: '✅', source: waypoint.source, name: waypoint.name,
+          });
         } else {
           lookupResults.push({ code, status: '❌', source: 'not found' });
         }
       }
 
-      const successRate = waypointCodes.length > 0 
+      const successRate = waypointCodes.length > 0
         ? ((found / Math.min(waypointCodes.length, 10)) * 100).toFixed(1)
         : '0';
 
@@ -72,7 +74,7 @@ async function testRouteDataMatching() {
       console.log(`  ✅ Found ${found}/${Math.min(waypointCodes.length, 10)} waypoints (${successRate}%)\n`);
     }
 
-    const overallSuccess = totalCodes > 0 
+    const overallSuccess = totalCodes > 0
       ? ((foundCodes / Math.min(totalCodes, samples.length * 10)) * 100).toFixed(1)
       : '0';
 
@@ -83,10 +85,9 @@ async function testRouteDataMatching() {
     console.log(`\n✅ Route data format appears to be ${overallSuccess >= 50 ? 'COMPATIBLE' : 'PARTIALLY COMPATIBLE'} with navaids table`);
 
     const navaidsCount = await postgresRepository.getDb().one(
-      'SELECT COUNT(*) as count FROM navaids WHERE latitude_deg IS NOT NULL'
+      'SELECT COUNT(*) as count FROM navaids WHERE latitude_deg IS NOT NULL',
     );
     console.log(`\nNavaids table has ${parseInt(navaidsCount.count, 10)} entries with coordinates`);
-
   } catch (error) {
     console.error('Error testing route data:', error);
     process.exit(1);
@@ -96,4 +97,3 @@ async function testRouteDataMatching() {
 }
 
 testRouteDataMatching();
-

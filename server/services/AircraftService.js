@@ -79,7 +79,7 @@ class AircraftService {
         // Don't throw - just skip this fetch cycle
         return [];
       }
-      
+
       logger.error('Error in fetchAndUpdateAllAircraft', { error: error.message });
       throw error;
     }
@@ -124,7 +124,7 @@ class AircraftService {
         // Don't throw - just return empty array to allow app to continue
         return [];
       }
-      
+
       logger.error('Error in fetchAndUpdateAircraftInBounds', {
         boundingBox,
         error: error.message,
@@ -140,7 +140,7 @@ class AircraftService {
   async getAircraftByIdentifier(identifier) {
     try {
       logger.info(`Searching for aircraft: ${identifier} (checking database)`);
-      
+
       // Query database directly instead of calling OpenSky getAllStates()
       // This avoids fetching 6000+ aircraft just to find one
       const results = await postgresRepository.findAircraftByIdentifier(identifier);
@@ -156,7 +156,7 @@ class AircraftService {
         callsign: aircraft.callsign,
         last_contact: aircraft.last_contact,
       });
-      
+
       return aircraft;
     } catch (error) {
       logger.error('Error in getAircraftByIdentifier', {
@@ -247,7 +247,6 @@ class AircraftService {
     return enriched;
   }
 
-
   /**
    * Get aircraft within geographical bounds (with trajectory prediction)
    * Uses route data to extrapolate positions between real API updates
@@ -259,7 +258,7 @@ class AircraftService {
     try {
       const isDevelopment = config.server.env === 'development';
       const isRateLimited = rateLimitManager.isRateLimited();
-      
+
       // In development, when rate limited, use extended threshold to show stale data
       let contactThreshold = config.aircraft.recentContactThreshold;
       if (isDevelopment && isRateLimited) {
@@ -269,7 +268,7 @@ class AircraftService {
           devThreshold: contactThreshold,
         });
       }
-      
+
       const thresholdTimestamp = Math.floor(Date.now() / 1000) - contactThreshold;
 
       const results = await postgresRepository.findAircraftInBounds(
@@ -281,16 +280,14 @@ class AircraftService {
       );
 
       // Enrich with route data and model/type
-      const enrichedWithRoutes = results.map((aircraft) => 
-        this._enrichAircraftWithRoute(aircraft)
-      );
+      const enrichedWithRoutes = results.map((aircraft) => this._enrichAircraftWithRoute(aircraft));
 
       // Mark stale aircraft in development mode when rate limited BEFORE trajectory prediction
       // This ensures the isStale flag is preserved when the prediction service creates new objects
       // Mark stale aircraft from BOTH feeder and OpenSky sources
       const now = Math.floor(Date.now() / 1000);
       const normalThreshold = now - config.aircraft.recentContactThreshold;
-      
+
       if (isDevelopment && isRateLimited) {
         enrichedWithRoutes.forEach((aircraft) => {
           // Mark as stale if older than normal threshold but within dev threshold
@@ -310,21 +307,21 @@ class AircraftService {
       }
 
       const enhanced = await trajectoryPredictionService.enhanceAircraftWithPredictions(
-        enrichedWithRoutes
+        enrichedWithRoutes,
       );
 
-      const predictedCount = enhanced.filter(a => a.predicted).length;
-      const routesCount = enhanced.filter(a => a.route).length;
-      const staleCount = enhanced.filter(a => a.isStale).length;
-      
+      const predictedCount = enhanced.filter((a) => a.predicted).length;
+      const routesCount = enhanced.filter((a) => a.route).length;
+      const staleCount = enhanced.filter((a) => a.isStale).length;
+
       if (predictedCount > 0) {
         logger.debug(`Applied trajectory predictions to ${predictedCount}/${enhanced.length} aircraft`);
       }
-      
+
       if (routesCount > 0) {
         logger.info(`Included route data for ${routesCount}/${enhanced.length} aircraft (from cache)`);
       }
-      
+
       if (staleCount > 0) {
         logger.info(`Returning ${staleCount} stale aircraft (dev mode, rate limited)`);
       }

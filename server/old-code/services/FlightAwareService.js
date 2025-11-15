@@ -28,11 +28,13 @@ class FlightAwareService {
   /**
    * Fetch aircraft states within bounding box
    * Uses FlightAware's search endpoint with geographic bounds
-   * 
+   *
    * @param {Object} bounds - { lamin, lomin, lamax, lomax }
    * @returns {Promise<Object>} - { states: Array, time: number }
    */
-  async getStatesInBounds({ lamin, lomin, lamax, lomax }) {
+  async getStatesInBounds({
+    lamin, lomin, lamax, lomax,
+  }) {
     if (!this.apiKey) {
       throw new Error('FlightAware API key not configured');
     }
@@ -42,18 +44,25 @@ class FlightAwareService {
       // Note: AeroAPI doesn't have a direct bounds endpoint, so we use search with filters
       // We'll search for active flights and filter by position client-side
       // Alternative: Use FlightXML2 SearchBirdseyeInFlight if available
-      
+
       logger.info('Querying FlightAware AeroAPI for flights in bounds', {
-        bounds: { lamin, lomin, lamax, lomax },
+        bounds: {
+          lamin, lomin, lamax, lomax,
+        },
       });
 
       // Use FlightAware /flights/search endpoint with -latlong parameter
       // Format: -latlong "MINLAT MINLON MAXLAT MAXLON"
       // Note: lat comes first, then lon, for both min and max
       const query = `-latlong "${lamin} ${lomin} ${lamax} ${lomax}"`;
-      
-      logger.debug('FlightAware search query', { query, bounds: { lamin, lomin, lamax, lomax } });
-      
+
+      logger.debug('FlightAware search query', {
+        query,
+        bounds: {
+          lamin, lomin, lamax, lomax,
+        },
+      });
+
       let response;
       try {
         response = await axios.get(`${this.baseUrl}/flights/search`, {
@@ -74,18 +83,20 @@ class FlightAwareService {
         // Return empty states
         return { states: [], time: Date.now() };
       }
-      
+
       // FlightAware search endpoint returns { flights: [...], links: {...}, num_pages: ... }
       // Note: The response uses 'flights' not 'results'
-      let flights = response.data?.flights || response.data?.results || [];
-      
+      const flights = response.data?.flights || response.data?.results || [];
+
       logger.info(`FlightAware search returned ${flights.length} flights in bounds`, {
-        bounds: { lamin, lomin, lamax, lomax },
+        bounds: {
+          lamin, lomin, lamax, lomax,
+        },
         query,
         hasFlights: flights.length > 0,
         numPages: response.data?.num_pages || 0,
       });
-      
+
       // Log sample flight structure for debugging
       if (flights.length > 0 && flights[0]) {
         logger.debug('Sample FlightAware flight structure', {
@@ -111,7 +122,9 @@ class FlightAwareService {
       });
 
       logger.info(`FlightAware returned ${states.length} aircraft in bounds`, {
-        bounds: { lamin, lomin, lamax, lomax },
+        bounds: {
+          lamin, lomin, lamax, lomax,
+        },
         totalResults: flights.length,
         filteredStates: states.length,
       });
@@ -122,10 +135,12 @@ class FlightAwareService {
       };
     } catch (error) {
       const statusCode = error.response?.status;
-      
+
       if (statusCode === 429) {
         logger.warn('FlightAware rate limit reached', {
-          bounds: { lamin, lomin, lamax, lomax },
+          bounds: {
+            lamin, lomin, lamax, lomax,
+          },
         });
         throw new Error('FlightAware rate limit exceeded');
       }
@@ -144,7 +159,9 @@ class FlightAwareService {
       });
 
       // Fallback: Try to get flights by querying a center point
-      return this.getStatesInBoundsFallback({ lamin, lomin, lamax, lomax });
+      return this.getStatesInBoundsFallback({
+        lamin, lomin, lamax, lomax,
+      });
     }
   }
 
@@ -152,17 +169,19 @@ class FlightAwareService {
    * Fallback method: Get flights near center of bounds
    * This is less precise but may work if the search endpoint isn't available
    */
-  async getStatesInBoundsFallback({ lamin, lomin, lamax, lomax }) {
+  async getStatesInBoundsFallback({
+    lamin, lomin, lamax, lomax,
+  }) {
     try {
       // Calculate center point
       const centerLat = (lamin + lamax) / 2;
       const centerLon = (lomin + lomax) / 2;
-      
+
       // Calculate approximate radius in degrees (rough conversion)
       const latRange = lamax - lamin;
       const lonRange = lomax - lomin;
       const maxRange = Math.max(latRange, lonRange);
-      
+
       logger.info('Trying FlightAware fallback: center point search', {
         center: { lat: centerLat, lon: centerLon },
         radius: maxRange,
@@ -170,7 +189,7 @@ class FlightAwareService {
 
       // Fallback: Use the same query format
       const query = `{range lat ${lamin} ${lamax}} {range lon ${lomin} ${lomax}}`;
-      
+
       const response = await axios.get(`${this.baseUrl}/flights/search`, {
         params: {
           query,
@@ -232,7 +251,7 @@ class FlightAwareService {
       // FlightAware search results may not include registration
       // We can't query flight details for every flight (too slow), so we skip flights without icao24
       let icao24 = null;
-      
+
       // Try registration (if available in search results)
       if (flight.registration) {
         const reg = flight.registration.replace(/-/g, '').toLowerCase();
@@ -241,7 +260,7 @@ class FlightAwareService {
           icao24 = reg;
         }
       }
-      
+
       // Skip flights without valid icao24 (required for database)
       // Note: FlightAware search endpoint doesn't always provide registration,
       // so we may skip some flights. This is acceptable for a backup data source.
@@ -313,4 +332,3 @@ class FlightAwareService {
 }
 
 module.exports = new FlightAwareService();
-

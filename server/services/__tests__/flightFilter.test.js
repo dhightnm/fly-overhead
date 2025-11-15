@@ -70,7 +70,9 @@ describe('shouldFilterAsLanded — realistic filtering of aircraft array', () =>
     },
   ];
 
-  aircraftCases.forEach(({ name, lastContact, lastArrival, expected }) => {
+  aircraftCases.forEach(({
+    name, lastContact, lastArrival, expected,
+  }) => {
     it(`${name} — should${expected ? '' : ' NOT'} be filtered as landed`, () => {
       expect(shouldFilterAsLanded(lastContact, lastArrival)).toBe(expected);
     });

@@ -18,7 +18,7 @@ class RateLimitManager {
    */
   isRateLimited() {
     if (!this.blockedUntil) return false;
-    
+
     const now = Date.now();
     if (now < this.blockedUntil) {
       const secondsRemaining = Math.ceil((this.blockedUntil - now) / 1000);
@@ -28,7 +28,7 @@ class RateLimitManager {
       });
       return true;
     }
-    
+
     // Rate limit has expired
     this.blockedUntil = null;
     this.consecutiveFailures = 0;
@@ -42,10 +42,10 @@ class RateLimitManager {
    */
   getSecondsUntilRetry() {
     if (!this.blockedUntil) return null;
-    
+
     const now = Date.now();
     if (now >= this.blockedUntil) return 0;
-    
+
     return Math.ceil((this.blockedUntil - now) / 1000);
   }
 
@@ -55,7 +55,7 @@ class RateLimitManager {
    */
   recordRateLimit(retryAfterSeconds = null) {
     this.consecutiveFailures++;
-    
+
     let backoffSeconds;
     if (retryAfterSeconds && retryAfterSeconds > 0) {
       // Use the API's retry-after if provided
@@ -67,8 +67,8 @@ class RateLimitManager {
     } else {
       // Use exponential backoff
       backoffSeconds = Math.min(
-        this.baseBackoffSeconds * Math.pow(2, this.consecutiveFailures - 1),
-        this.maxBackoffSeconds
+        this.baseBackoffSeconds * 2 ** (this.consecutiveFailures - 1),
+        this.maxBackoffSeconds,
       );
       logger.warn('OpenSky rate limit hit - using exponential backoff', {
         consecutiveFailures: this.consecutiveFailures,
@@ -76,7 +76,7 @@ class RateLimitManager {
         retryAt: new Date(Date.now() + backoffSeconds * 1000).toISOString(),
       });
     }
-    
+
     this.blockedUntil = Date.now() + (backoffSeconds * 1000);
   }
 
@@ -118,4 +118,3 @@ class RateLimitManager {
 
 // Export singleton instance
 module.exports = new RateLimitManager();
-

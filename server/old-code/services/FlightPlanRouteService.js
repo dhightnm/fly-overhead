@@ -3,10 +3,10 @@ const logger = require('../utils/logger');
 
 /**
  * Flight Plan Route Service
- * 
+ *
  * Parses filed flight plan routes (stored as space-separated waypoint codes)
  * and converts them to coordinates using the navaids table.
- * 
+ *
  * Route format examples:
  * - "JFK VOR1 LAX" (simple)
  * - "KJFK.VOR1.KLAX" (SID/STAR format)
@@ -27,28 +27,26 @@ class FlightPlanRouteService {
 
     // Replace dots with spaces, then split
     const normalized = routeString.replace(/\./g, ' ');
-    
+
     // Split by spaces and filter out empty strings
     const waypoints = normalized
       .split(/\s+/)
-      .map(wp => wp.trim().toUpperCase())
-      .filter(wp => wp.length > 0);
+      .map((wp) => wp.trim().toUpperCase())
+      .filter((wp) => wp.length > 0);
 
     // Filter out common non-waypoint codes
     // These are often present in route strings but aren't navaids
     const excludePatterns = [
-      /^DCT$/,           // Direct
-      /^VFR$/,           // Visual flight rules
-      /^IFR$/,           // Instrument flight rules
-      /^\d+$/,           // Pure numbers (usually altitudes)
-      /^FL\d+$/,         // Flight level
-      /^A\d+$/,          // Airway designators (we might want these later, but skip for now)
-      /^[NS]\d+[EW]$/,   // Coordinate-style (e.g., N40W70) - not navaids
+      /^DCT$/, // Direct
+      /^VFR$/, // Visual flight rules
+      /^IFR$/, // Instrument flight rules
+      /^\d+$/, // Pure numbers (usually altitudes)
+      /^FL\d+$/, // Flight level
+      /^A\d+$/, // Airway designators (we might want these later, but skip for now)
+      /^[NS]\d+[EW]$/, // Coordinate-style (e.g., N40W70) - not navaids
     ];
 
-    return waypoints.filter(wp => {
-      return !excludePatterns.some(pattern => pattern.test(wp));
-    });
+    return waypoints.filter((wp) => !excludePatterns.some((pattern) => pattern.test(wp)));
   }
 
   /**
@@ -75,29 +73,29 @@ class FlightPlanRouteService {
     try {
       const navaid = await postgresRepository.getDb().oneOrNone(navaidQuery, [code]);
       if (navaid) {
-      const lat = parseFloat(navaid.latitude_deg);
-      const lng = parseFloat(navaid.longitude_deg);
-      
-      // Validate coordinates are within valid ranges
-      if (isNaN(lat) || isNaN(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
-        logger.warn('Invalid coordinates for navaid', {
-          code,
-          lat,
-          lng,
-          original_lat: navaid.latitude_deg,
-          original_lng: navaid.longitude_deg,
-        });
-        return null;
-      }
-      
-      return {
-        code: navaid.ident,
-        name: navaid.name,
-        type: navaid.type,
-        latitude: lat,
-        longitude: lng,
-        source: 'navaid',
-      };
+        const lat = parseFloat(navaid.latitude_deg);
+        const lng = parseFloat(navaid.longitude_deg);
+
+        // Validate coordinates are within valid ranges
+        if (isNaN(lat) || isNaN(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+          logger.warn('Invalid coordinates for navaid', {
+            code,
+            lat,
+            lng,
+            original_lat: navaid.latitude_deg,
+            original_lng: navaid.longitude_deg,
+          });
+          return null;
+        }
+
+        return {
+          code: navaid.ident,
+          name: navaid.name,
+          type: navaid.type,
+          latitude: lat,
+          longitude: lng,
+          source: 'navaid',
+        };
       }
     } catch (err) {
       logger.debug('Error looking up navaid', { waypointCode: code, error: err.message });
@@ -120,29 +118,29 @@ class FlightPlanRouteService {
     try {
       const airport = await postgresRepository.getDb().oneOrNone(airportQuery, [code]);
       if (airport) {
-      const lat = parseFloat(airport.latitude_deg);
-      const lng = parseFloat(airport.longitude_deg);
-      
-      // Validate coordinates are within valid ranges
-      if (isNaN(lat) || isNaN(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
-        logger.warn('Invalid coordinates for airport', {
-          code,
-          lat,
-          lng,
-          original_lat: airport.latitude_deg,
-          original_lng: airport.longitude_deg,
-        });
-        return null;
-      }
-      
-      return {
-        code: airport.ident,
-        name: airport.name,
-        type: airport.type || 'airport',
-        latitude: lat,
-        longitude: lng,
-        source: 'airport',
-      };
+        const lat = parseFloat(airport.latitude_deg);
+        const lng = parseFloat(airport.longitude_deg);
+
+        // Validate coordinates are within valid ranges
+        if (isNaN(lat) || isNaN(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+          logger.warn('Invalid coordinates for airport', {
+            code,
+            lat,
+            lng,
+            original_lat: airport.latitude_deg,
+            original_lng: airport.longitude_deg,
+          });
+          return null;
+        }
+
+        return {
+          code: airport.ident,
+          name: airport.name,
+          type: airport.type || 'airport',
+          latitude: lat,
+          longitude: lng,
+          source: 'airport',
+        };
       }
     } catch (err) {
       logger.debug('Error looking up airport as waypoint', { waypointCode: code, error: err.message });
@@ -161,7 +159,7 @@ class FlightPlanRouteService {
     }
 
     const waypointCodes = this.parseRouteString(routeString);
-    
+
     if (waypointCodes.length === 0) {
       logger.debug('No waypoints parsed from route string', { routeString });
       return [];
@@ -175,7 +173,7 @@ class FlightPlanRouteService {
 
     // Look up each waypoint in parallel
     const waypointLookups = await Promise.allSettled(
-      waypointCodes.map(code => this.lookupWaypoint(code))
+      waypointCodes.map((code) => this.lookupWaypoint(code)),
     );
 
     const waypoints = [];
@@ -207,7 +205,7 @@ class FlightPlanRouteService {
       notFound: notFoundCount,
       successRate: `${((foundCount / waypointCodes.length) * 100).toFixed(1)}%`,
       parsedCodes: waypointCodes,
-      foundCodes: waypoints.map(wp => wp.code),
+      foundCodes: waypoints.map((wp) => wp.code),
       notFoundCodes,
     });
 
@@ -304,7 +302,7 @@ class FlightPlanRouteService {
            actual_flight_start DESC NULLS LAST,
            created_at DESC
          LIMIT 1`,
-        [icao24 || null, callsign || null]
+        [icao24 || null, callsign || null],
       );
 
       let waypoints = null;
@@ -319,7 +317,7 @@ class FlightPlanRouteService {
         });
 
         waypoints = await this.parseRouteToWaypoints(routeData.route);
-        
+
         if (waypoints && waypoints.length > 0) {
           routeSource = 'route_string';
           logger.info('Found route from route string', {
@@ -338,7 +336,7 @@ class FlightPlanRouteService {
       // Step 2: If no waypoints from route string, try previous flights
       if (!waypoints || waypoints.length === 0) {
         logger.debug('Trying previous flights for route', { icao24, callsign });
-        
+
         const previousFlightsQuery = `
           SELECT route, callsign, icao24, 
                  departure_icao, arrival_icao,
@@ -358,7 +356,7 @@ class FlightPlanRouteService {
 
         const previousFlights = await postgresRepository.getDb().any(
           previousFlightsQuery,
-          [icao24 || null, callsign || null]
+          [icao24 || null, callsign || null],
         );
 
         // Try each previous flight until we find one with waypoints
@@ -395,7 +393,7 @@ class FlightPlanRouteService {
                actual_flight_start DESC NULLS LAST,
                created_at DESC
              LIMIT 1`,
-            [icao24 || null, callsign || null]
+            [icao24 || null, callsign || null],
           );
         }
 
@@ -409,7 +407,7 @@ class FlightPlanRouteService {
 
           waypoints = await this.createRouteFromAirports(
             routeData.departure_icao,
-            routeData.arrival_icao
+            routeData.arrival_icao,
           );
 
           if (waypoints && waypoints.length > 0) {
@@ -441,16 +439,16 @@ class FlightPlanRouteService {
 
       // Add departure and arrival airports to waypoints if they're not already included
       let finalWaypoints = [...waypoints];
-      
+
       if (routeData.departure_icao && routeData.arrival_icao) {
         // Check if departure airport is already first waypoint
         const firstWaypoint = finalWaypoints[0];
         const departureMatches = firstWaypoint && (
-          firstWaypoint.code === routeData.departure_icao ||
-          firstWaypoint.code === routeData.departure_icao.replace(/^K/, '') ||
-          firstWaypoint.name?.toLowerCase().includes(routeData.departure_icao.toLowerCase())
+          firstWaypoint.code === routeData.departure_icao
+          || firstWaypoint.code === routeData.departure_icao.replace(/^K/, '')
+          || firstWaypoint.name?.toLowerCase().includes(routeData.departure_icao.toLowerCase())
         );
-        
+
         if (!departureMatches) {
           // Try to get departure airport coordinates
           try {
@@ -473,15 +471,15 @@ class FlightPlanRouteService {
             });
           }
         }
-        
+
         // Check if arrival airport is already last waypoint
         const lastWaypoint = finalWaypoints[finalWaypoints.length - 1];
         const arrivalMatches = lastWaypoint && (
-          lastWaypoint.code === routeData.arrival_icao ||
-          lastWaypoint.code === routeData.arrival_icao.replace(/^K/, '') ||
-          lastWaypoint.name?.toLowerCase().includes(routeData.arrival_icao.toLowerCase())
+          lastWaypoint.code === routeData.arrival_icao
+          || lastWaypoint.code === routeData.arrival_icao.replace(/^K/, '')
+          || lastWaypoint.name?.toLowerCase().includes(routeData.arrival_icao.toLowerCase())
         );
-        
+
         if (!arrivalMatches) {
           // Try to get arrival airport coordinates
           try {
@@ -505,7 +503,7 @@ class FlightPlanRouteService {
           }
         }
       }
-      
+
       // Re-number order for display
       finalWaypoints = finalWaypoints.map((wp, idx) => ({ ...wp, order: idx }));
 
@@ -570,9 +568,9 @@ class FlightPlanRouteService {
       for (const sample of samples.slice(0, 5)) {
         const waypointCodes = this.parseRouteString(sample.route);
         const waypointCount = await Promise.all(
-          waypointCodes.slice(0, 10).map(code => this.lookupWaypoint(code))
+          waypointCodes.slice(0, 10).map((code) => this.lookupWaypoint(code)),
         );
-        const foundCount = waypointCount.filter(wp => wp !== null).length;
+        const foundCount = waypointCount.filter((wp) => wp !== null).length;
 
         testResults.push({
           callsign: sample.callsign,
@@ -588,7 +586,7 @@ class FlightPlanRouteService {
           uniqueAircraft: parseInt(stats.unique_aircraft, 10),
           uniqueCallsigns: parseInt(stats.unique_callsigns, 10),
         },
-        samples: samples.slice(0, 10).map(s => ({
+        samples: samples.slice(0, 10).map((s) => ({
           callsign: s.callsign,
           icao24: s.icao24,
           route: s.route,
@@ -605,4 +603,3 @@ class FlightPlanRouteService {
 }
 
 module.exports = new FlightPlanRouteService();
-

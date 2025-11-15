@@ -7,7 +7,7 @@ const { authenticateToken } = require('./auth.routes');
 
 /**
  * Admin routes for API key management (MVP)
- * 
+ *
  * All routes require JWT authentication
  * In future, can add admin-only check
  */
@@ -18,7 +18,9 @@ const { authenticateToken } = require('./auth.routes');
  */
 router.post('/keys', authenticateToken, async (req, res, next) => {
   try {
-    const { name, description, type = 'production', scopes = ['read'], expiresAt } = req.body;
+    const {
+      name, description, type = 'production', scopes = ['read'], expiresAt,
+    } = req.body;
 
     // Validate required fields
     if (!name) {
@@ -73,7 +75,7 @@ router.post('/keys', authenticateToken, async (req, res, next) => {
       keyId: apiKeyData.key_id,
       name: apiKeyData.name,
       prefix: apiKeyData.key_prefix,
-      type: type,
+      type,
       scopes: apiKeyData.scopes,
       createdAt: apiKeyData.created_at,
       expiresAt: apiKeyData.expires_at,
@@ -91,7 +93,9 @@ router.post('/keys', authenticateToken, async (req, res, next) => {
  */
 router.get('/keys', authenticateToken, async (req, res, next) => {
   try {
-    const { status, type, limit = 100, offset = 0 } = req.query;
+    const {
+      status, type, limit = 100, offset = 0,
+    } = req.query;
 
     const filters = {
       userId: req.user.userId, // Only show user's own keys
@@ -287,7 +291,7 @@ router.delete('/keys/:keyId', authenticateToken, async (req, res, next) => {
     const revokedKey = await postgresRepository.revokeApiKey(
       keyId,
       req.user.userId,
-      reason || 'Revoked by user'
+      reason || 'Revoked by user',
     );
 
     res.json({
@@ -304,4 +308,3 @@ router.delete('/keys/:keyId', authenticateToken, async (req, res, next) => {
 });
 
 module.exports = router;
-

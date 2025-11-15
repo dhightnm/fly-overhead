@@ -93,19 +93,19 @@ class PostgresRepository {
       // DESC order optimizes for ORDER BY last_contact DESC queries
       `CREATE INDEX IF NOT EXISTS idx_aircraft_states_last_contact 
        ON aircraft_states(last_contact DESC)`,
-      
+
       // Composite index on lat/lon for spatial queries (fallback when PostGIS not available)
       // Partial index only for rows without geometry to keep index small
       `CREATE INDEX IF NOT EXISTS idx_aircraft_states_lat_lon 
        ON aircraft_states(latitude, longitude) 
        WHERE geom IS NULL`,
-      
+
       // Partial index for time filtering when geometry is available
       // Helps optimize queries that check both time and spatial constraints
       `CREATE INDEX IF NOT EXISTS idx_aircraft_states_last_contact_geom 
        ON aircraft_states(last_contact) 
        WHERE geom IS NOT NULL`,
-      
+
       // Index on callsign for lookups
       `CREATE INDEX IF NOT EXISTS idx_aircraft_states_callsign 
        ON aircraft_states(callsign) 
@@ -120,7 +120,7 @@ class PostgresRepository {
         logger.debug('Index creation info', { error: error.message });
       }
     }
-    
+
     logger.info('Aircraft states indexes created or verified');
   }
 
@@ -813,11 +813,11 @@ class PostgresRepository {
 
       const sourceValue = routeData.source || null;
       // Prefer model over type - "A321" is more useful than "Plane"
-      const aircraftType = routeData.aircraft?.model 
-        || routeData.aircraft?.type 
-        || routeData.aircraft_type 
+      const aircraftType = routeData.aircraft?.model
+        || routeData.aircraft?.type
+        || routeData.aircraft_type
         || null;
-      
+
       logger.info('About to insert route with source value', {
         cacheKey,
         sourceValue,
@@ -997,7 +997,7 @@ class PostgresRepository {
     // (e.g., a flight that was "En Route" and is now "Arrived")
     const callsignNorm = routeData.callsign ? String(routeData.callsign).trim().toUpperCase() : '';
     const icao24Norm = routeData.icao24 ? String(routeData.icao24).trim().toLowerCase() : '';
-    
+
     // legacy mapping replaced: actual_* will carry real times; first/last seen remain raw seconds
     const scheduledStart = routeData.flightData?.scheduledDeparture
       ? new Date(routeData.flightData.scheduledDeparture * 1000)
@@ -1016,7 +1016,7 @@ class PostgresRepository {
     // This handles cases where a flight was "En Route" and is now "Arrived"
     const departureTime = actualStart || scheduledStart;
     let existingFlightId = null;
-    
+
     if (icao24Norm && callsignNorm && departureTime) {
       // Match flights by departure time (within 5 minutes tolerance) and same callsign/icao24
       const recentFlightQuery = `
@@ -1034,22 +1034,22 @@ class PostgresRepository {
         ORDER BY created_at DESC
         LIMIT 1
       `;
-      
+
       const existingFlight = await this.db.oneOrNone(recentFlightQuery, [
         icao24Norm,
         callsignNorm,
         actualStart,
         scheduledStart,
       ]);
-      
+
       if (existingFlight) {
         existingFlightId = existingFlight.id;
-        
+
         // Check if this is truly a duplicate (same flight) vs. just similar departure time
         // For completed flights, also check arrival time
-        const isSameFlight = !actualEnd || !existingFlight.actual_flight_end 
+        const isSameFlight = !actualEnd || !existingFlight.actual_flight_end
           || Math.abs((actualEnd.getTime() - existingFlight.actual_flight_end.getTime()) / 1000) < 300; // within 5 min
-        
+
         // Always update if:
         // 1. It's the same flight (same departure AND arrival if both exist)
         // 2. Existing flight doesn't have arrival time but new data does
@@ -1057,11 +1057,11 @@ class PostgresRepository {
         // 4. Existing flight has empty/malformed flight_key but we have valid times
         const hasMoreCompleteData = actualEnd && !existingFlight.actual_flight_end;
         const statusChanged = existingFlight.flight_status !== routeData.flightStatus && routeData.flightStatus;
-        const needsFlightKeyFix = (!existingFlight.flight_key || existingFlight.flight_key.includes('||')) 
+        const needsFlightKeyFix = (!existingFlight.flight_key || existingFlight.flight_key.includes('||'))
           && departureTime && (actualEnd || scheduledEnd);
         const needsUpdate = (isSameFlight && (hasMoreCompleteData || statusChanged || needsFlightKeyFix))
           || (needsFlightKeyFix && departureTime);
-        
+
         if (needsUpdate && existingFlightId) {
           logger.info('Updating existing recent flight with completed data', {
             flightId: existingFlightId,
@@ -1072,7 +1072,7 @@ class PostgresRepository {
             hasNewArrival: !!actualEnd,
             hadArrival: !!existingFlight.actual_flight_end,
           });
-          
+
           // Update the existing record instead of creating a new one
           const updateFields = {};
           // Also update flight_key if it's empty or malformed (old format or missing)
@@ -1112,7 +1112,7 @@ class PostgresRepository {
           if (actualStart && actualEnd) {
             updateFields.actual_ete = Math.max(0, Math.floor((actualEnd.getTime() - actualStart.getTime()) / 1000));
           }
-          
+
           return await this.updateFlightHistoryById(existingFlightId, updateFields);
         }
       }
@@ -1443,7 +1443,7 @@ class PostgresRepository {
       ORDER BY created_at DESC, actual_flight_start DESC
       LIMIT 1
     `;
-    
+
     const result = await this.db.oneOrNone(query, [icao24, callsign]);
     return result;
   }
@@ -1753,8 +1753,8 @@ class PostgresRepository {
       `);
 
       // If all columns exist, just ensure indexes exist and return
-      if (columnCheck.has_data_source > 0 && columnCheck.has_feeder_id > 0 && 
-          columnCheck.has_source_priority > 0 && columnCheck.has_ingestion_timestamp > 0) {
+      if (columnCheck.has_data_source > 0 && columnCheck.has_feeder_id > 0
+          && columnCheck.has_source_priority > 0 && columnCheck.has_ingestion_timestamp > 0) {
         logger.info('Feeder columns already exist in aircraft_states, ensuring indexes exist');
         await this.db.query(`
           CREATE INDEX IF NOT EXISTS idx_aircraft_states_feeder_id ON aircraft_states(feeder_id);
@@ -1852,12 +1852,12 @@ class PostgresRepository {
             AND tablename = 'aircraft_states_history'
             AND indexname IN ('idx_aircraft_states_history_feeder_id', 'idx_aircraft_states_history_data_source');
         `);
-        
+
         if (indexCheck.has_feeder_idx > 0 && indexCheck.has_data_source_idx > 0) {
           logger.info('Indexes already exist for aircraft_states_history, skipping');
           return;
         }
-        
+
         // Only create indexes if they don't exist (this may take a while on large tables)
         logger.info('Creating missing indexes on aircraft_states_history (this may take a while)');
         await this.db.query(`
@@ -1935,7 +1935,7 @@ class PostgresRepository {
       CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
     `;
     await this.db.query(createTableQuery);
-    
+
     // Now run migrations to add google_id support
     try {
       // Check if google_id column exists
@@ -1944,7 +1944,7 @@ class PostgresRepository {
         FROM information_schema.columns 
         WHERE table_name = 'users' AND column_name = 'google_id'
       `);
-      
+
       if (!columnCheck) {
         logger.info('Adding google_id column to users table');
         // Make password nullable first (in case it's NOT NULL)
@@ -1952,18 +1952,18 @@ class PostgresRepository {
           ALTER TABLE users 
           ALTER COLUMN password DROP NOT NULL;
         `);
-        
+
         // Add google_id column
         await this.db.query(`
           ALTER TABLE users 
           ADD COLUMN google_id TEXT UNIQUE;
         `);
-        
+
         // Create index
         await this.db.query(`
           CREATE INDEX IF NOT EXISTS idx_users_google_id ON users(google_id);
         `);
-        
+
         // Add constraint
         await this.db.query(`
           DO $$
@@ -1976,7 +1976,7 @@ class PostgresRepository {
             END IF;
           END $$;
         `);
-        
+
         logger.info('Successfully migrated users table to support Google OAuth');
       } else {
         logger.info('Users table already has google_id column');
@@ -1986,7 +1986,7 @@ class PostgresRepository {
       // Don't throw - allow server to continue, but log the error
       // The migration can be run manually if needed
     }
-    
+
     logger.info('Users table created or already exists');
   }
 
@@ -2018,7 +2018,9 @@ class PostgresRepository {
    * Create new user
    */
   async createUser(userData) {
-    const { email, password, name, isPremium, googleId } = userData;
+    const {
+      email, password, name, isPremium, googleId,
+    } = userData;
     const query = `
       INSERT INTO users (email, password, name, is_premium, google_id)
       VALUES ($1, $2, $3, $4, $5)
@@ -2031,11 +2033,13 @@ class PostgresRepository {
    * Create or update user from Google OAuth
    */
   async createOrUpdateGoogleUser(googleProfile) {
-    const { id: googleId, email, name, picture } = googleProfile;
-    
+    const {
+      id: googleId, email, name, picture,
+    } = googleProfile;
+
     // Check if user exists by Google ID
     let user = await this.getUserByGoogleId(googleId);
-    
+
     if (user) {
       // Update existing user
       const query = `
@@ -2046,7 +2050,7 @@ class PostgresRepository {
       `;
       return this.db.one(query, [email, name, googleId]);
     }
-    
+
     // Check if user exists by email (account linking)
     user = await this.getUserByEmail(email);
     if (user) {
@@ -2059,7 +2063,7 @@ class PostgresRepository {
       `;
       return this.db.one(query, [googleId, email]);
     }
-    
+
     // Create new user
     return this.createUser({
       email,
@@ -2155,7 +2159,7 @@ class PostgresRepository {
   async getFeederByApiKey(apiKey) {
     try {
       const bcrypt = require('bcryptjs');
-      
+
       // Get all active feeders (you may want to optimize this with an index)
       const query = `
         SELECT id, feeder_id, api_key_hash, name, status,
@@ -2165,7 +2169,7 @@ class PostgresRepository {
         FROM feeders
         WHERE status IN ('active', 'inactive', 'suspended');
       `;
-      
+
       const feeders = await this.db.manyOrNone(query);
 
       // Check each feeder's API key hash
@@ -2440,8 +2444,8 @@ class PostgresRepository {
       offset = 0,
     } = filters;
 
-    let whereClause = [];
-    let params = [];
+    const whereClause = [];
+    const params = [];
     let paramIndex = 1;
 
     if (userId !== null) {
@@ -2466,7 +2470,7 @@ class PostgresRepository {
         created_at, updated_at, expires_at, created_by,
         revoked_at, revoked_by, revoked_reason
       FROM api_keys
-      ${whereClause.length > 0 ? 'WHERE ' + whereClause.join(' AND ') : ''}
+      ${whereClause.length > 0 ? `WHERE ${whereClause.join(' AND ')}` : ''}
       ORDER BY created_at DESC
       LIMIT $${paramIndex++}
       OFFSET $${paramIndex};

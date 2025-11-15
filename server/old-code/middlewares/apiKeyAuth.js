@@ -4,7 +4,7 @@ const postgresRepository = require('../repositories/PostgresRepository');
 
 /**
  * API Key Authentication Middleware (MVP)
- * 
+ *
  * This middleware:
  * 1. Extracts API key from Authorization header or X-API-Key header
  * 2. Validates the API key
@@ -293,4 +293,3 @@ module.exports = {
   requireApiKeyAuth,
   extractApiKey,
 };
-

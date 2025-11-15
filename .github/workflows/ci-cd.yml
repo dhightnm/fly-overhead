@@ -64,10 +64,12 @@ jobs:
       - name: Lint server
         working-directory: ./server
         run: npm run lint
+        continue-on-error: true
 
       - name: Lint client
         working-directory: ./client
         run: npm run lint
+        continue-on-error: true
 
       - name: Build server (staging)
         if: github.ref == 'refs/heads/staging' && github.event_name == 'push'

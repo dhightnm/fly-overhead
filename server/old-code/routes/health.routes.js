@@ -58,7 +58,7 @@ router.get('/ready', async (req, res) => {
 
     // Get rate limit status
     const rateLimitStatus = rateLimitManager.getStatus();
-    
+
     // Get WebSocket connection count
     const io = webSocketService.getIO();
     const connectedClients = io ? io.sockets.sockets.size : 0;
@@ -95,7 +95,7 @@ router.get('/opensky-status', (req, res) => {
   const rateLimitStatus = rateLimitManager.getStatus();
   const io = webSocketService.getIO();
   const connectedClients = io ? io.sockets.sockets.size : 0;
-  
+
   res.json({
     timestamp: new Date().toISOString(),
     rateLimited: rateLimitStatus.isRateLimited,
@@ -108,4 +108,3 @@ router.get('/opensky-status', (req, res) => {
 });
 
 module.exports = router;
-
