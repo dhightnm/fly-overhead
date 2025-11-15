@@ -57,17 +57,13 @@ jest.mock('../../repositories/DatabaseConnection', () => {
   };
 });
 
-// Mock other dependencies
-const mockGetAllStates = jest.fn();
-const mockGetStatesInBounds = jest.fn();
-const mockPrepareStateForDatabase = jest.fn();
-
+// Mock other dependencies - define functions inside the mock factory
 jest.mock('../OpenSkyService', () => ({
   __esModule: true,
   default: {
-    getAllStates: mockGetAllStates,
-    getStatesInBounds: mockGetStatesInBounds,
-    prepareStateForDatabase: mockPrepareStateForDatabase,
+    getAllStates: jest.fn(),
+    getStatesInBounds: jest.fn(),
+    prepareStateForDatabase: jest.fn(),
   },
 }));
 jest.mock('../../repositories/PostgresRepository');
@@ -78,12 +74,9 @@ jest.mock('../../routes/aircraft.routes', () => ({
   },
 }));
 
-// Type the mocks - use the actual mock functions
-const mockOpenSkyService = {
-  getAllStates: mockGetAllStates,
-  getStatesInBounds: mockGetStatesInBounds,
-  prepareStateForDatabase: mockPrepareStateForDatabase,
-};
+// Import the mocked module to get type-safe access to mocks
+import openSkyService from '../OpenSkyService';
+const mockOpenSkyService = openSkyService as jest.Mocked<typeof openSkyService>;
 const mockPostgresRepository = postgresRepository as jest.Mocked<typeof postgresRepository>;
 const mockRateLimitManager = rateLimitManager as jest.Mocked<typeof rateLimitManager>;
 jest.mock('../../utils/logger', () => ({
