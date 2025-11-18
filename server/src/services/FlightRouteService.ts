@@ -574,7 +574,7 @@ export class FlightRouteService {
 
         logger.info('FlightAware returned no route data by callsign, trying by icao24', {
           icao24,
-          callsign: finalCallsign,
+          callsign: resolvedCallsign,
         });
 
         try {

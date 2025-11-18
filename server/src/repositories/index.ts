@@ -86,11 +86,17 @@ class PostgresRepository {
     return this.schema.addFeederProviderColumnToUsers();
   }
 
-  async initializeAll(): Promise<void> { return this.schema.initializeAll(); }
+  async initializeAll(): Promise<void> {
+    return this.schema.initializeAll();
+  }
 
-  async initializePostGIS(): Promise<void> { return this.connection.initializePostGIS(); }
+  async initializePostGIS(): Promise<void> {
+    return this.connection.initializePostGIS();
+  }
 
-  getDb() { return this.db; }
+  getDb() {
+    return this.db;
+  }
 
   // Lazy-load specialized repositories
   private get aircraft(): AircraftRepository {
@@ -151,13 +157,7 @@ class PostgresRepository {
     lonmax: number,
     recentContactThreshold: number,
   ): Promise<any> {
-    return this.aircraft.findAircraftInBounds(
-      latmin,
-      lonmin,
-      latmax,
-      lonmax,
-      recentContactThreshold,
-    );
+    return this.aircraft.findAircraftInBounds(latmin, lonmin, latmax, lonmax, recentContactThreshold);
   }
 
   async updateAircraftCategory(icao24: string, category: number | null): Promise<void> {
@@ -172,11 +172,7 @@ class PostgresRepository {
     return this.aircraft.findAircraftHistory(icao24, startTime, endTime);
   }
 
-  async findMultipleAircraftHistory(
-    icao24s: string[],
-    startTime?: Date | null,
-    endTime?: Date | null,
-  ): Promise<any> {
+  async findMultipleAircraftHistory(icao24s: string[], startTime?: Date | null, endTime?: Date | null): Promise<any> {
     return this.aircraft.findMultipleAircraftHistory(icao24s, startTime, endTime);
   }
 
@@ -227,16 +223,8 @@ class PostgresRepository {
     return this.route.findFlightsNeedingBackfill(limit);
   }
 
-  async findFlightsNeedingBackfillInRange(
-    startDate: string,
-    endDate: string,
-    limit?: number,
-  ): Promise<any> {
-    return this.route.findFlightsNeedingBackfillInRange(
-      startDate,
-      endDate,
-      limit,
-    );
+  async findFlightsNeedingBackfillInRange(startDate: string, endDate: string, limit?: number): Promise<any> {
+    return this.route.findFlightsNeedingBackfillInRange(startDate, endDate, limit);
   }
 
   async findFlightsMissingAllRecent(limit?: number): Promise<any> {
@@ -282,16 +270,10 @@ class PostgresRepository {
   }
 
   async createOrUpdateGoogleUser(googleProfile: any): Promise<any> {
-    return this.user.createOrUpdateGoogleUser(
-      googleProfile,
-    );
+    return this.user.createOrUpdateGoogleUser(googleProfile);
   }
 
-  async updateUserPremiumStatus(
-    userId: number,
-    isPremium: boolean,
-    expiresAt?: Date | null,
-  ): Promise<any> {
+  async updateUserPremiumStatus(userId: number, isPremium: boolean, expiresAt?: Date | null): Promise<any> {
     return this.user.updateUserPremiumStatus(userId, isPremium, expiresAt);
   }
 
@@ -312,11 +294,7 @@ class PostgresRepository {
     return this.feeder.updateFeederLastSeen(feederId);
   }
 
-  async upsertFeederStats(
-    feederId: string,
-    messagesReceived: number,
-    uniqueAircraft: number,
-  ): Promise<void> {
+  async upsertFeederStats(feederId: string, messagesReceived: number, uniqueAircraft: number): Promise<void> {
     return this.feeder.upsertFeederStats(feederId, messagesReceived, uniqueAircraft);
   }
 
@@ -349,11 +327,7 @@ class PostgresRepository {
     return this.apiKey.updateApiKeyLastUsed(id);
   }
 
-  async revokeApiKey(
-    keyId: string,
-    revokedBy?: number | null,
-    reason?: string | null,
-  ): Promise<any> {
+  async revokeApiKey(keyId: string, revokedBy?: number | null, reason?: string | null): Promise<any> {
     return this.apiKey.revokeApiKey(keyId, revokedBy, reason);
   }
 
