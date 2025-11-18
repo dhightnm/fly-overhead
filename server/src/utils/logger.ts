@@ -38,4 +38,3 @@ if (!fs.existsSync('logs')) {
 }
 
 export default logger;
-

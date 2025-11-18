@@ -29,7 +29,12 @@ class FeederRepository {
 
   async registerFeeder(feederData: FeederRegistrationData): Promise<Feeder> {
     const {
-      feeder_id, api_key_hash, name, latitude, longitude, metadata,
+      feeder_id: feederId,
+      api_key_hash: apiKeyHash,
+      name,
+      latitude,
+      longitude,
+      metadata,
     } = feederData;
 
     // Use ST_SetSRID with ST_MakePoint for safe parameterized queries
@@ -46,8 +51,8 @@ class FeederRepository {
       `;
 
     const params = (latitude !== null && latitude !== undefined && longitude !== null && longitude !== undefined)
-      ? [feeder_id, api_key_hash, name || null, longitude, latitude, metadata || {}]
-      : [feeder_id, api_key_hash, name || null, metadata || {}];
+      ? [feederId, apiKeyHash, name || null, longitude, latitude, metadata || {}]
+      : [feederId, apiKeyHash, name || null, metadata || {}];
 
     return this.db.one<Feeder>(query, params);
   }
@@ -60,7 +65,7 @@ class FeederRepository {
   async upsertFeederStats(
     feederId: string,
     messagesReceived: number,
-    uniqueAircraft: number
+    uniqueAircraft: number,
   ): Promise<void> {
     // Use date column to match existing table schema
     const query = `
@@ -117,4 +122,3 @@ class FeederRepository {
 }
 
 export default FeederRepository;
-

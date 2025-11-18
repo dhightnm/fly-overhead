@@ -53,7 +53,7 @@ interface PredictedPosition {
 
 /**
  * Trajectory Prediction Service
- * 
+ *
  * Uses route data (departure/arrival airports) and last known position to predict
  * aircraft locations between real API updates (every 2 minutes).
  */
@@ -76,7 +76,7 @@ class TrajectoryPredictionService {
   predictPosition(
     aircraft: Aircraft,
     route: Route | null | undefined,
-    elapsedSeconds: number
+    elapsedSeconds: number,
   ): PredictedPosition | null {
     if (!aircraft.latitude || !aircraft.longitude || !aircraft.last_contact) {
       return null;
@@ -107,7 +107,12 @@ class TrajectoryPredictionService {
     depLocation: Location,
     arrLocation: Location,
     elapsedSeconds: number,
-    flightData?: { actualDeparture?: number; scheduledDeparture?: number; actualArrival?: number; scheduledArrival?: number } | null
+    flightData?: {
+      actualDeparture?: number;
+      scheduledDeparture?: number;
+      actualArrival?: number;
+      scheduledArrival?: number;
+    } | null,
   ): PredictedPosition {
     const depLat = depLocation.lat;
     const depLon = depLocation.lng;
@@ -116,8 +121,10 @@ class TrajectoryPredictionService {
 
     const totalDistance = this.haversineDistance(depLat, depLon, arrLat, arrLon);
     const distanceFromDep = this.haversineDistance(
-      depLat, depLon,
-      aircraft.latitude!, aircraft.longitude!,
+      depLat,
+      depLon,
+aircraft.latitude!,
+aircraft.longitude!,
     );
 
     let progress = totalDistance > 0 ? distanceFromDep / totalDistance : 0;
@@ -136,8 +143,10 @@ class TrajectoryPredictionService {
     const newProgress = Math.min(1, progress + progressIncrease);
 
     const predictedPos = this.interpolateGreatCircle(
-      depLat, depLon,
-      arrLat, arrLon,
+      depLat,
+      depLon,
+      arrLat,
+      arrLon,
       newProgress,
     );
 
@@ -161,7 +170,12 @@ class TrajectoryPredictionService {
    * Dead reckoning: Predict position based on last known speed and heading
    */
   predictDeadReckoning(aircraft: Aircraft, elapsedSeconds: number): PredictedPosition | null {
-    if (!aircraft.velocity || aircraft.true_track === null || aircraft.latitude === null || aircraft.longitude === null) {
+    if (
+      !aircraft.velocity
+      || aircraft.true_track === null
+      || aircraft.latitude === null
+      || aircraft.longitude === null
+    ) {
       return null;
     }
 
@@ -192,8 +206,13 @@ class TrajectoryPredictionService {
    * Calculate time-based progress if we have scheduled/actual flight times
    */
   calculateTimeProgress(
-    flightData: { actualDeparture?: number; scheduledDeparture?: number; actualArrival?: number; scheduledArrival?: number },
-    _elapsedSeconds: number
+    flightData: {
+      actualDeparture?: number;
+      scheduledDeparture?: number;
+      actualArrival?: number;
+      scheduledArrival?: number;
+    },
+    _elapsedSeconds: number,
   ): number | null {
     const now = Math.floor(Date.now() / 1000);
     const departureTime = flightData.actualDeparture || flightData.scheduledDeparture;
@@ -216,7 +235,7 @@ class TrajectoryPredictionService {
     currentAltitude: number | null | undefined,
     progress: number,
     verticalRate: number | null | undefined,
-    elapsedSeconds: number
+    elapsedSeconds: number,
   ): number | null {
     if (currentAltitude === null || currentAltitude === undefined) {
       return null;
@@ -229,11 +248,10 @@ class TrajectoryPredictionService {
 
     if (progress < 0.33) {
       return Math.min(currentAltitude + (elapsedSeconds * 3), 12000);
-    } else if (progress > 0.67) {
+    } if (progress > 0.67) {
       return Math.max(currentAltitude - (elapsedSeconds * 3), 0);
-    } else {
-      return currentAltitude;
     }
+    return currentAltitude;
   }
 
   /**
@@ -242,7 +260,7 @@ class TrajectoryPredictionService {
   calculateConfidence(
     progress: number,
     elapsedSeconds: number,
-    flightData?: { actualDeparture?: number; scheduledDeparture?: number } | null
+    flightData?: { actualDeparture?: number; scheduledDeparture?: number } | null,
   ): number {
     let confidence = 1.0;
 
@@ -315,7 +333,7 @@ class TrajectoryPredictionService {
    */
   async enhanceAircraftWithPredictions(aircraftList: Aircraft[]): Promise<Aircraft[]> {
     const now = Math.floor(Date.now() / 1000);
-    
+
     return Promise.all(aircraftList.map(async (aircraft) => {
       const elapsedSeconds = aircraft.last_contact ? (now - aircraft.last_contact) : 0;
 
@@ -337,7 +355,7 @@ class TrajectoryPredictionService {
 
       const cacheKey = aircraft.callsign || aircraft.icao24;
       let route: Route | null = null;
-      
+
       try {
         route = await postgresRepository.getCachedRoute(cacheKey || '') as Route | null;
       } catch (err) {
@@ -393,7 +411,7 @@ class TrajectoryPredictionService {
             if (historyRoute.departureAirport && historyRoute.arrivalAirport) {
               const depCode = historyRoute.departureAirport.icao || historyRoute.departureAirport.iata;
               const arrCode = historyRoute.arrivalAirport.icao || historyRoute.arrivalAirport.iata;
-              
+
               let depAirport = null;
               let arrAirport = null;
 

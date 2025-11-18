@@ -74,7 +74,7 @@ describe('RateLimitService', () => {
 
     it('should block requests exceeding burst limit', async () => {
       const identifier = 'burst-test-user';
-      const burstLimit = RATE_LIMIT_TIERS.production.burstLimit;
+      const { burstLimit } = RATE_LIMIT_TIERS.production;
 
       // Make requests up to burst limit, releasing each one to avoid concurrent limit
       for (let i = 0; i < burstLimit; i++) {
@@ -97,7 +97,7 @@ describe('RateLimitService', () => {
       // Simulate exceeding hourly limit
       // We'll use restricted tier for testing (100 requests/hour)
       const restrictedLimit = RATE_LIMIT_TIERS.restricted.hourlyLimit; // 100
-      const burstLimit = RATE_LIMIT_TIERS.restricted.burstLimit; // 5
+      const { burstLimit } = RATE_LIMIT_TIERS.restricted; // 5
 
       // Make requests in batches to avoid burst limit
       // We'll do bursts of 4 (less than burst limit) with small delays
@@ -135,7 +135,7 @@ describe('RateLimitService', () => {
 
     it('should allow higher burst limits for feeder keys', async () => {
       const identifier = 'feeder-burst-test';
-      const burstLimit = RATE_LIMIT_TIERS.feeder.burstLimit; // 200
+      const { burstLimit } = RATE_LIMIT_TIERS.feeder; // 200
 
       // Make requests up to feeder burst limit
       for (let i = 0; i < burstLimit; i++) {

@@ -3,10 +3,10 @@ const postgresRepository = require('../repositories/PostgresRepository');
 
 /**
  * Trajectory Prediction Service
- * 
+ *
  * Uses route data (departure/arrival airports) and last known position to predict
  * aircraft locations between real API updates (every 2 minutes).
- * 
+ *
  * This is how commercial flight tracking services work:
  * - Real positions when available (from OpenSky every 2 min)
  * - Great circle route prediction based on departure/arrival airports
@@ -24,7 +24,7 @@ class TrajectoryPredictionService {
    * 1. Last known position (from database)
    * 2. Route data (departure/arrival airports from cache/history)
    * 3. Last known velocity, heading, altitude
-   * 
+   *
    * @param {Object} aircraft - Aircraft data from database
    * @param {Object} route - Route data (from FlightRouteService cache)
    * @param {number} elapsedSeconds - Time since last_contact (in seconds)
@@ -70,14 +70,16 @@ class TrajectoryPredictionService {
 
     // Calculate distance from departure to last known position
     const distanceFromDep = this.haversineDistance(
-      depLat, depLon,
-      aircraft.latitude, aircraft.longitude,
+      depLat,
+      depLon,
+      aircraft.latitude,
+      aircraft.longitude,
     );
 
     // Estimate flight progress (0 = departure, 1 = arrival)
     // Use distance along route as progress indicator
     let progress = totalDistance > 0 ? distanceFromDep / totalDistance : 0;
-    
+
     // Clamp progress between 0 and 1
     progress = Math.max(0, Math.min(1, progress));
 
@@ -101,8 +103,10 @@ class TrajectoryPredictionService {
 
     // Calculate position along great circle at new progress
     const predictedPos = this.interpolateGreatCircle(
-      depLat, depLon,
-      arrLat, arrLon,
+      depLat,
+      depLon,
+      arrLat,
+      arrLon,
       newProgress,
     );
 
@@ -172,7 +176,7 @@ class TrajectoryPredictionService {
     if (!flightData) return null;
 
     const now = Math.floor(Date.now() / 1000);
-    
+
     // Use actual times if available, fall back to scheduled
     const departureTime = flightData.actualDeparture || flightData.scheduledDeparture;
     const arrivalTime = flightData.actualArrival || flightData.scheduledArrival;
@@ -206,13 +210,12 @@ class TrajectoryPredictionService {
     if (progress < 0.33) {
       // Climbing phase - estimate cruise altitude (typically 10-12km for commercial)
       return Math.min(currentAltitude + (elapsedSeconds * 3), 12000);
-    } else if (progress > 0.67) {
+    } if (progress > 0.67) {
       // Descending phase
       return Math.max(currentAltitude - (elapsedSeconds * 3), 0);
-    } else {
-      // Cruise - altitude should be relatively stable
-      return currentAltitude;
     }
+    // Cruise - altitude should be relatively stable
+    return currentAltitude;
   }
 
   /**
@@ -300,7 +303,7 @@ class TrajectoryPredictionService {
    */
   async enhanceAircraftWithPredictions(aircraftList) {
     const now = Math.floor(Date.now() / 1000);
-    
+
     return Promise.all(aircraftList.map(async (aircraft) => {
       // Calculate time since last update
       const elapsedSeconds = aircraft.last_contact ? (now - aircraft.last_contact) : 0;
@@ -380,7 +383,7 @@ class TrajectoryPredictionService {
               // Fetch airport locations
               const depCode = historyRoute.departureAirport.icao || historyRoute.departureAirport.iata;
               const arrCode = historyRoute.arrivalAirport.icao || historyRoute.arrivalAirport.iata;
-              
+
               let depAirport = null;
               let arrAirport = null;
 
@@ -469,4 +472,3 @@ class TrajectoryPredictionService {
 }
 
 module.exports = new TrajectoryPredictionService();
-

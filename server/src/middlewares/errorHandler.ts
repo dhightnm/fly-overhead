@@ -1,4 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
+
 import logger from '../utils/logger';
 
 /**
@@ -9,7 +10,7 @@ const errorHandler = (
   err: Error & { statusCode?: number; code?: string },
   req: Request,
   res: Response,
-  _next: NextFunction
+  _next: NextFunction,
 ): void => {
   logger.error('Request error', {
     path: req.path,
@@ -44,4 +45,3 @@ const errorHandler = (
 };
 
 export default errorHandler;
-

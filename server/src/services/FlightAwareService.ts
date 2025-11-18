@@ -20,6 +20,7 @@ interface FlightAwareResponse {
  */
 class FlightAwareService {
   private baseUrl: string | undefined;
+
   private apiKey: string | undefined;
 
   constructor() {
@@ -49,17 +50,26 @@ class FlightAwareService {
       throw new Error('FlightAware API key not configured');
     }
 
-    const { lamin, lomin, lamax, lomax } = bounds;
+    const {
+      lamin, lomin, lamax, lomax,
+    } = bounds;
 
     try {
       logger.info('Querying FlightAware AeroAPI for flights in bounds', {
-        bounds: { lamin, lomin, lamax, lomax },
+        bounds: {
+          lamin, lomin, lamax, lomax,
+        },
       });
 
       const query = `-latlong "${lamin} ${lomin} ${lamax} ${lomax}"`;
-      
-      logger.debug('FlightAware search query', { query, bounds: { lamin, lomin, lamax, lomax } });
-      
+
+      logger.debug('FlightAware search query', {
+        query,
+        bounds: {
+          lamin, lomin, lamax, lomax,
+        },
+      });
+
       let response;
       try {
         response = await axios.get(`${this.baseUrl}/flights/search`, {
@@ -80,16 +90,18 @@ class FlightAwareService {
         });
         return { states: [], time: Date.now() };
       }
-      
-      let flights = response.data?.flights || response.data?.results || [];
-      
+
+      const flights = response.data?.flights || response.data?.results || [];
+
       logger.info(`FlightAware search returned ${flights.length} flights in bounds`, {
-        bounds: { lamin, lomin, lamax, lomax },
+        bounds: {
+          lamin, lomin, lamax, lomax,
+        },
         query,
         hasFlights: flights.length > 0,
         numPages: response.data?.num_pages || 0,
       });
-      
+
       if (flights.length > 0 && flights[0]) {
         logger.debug('Sample FlightAware flight structure', {
           ident: flights[0].ident,
@@ -113,7 +125,9 @@ class FlightAwareService {
       });
 
       logger.info(`FlightAware returned ${states.length} aircraft in bounds`, {
-        bounds: { lamin, lomin, lamax, lomax },
+        bounds: {
+          lamin, lomin, lamax, lomax,
+        },
         totalResults: flights.length,
         filteredStates: states.length,
       });
@@ -125,10 +139,12 @@ class FlightAwareService {
     } catch (error) {
       const err = error as AxiosError;
       const statusCode = err.response?.status;
-      
+
       if (statusCode === 429) {
         logger.warn('FlightAware rate limit reached', {
-          bounds: { lamin, lomin, lamax, lomax },
+          bounds: {
+            lamin, lomin, lamax, lomax,
+          },
         });
         throw new Error('FlightAware rate limit exceeded');
       }
@@ -145,7 +161,9 @@ class FlightAwareService {
         status: statusCode,
       });
 
-      return this.getStatesInBoundsFallback({ lamin, lomin, lamax, lomax });
+      return this.getStatesInBoundsFallback({
+        lamin, lomin, lamax, lomax,
+      });
     }
   }
 
@@ -153,22 +171,24 @@ class FlightAwareService {
    * Fallback method: Get flights near center of bounds
    */
   async getStatesInBoundsFallback(bounds: BoundingBox): Promise<FlightAwareResponse> {
-    const { lamin, lomin, lamax, lomax } = bounds;
-    
+    const {
+      lamin, lomin, lamax, lomax,
+    } = bounds;
+
     try {
       const centerLat = (lamin + lamax) / 2;
       const centerLon = (lomin + lomax) / 2;
       const latRange = lamax - lamin;
       const lonRange = lomax - lomin;
       const maxRange = Math.max(latRange, lonRange);
-      
+
       logger.info('Trying FlightAware fallback: center point search', {
         center: { lat: centerLat, lon: centerLon },
         radius: maxRange,
       });
 
       const query = `{range lat ${lamin} ${lamax}} {range lon ${lomin} ${lomax}}`;
-      
+
       const response = await axios.get(`${this.baseUrl}/flights/search`, {
         params: {
           query,
@@ -222,14 +242,14 @@ class FlightAwareService {
       }
 
       let icao24: string | null = null;
-      
+
       if (flight.registration) {
         const reg = flight.registration.replace(/-/g, '').toLowerCase();
         if (reg.length === 6 && /^[0-9a-f]{6}$/.test(reg)) {
           icao24 = reg;
         }
       }
-      
+
       if (!icao24) {
         if (states.length < 3) {
           logger.info('Skipping FlightAware flight without valid icao24', {
@@ -287,4 +307,3 @@ class FlightAwareService {
 }
 
 export default new FlightAwareService();
-

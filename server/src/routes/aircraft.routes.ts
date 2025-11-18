@@ -1,6 +1,12 @@
-import { Router, Request, Response, NextFunction } from 'express';
+import {
+  Router, Request, Response, NextFunction,
+} from 'express';
+import dns from 'dns';
+import { promisify } from 'util';
+import axios from 'axios';
 import NodeCache from 'node-cache';
 import aircraftService from '../services/AircraftService';
+import airplanesLiveService from '../services/AirplanesLiveService';
 import satelliteService from '../services/SatelliteService';
 import historyService from '../services/HistoryService';
 import flightRouteService from '../services/FlightRouteService';
@@ -8,8 +14,9 @@ import flightPlanRouteService from '../services/FlightPlanRouteService';
 import postgresRepository from '../repositories/PostgresRepository';
 import logger from '../utils/logger';
 import { mapAircraftTypeToCategory } from '../utils/aircraftCategoryMapper';
-import { requireApiKeyAuth, type AuthenticatedRequest } from '../middlewares/apiKeyAuth';
+import { requireApiKeyAuth, optionalApiKeyAuth, type AuthenticatedRequest } from '../middlewares/apiKeyAuth';
 import { rateLimitMiddleware } from '../middlewares/rateLimitMiddleware';
+import config from '../config';
 
 const router = Router();
 
@@ -19,6 +26,29 @@ export const boundsCache = new NodeCache({
   maxKeys: 1000,
   checkperiod: 10,
 });
+
+const NM_TO_LAT_DEGREES = 1 / 60; // Rough conversion (1 NM = 1 minute of latitude)
+const BOUNDS_RECENT_WINDOW_SECONDS = 15 * 60; // 15 minutes of recency for bounds queries
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
+}
+
+function createBoundingBox(lat: number, lon: number, radiusNm: number) {
+  const latRadius = radiusNm * NM_TO_LAT_DEGREES;
+  const latMin = clamp(lat - latRadius, -90, 90);
+  const latMax = clamp(lat + latRadius, -90, 90);
+
+  const latRad = (lat * Math.PI) / 180;
+  const cosLat = Math.max(Math.cos(latRad), 0.0001);
+  const lonRadius = radiusNm / (60 * cosLat);
+  const lonMin = clamp(lon - lonRadius, -180, 180);
+  const lonMax = clamp(lon + lonRadius, -180, 180);
+
+  return {
+    latMin, latMax, lonMin, lonMax,
+  };
+}
 
 const CURRENT_FLIGHT_THRESHOLD_SECONDS = 15 * 60; // 15 minutes
 const LANDED_OVERRIDE_THRESHOLD_SECONDS = 30 * 60; // 30 minutes before forcing arrival location
@@ -43,8 +73,7 @@ const maybeOverrideWithArrivalLocation = (aircraft: any, route: any, dataAgeSeco
 
   const normalizedStatus = normalizeStatus(route?.flightStatus);
   const hasArrivalStatus = normalizedStatus ? LANDED_STATUSES.has(normalizedStatus) : false;
-  const actualArrivalTimestamp =
-    typeof route?.flightData?.actualArrival === 'number' ? route.flightData.actualArrival : null;
+  const actualArrivalTimestamp = typeof route?.flightData?.actualArrival === 'number' ? route.flightData.actualArrival : null;
   const nowSeconds = Math.floor(Date.now() / 1000);
   const actualArrivalAgeSeconds = actualArrivalTimestamp ? Math.max(0, nowSeconds - actualArrivalTimestamp) : null;
   const hasActualArrival = actualArrivalAgeSeconds !== null;
@@ -78,6 +107,132 @@ const maybeOverrideWithArrivalLocation = (aircraft: any, route: any, dataAgeSeco
     hasActualArrival,
   });
 };
+
+/**
+ * NEW ENDPOINT: Get flights from airplanes.live API
+ * Uses optionalApiKeyAuth to allow webapp (same-origin) requests
+ * Enforces 1 req/sec rate limit and caches responses
+ */
+router.get(
+  '/flights',
+  optionalApiKeyAuth,
+  rateLimitMiddleware,
+  async (req: Request, res: Response, next: NextFunction) => {
+    const { lat, lon, radius } = req.query;
+
+    // Validate parameters
+    if (!lat || !lon) {
+      return res.status(400).json({
+        error: 'Missing required parameters',
+        message: 'lat and lon are required',
+      });
+    }
+
+    const latitude = parseFloat(lat as string);
+    const longitude = parseFloat(lon as string);
+    const radiusNm = radius ? parseFloat(radius as string) : 100; // Default 100nm
+
+    if (isNaN(latitude) || isNaN(longitude) || isNaN(radiusNm)) {
+      return res.status(400).json({
+        error: 'Invalid parameters',
+        message: 'lat, lon, and radius must be valid numbers',
+      });
+    }
+
+    if (latitude < -90 || latitude > 90) {
+      return res.status(400).json({
+        error: 'Invalid latitude',
+        message: 'Latitude must be between -90 and 90',
+      });
+    }
+
+    if (longitude < -180 || longitude > 180) {
+      return res.status(400).json({
+        error: 'Invalid longitude',
+        message: 'Longitude must be between -180 and 180',
+      });
+    }
+
+    try {
+      const clampedRadius = Math.min(radiusNm, config.external.airplanesLive?.maxRadiusNm || 250);
+
+      const result = await airplanesLiveService.getAircraftNearPoint({
+        lat: latitude,
+        lon: longitude,
+        radiusNm: clampedRadius,
+      });
+
+      if (result.ac && result.ac.length > 0) {
+        const statePromises = result.ac
+          .filter((aircraft) => aircraft.lat && aircraft.lon)
+          .map((aircraft) => {
+            const preparedState = airplanesLiveService.prepareStateForDatabase(aircraft);
+
+            return postgresRepository
+              .upsertAircraftStateWithPriority(preparedState, null, new Date(), 'airplanes.live', 20)
+              .catch((err: Error) => {
+                logger.debug('Failed to store aircraft from airplanes.live', {
+                  icao24: aircraft.hex,
+                  error: err.message,
+                });
+              });
+          });
+
+        await Promise.all(statePromises);
+      }
+
+      const {
+        latMin, latMax, lonMin, lonMax,
+      } = createBoundingBox(latitude, longitude, clampedRadius);
+      const nowSeconds = Math.floor(Date.now() / 1000);
+      const recentThreshold = nowSeconds - BOUNDS_RECENT_WINDOW_SECONDS;
+      const aircraftStates = await postgresRepository.findAircraftInBounds(
+        latMin,
+        lonMin,
+        latMax,
+        lonMax,
+        recentThreshold,
+      );
+
+      return res.json({
+        success: true,
+        aircraft: aircraftStates,
+        total: aircraftStates.length,
+        timestamp: nowSeconds,
+        source: 'airplanes.live',
+      });
+    } catch (err) {
+      return next(err);
+    }
+  },
+);
+
+/**
+ * Test airplanes.live connection
+ * Accessible without API key for debugging
+ */
+router.get('/test-airplanes-live', async (_req: Request, res: Response, next: NextFunction) => {
+  try {
+    const result = await airplanesLiveService.testConnection();
+    return res.json(result);
+  } catch (err) {
+    return next(err);
+  }
+});
+
+/**
+ * Get CONUS polling service status
+ * Shows current polling progress and statistics
+ */
+router.get('/conus-polling-status', async (_req: Request, res: Response, next: NextFunction) => {
+  try {
+    const conusPollingService = await import('../services/ConusPollingService');
+    const status = conusPollingService.default.getStatus();
+    return res.json(status);
+  } catch (err) {
+    return next(err);
+  }
+});
 
 /**
  * Get all aircraft (cached)
@@ -267,8 +422,8 @@ router.get(
       if (aircraftIcao24 && (route.aircraft?.type || route.aircraft?.model)) {
         const inferredCategory = mapAircraftTypeToCategory(route.aircraft?.type, route.aircraft?.model);
         if (
-          inferredCategory !== null &&
-          (!currentAircraft || currentAircraft.category === null || currentAircraft.category === 0)
+          inferredCategory !== null
+          && (!currentAircraft || currentAircraft.category === null || currentAircraft.category === 0)
         ) {
           try {
             await postgresRepository.updateAircraftCategory(aircraftIcao24, inferredCategory);
@@ -299,7 +454,9 @@ router.get(
   requireApiKeyAuth,
   rateLimitMiddleware,
   async (req: Request, res: Response, next: NextFunction) => {
-    const { latmin, lonmin, latmax, lonmax } = req.params;
+    const {
+      latmin, lonmin, latmax, lonmax,
+    } = req.params;
 
     const roundedLatMin = Math.floor(parseFloat(latmin) * 100) / 100;
     const roundedLonMin = Math.floor(parseFloat(lonmin) * 100) / 100;
@@ -343,7 +500,9 @@ router.post(
   requireApiKeyAuth,
   rateLimitMiddleware,
   async (req: Request, res: Response, next: NextFunction) => {
-    const { latmin, lonmin, latmax, lonmax } = req.params;
+    const {
+      latmin, lonmin, latmax, lonmax,
+    } = req.params;
 
     const boundingBox = {
       lamin: parseFloat(latmin),
@@ -741,12 +900,16 @@ router.get(
   requireApiKeyAuth,
   rateLimitMiddleware,
   async (req: Request, res: Response, next: NextFunction) => {
-    const { latmin, lonmin, latmax, lonmax } = req.params;
+    const {
+      latmin, lonmin, latmax, lonmax,
+    } = req.params;
     const { cellSize = 0.01 } = req.query;
 
     try {
       // TODO: Implement getTrafficDensity in repository
-      logger.warn('getTrafficDensity not yet implemented', { latmin, lonmin, latmax, lonmax, cellSize });
+      logger.warn('getTrafficDensity not yet implemented', {
+        latmin, lonmin, latmax, lonmax, cellSize,
+      });
       return res.status(501).json({ error: 'Not implemented' });
     } catch (err) {
       return next(err);
@@ -821,7 +984,9 @@ router.get(
   requireApiKeyAuth,
   rateLimitMiddleware,
   async (req: Request, res: Response, next: NextFunction) => {
-    const { latmin, lonmin, latmax, lonmax } = req.params;
+    const {
+      latmin, lonmin, latmax, lonmax,
+    } = req.params;
     const { type, limit = 100 } = req.query;
 
     try {
@@ -998,9 +1163,6 @@ router.get(
 // Diagnostic endpoint to test network connectivity from inside the container
 router.get('/diagnostics/network', async (_req: Request, res: Response, next: NextFunction) => {
   try {
-    const dns = require('dns');
-    const { promisify } = require('util');
-    const axios = require('axios');
     const dnsLookup = promisify(dns.lookup);
 
     const results: any = {

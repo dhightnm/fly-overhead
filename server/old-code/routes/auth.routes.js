@@ -44,7 +44,7 @@ router.post('/register', async (req, res, next) => {
     const token = jwt.sign(
       { userId: user.id, email: user.email },
       JWT_SECRET,
-      { expiresIn: JWT_EXPIRES_IN }
+      { expiresIn: JWT_EXPIRES_IN },
     );
 
     logger.info('User registered', { email, userId: user.id });
@@ -91,7 +91,7 @@ router.post('/login', async (req, res, next) => {
     const token = jwt.sign(
       { userId: user.id, email: user.email },
       JWT_SECRET,
-      { expiresIn: JWT_EXPIRES_IN }
+      { expiresIn: JWT_EXPIRES_IN },
     );
 
     logger.info('User logged in', { email, userId: user.id });
@@ -118,9 +118,9 @@ router.post('/google', async (req, res, next) => {
   try {
     const { code, credential } = req.body;
 
-    const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
-    const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
-    
+    const { GOOGLE_CLIENT_ID } = process.env;
+    const { GOOGLE_CLIENT_SECRET } = process.env;
+
     if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET) {
       logger.error('Google OAuth credentials not configured');
       return res.status(500).json({ error: 'Google OAuth not configured' });
@@ -142,7 +142,7 @@ router.post('/google', async (req, res, next) => {
         logger.error('Google token verification failed', { error: error.message });
         return res.status(401).json({ error: 'Invalid Google token' });
       }
-    } 
+    }
     // If authorization code is provided, exchange it for tokens
     else if (code) {
       try {
@@ -150,14 +150,14 @@ router.post('/google', async (req, res, next) => {
         // The library uses 'postmessage' internally, but Google Cloud Console requires actual URLs
         // Try 'postmessage' first (if registered), otherwise use the actual URL based on environment
         let redirectUri = process.env.GOOGLE_REDIRECT_URI || 'postmessage';
-        
+
         // If 'postmessage' doesn't work, fall back to actual URLs based on environment
         // You can override this in your .env file if needed
         if (!redirectUri || redirectUri === 'postmessage') {
           // Try postmessage first (works if registered in Google Cloud Console)
           redirectUri = 'postmessage';
         }
-        
+
         // Exchange authorization code for tokens
         const tokenResponse = await axios.post('https://oauth2.googleapis.com/token', {
           code,
@@ -199,7 +199,7 @@ router.post('/google', async (req, res, next) => {
     const token = jwt.sign(
       { userId: user.id, email: user.email },
       JWT_SECRET,
-      { expiresIn: JWT_EXPIRES_IN }
+      { expiresIn: JWT_EXPIRES_IN },
     );
 
     logger.info('User logged in with Google', { email: user.email, userId: user.id });
@@ -263,4 +263,3 @@ function authenticateToken(req, res, next) {
 
 module.exports = router;
 module.exports.authenticateToken = authenticateToken;
-

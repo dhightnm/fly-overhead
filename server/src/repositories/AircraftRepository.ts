@@ -3,39 +3,23 @@ import type { AircraftState } from '../types/database.types';
 import PostGISService from '../services/PostGISService';
 
 /**
- * Aircraft state array format from OpenSky API:
+ * Aircraft state array format from OpenSky API + enriched data:
  * [0] icao24, [1] callsign, [2] origin_country, [3] time_position, [4] last_contact,
  * [5] longitude, [6] latitude, [7] baro_altitude, [8] on_ground, [9] velocity,
  * [10] true_track, [11] vertical_rate, [12] sensors, [13] geo_altitude, [14] squawk,
  * [15] spi, [16] position_source, [17] category, [18] created_at (optional)
+ * Enriched fields (optional, from airplanes.live):
+ * [19] aircraft_type, [20] aircraft_description, [21] registration, [22] emergency_status,
+ * [23] nav_qnh, [24] nav_altitude_mcp, [25] nav_heading, [26] owner_operator, [27] year_built
  */
-type AircraftStateArray = [
-  string, // icao24
-  string | null, // callsign
-  string | null, // origin_country
-  number | null, // time_position
-  number | null, // last_contact
-  number | null, // longitude
-  number | null, // latitude
-  number | null, // baro_altitude
-  boolean | null, // on_ground
-  number | null, // velocity
-  number | null, // true_track
-  number | null, // vertical_rate
-  number[] | null, // sensors
-  number | null, // geo_altitude
-  string | null, // squawk
-  boolean | null, // spi
-  number | null, // position_source
-  number | null, // category
-  Date?, // created_at (optional)
-];
+type AircraftStateArray = any[];
 
 /**
  * Repository for aircraft states and history operations
  */
 class AircraftRepository {
   private db: pgPromise.IDatabase<any>;
+
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   // @ts-ignore - postgis reserved for future use
   private _postgis: PostGISService;
@@ -321,274 +305,267 @@ class AircraftRepository {
     ingestionTimestamp: Date | null,
     dataSource: string = 'opensky',
     sourcePriority: number = 30,
+    skipHistory: boolean = false, // Skip history writes for background polling to prevent disk fill
   ): Promise<void> {
     // Extract from old implementation - keeping for now
     // TODO: Refactor to use RouteRepository
-    const historyState = [
-      state[0],
-      state[1],
-      state[2],
-      state[3],
-      state[4],
-      state[5],
-      state[6],
-      state[7],
-      state[8],
-      state[9],
-      state[10],
-      state[11],
-      state[12],
-      state[13],
-      state[14],
-      state[15],
-      state[16],
-      state[17],
-      feederId,
-      ingestionTimestamp,
-      dataSource,
-      sourcePriority,
-    ];
+    // Enriched fields: indices 19-27 from airplanes.live (optional)
+    const aircraftType = state[19] || null;
+    const aircraftDescription = state[20] || null;
+    const registration = state[21] || null;
+    const emergencyStatus = state[22] || null;
+    const navQnh = state[23] || null;
+    const navAltitudeMcp = state[24] || null;
+    const navHeading = state[25] || null;
+    const ownerOperator = state[26] || null;
+    const yearBuilt = state[27] || null;
 
-    const insertHistoryQuery = `
-      INSERT INTO aircraft_states_history (
-        icao24, callsign, origin_country, time_position, last_contact,
-        longitude, latitude, baro_altitude, on_ground, velocity,
-        true_track, vertical_rate, sensors, geo_altitude, squawk,
-        spi, position_source, category, feeder_id, ingestion_timestamp, data_source, source_priority
+    // Only write history if not skipped (skip for background polling)
+    if (!skipHistory) {
+      const historyState = [
+        state[0],
+        state[1],
+        state[2],
+        state[3],
+        state[4],
+        state[5],
+        state[6],
+        state[7],
+        state[8],
+        state[9],
+        state[10],
+        state[11],
+        state[12],
+        state[13],
+        state[14],
+        state[15],
+        state[16],
+        state[17],
+        feederId,
+        ingestionTimestamp,
+        dataSource,
+        sourcePriority,
+        aircraftType,
+        aircraftDescription,
+        registration,
+        emergencyStatus,
+        navQnh,
+        navAltitudeMcp,
+        navHeading,
+        ownerOperator,
+        yearBuilt,
+      ];
+
+      const insertHistoryQuery = `
+        INSERT INTO aircraft_states_history (
+          icao24, callsign, origin_country, time_position, last_contact,
+          longitude, latitude, baro_altitude, on_ground, velocity,
+          true_track, vertical_rate, sensors, geo_altitude, squawk,
+          spi, position_source, category, feeder_id, ingestion_timestamp, data_source, source_priority,
+          aircraft_type, aircraft_description, registration, emergency_status,
+          nav_qnh, nav_altitude_mcp, nav_heading, owner_operator, year_built
+        )
+        VALUES(
+          $1, TRIM($2), $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22,
+          $23, $24, $25, $26, $27, $28, $29, $30, $31
+        );
+      `;
+      await this.db.query(insertHistoryQuery, historyState);
+    }
+
+    // Upsert with priority handling: higher priority or fresher data overwrites existing records
+    const fresherDataCondition = `
+      EXCLUDED.source_priority < aircraft_states.source_priority
+      OR (
+        EXCLUDED.source_priority = aircraft_states.source_priority
+        AND (
+          EXCLUDED.last_contact > COALESCE(aircraft_states.last_contact, 0)
+          OR (
+            EXCLUDED.last_contact = COALESCE(aircraft_states.last_contact, 0)
+            AND COALESCE(EXCLUDED.ingestion_timestamp, TO_TIMESTAMP(0))
+              > COALESCE(aircraft_states.ingestion_timestamp, TO_TIMESTAMP(0))
+          )
+        )
       )
-      VALUES($1, TRIM($2), $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22);
+      OR (EXTRACT(EPOCH FROM NOW())::bigint - COALESCE(aircraft_states.last_contact, 0)) > 600
     `;
-    await this.db.query(insertHistoryQuery, historyState);
 
-    // Main table upsert with priority handling
-    // Strategy:
-    // 1. Higher priority sources (lower number) can overwrite
-    // 2. Same priority sources update if ingestion timestamp is newer
-    // 3. CRITICAL: Only update if incoming last_contact is NEWER than existing last_contact
-    //    This prevents overwriting fresh data with stale data
-    // 4. STALENESS FALLBACK: If existing data is >10 minutes old AND incoming data is fresher, allow update
     const upsertQuery = `
       INSERT INTO aircraft_states(
         icao24, callsign, origin_country, time_position, last_contact,
         longitude, latitude, baro_altitude, on_ground, velocity,
         true_track, vertical_rate, sensors, geo_altitude, squawk,
-        spi, position_source, category, created_at, feeder_id, ingestion_timestamp, data_source, source_priority
+        spi, position_source, category, created_at, feeder_id, ingestion_timestamp, data_source, source_priority,
+        aircraft_type, aircraft_description, registration, emergency_status,
+        nav_qnh, nav_altitude_mcp, nav_heading, owner_operator, year_built
       )
-      VALUES($1, TRIM($2), $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23)
+      VALUES(
+        $1, TRIM($2), $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23,
+        $24, $25, $26, $27, $28, $29, $30, $31, $32
+      )
       ON CONFLICT(icao24) DO UPDATE SET
         callsign = CASE 
           WHEN (
-            -- Higher priority source
-            EXCLUDED.source_priority < aircraft_states.source_priority
-            -- OR same priority with newer data
-            OR (EXCLUDED.source_priority = aircraft_states.source_priority AND EXCLUDED.last_contact > COALESCE(aircraft_states.last_contact, 0))
-            -- OR existing data is stale (>10 min) AND new data is fresher
-            OR ((EXTRACT(EPOCH FROM NOW())::bigint - COALESCE(aircraft_states.last_contact, 0)) > 600 
-                AND EXCLUDED.last_contact > COALESCE(aircraft_states.last_contact, 0))
+            -- Higher priority source: always update
+            ${fresherDataCondition}
           )
           THEN COALESCE(NULLIF(TRIM(EXCLUDED.callsign), ''), aircraft_states.callsign)
           ELSE aircraft_states.callsign
         END,
         origin_country = CASE 
           WHEN (
-            EXCLUDED.source_priority < aircraft_states.source_priority
-            OR (EXCLUDED.source_priority = aircraft_states.source_priority AND EXCLUDED.last_contact > COALESCE(aircraft_states.last_contact, 0))
-            OR ((EXTRACT(EPOCH FROM NOW())::bigint - COALESCE(aircraft_states.last_contact, 0)) > 600 
-                AND EXCLUDED.last_contact > COALESCE(aircraft_states.last_contact, 0))
+            ${fresherDataCondition}
           )
           THEN EXCLUDED.origin_country
           ELSE aircraft_states.origin_country
         END,
         time_position = CASE 
           WHEN (
-            EXCLUDED.source_priority < aircraft_states.source_priority
-            OR (EXCLUDED.source_priority = aircraft_states.source_priority AND EXCLUDED.last_contact > COALESCE(aircraft_states.last_contact, 0))
-            OR ((EXTRACT(EPOCH FROM NOW())::bigint - COALESCE(aircraft_states.last_contact, 0)) > 600 
-                AND EXCLUDED.last_contact > COALESCE(aircraft_states.last_contact, 0))
+            ${fresherDataCondition}
           )
           THEN EXCLUDED.time_position
           ELSE aircraft_states.time_position
         END,
         last_contact = CASE 
           WHEN (
-            EXCLUDED.source_priority < aircraft_states.source_priority
-            OR (EXCLUDED.source_priority = aircraft_states.source_priority AND EXCLUDED.last_contact > COALESCE(aircraft_states.last_contact, 0))
-            OR ((EXTRACT(EPOCH FROM NOW())::bigint - COALESCE(aircraft_states.last_contact, 0)) > 600 
-                AND EXCLUDED.last_contact > COALESCE(aircraft_states.last_contact, 0))
+            ${fresherDataCondition}
           )
           THEN EXCLUDED.last_contact
           ELSE aircraft_states.last_contact
         END,
         longitude = CASE 
           WHEN (
-            EXCLUDED.source_priority < aircraft_states.source_priority
-            OR (EXCLUDED.source_priority = aircraft_states.source_priority AND EXCLUDED.last_contact > COALESCE(aircraft_states.last_contact, 0))
-            OR ((EXTRACT(EPOCH FROM NOW())::bigint - COALESCE(aircraft_states.last_contact, 0)) > 600 
-                AND EXCLUDED.last_contact > COALESCE(aircraft_states.last_contact, 0))
+            ${fresherDataCondition}
           )
           THEN EXCLUDED.longitude
           ELSE aircraft_states.longitude
         END,
         latitude = CASE 
           WHEN (
-            EXCLUDED.source_priority < aircraft_states.source_priority
-            OR (EXCLUDED.source_priority = aircraft_states.source_priority AND EXCLUDED.last_contact > COALESCE(aircraft_states.last_contact, 0))
-            OR ((EXTRACT(EPOCH FROM NOW())::bigint - COALESCE(aircraft_states.last_contact, 0)) > 600 
-                AND EXCLUDED.last_contact > COALESCE(aircraft_states.last_contact, 0))
+            ${fresherDataCondition}
           )
           THEN EXCLUDED.latitude
           ELSE aircraft_states.latitude
         END,
         baro_altitude = CASE 
           WHEN (
-            EXCLUDED.source_priority < aircraft_states.source_priority
-            OR (EXCLUDED.source_priority = aircraft_states.source_priority AND EXCLUDED.last_contact > COALESCE(aircraft_states.last_contact, 0))
-            OR ((EXTRACT(EPOCH FROM NOW())::bigint - COALESCE(aircraft_states.last_contact, 0)) > 600 
-                AND EXCLUDED.last_contact > COALESCE(aircraft_states.last_contact, 0))
+            ${fresherDataCondition}
           )
           THEN EXCLUDED.baro_altitude
           ELSE aircraft_states.baro_altitude
         END,
         on_ground = CASE 
           WHEN (
-            EXCLUDED.source_priority < aircraft_states.source_priority
-            OR (EXCLUDED.source_priority = aircraft_states.source_priority AND EXCLUDED.last_contact > COALESCE(aircraft_states.last_contact, 0))
-            OR ((EXTRACT(EPOCH FROM NOW())::bigint - COALESCE(aircraft_states.last_contact, 0)) > 600 
-                AND EXCLUDED.last_contact > COALESCE(aircraft_states.last_contact, 0))
+            ${fresherDataCondition}
           )
           THEN EXCLUDED.on_ground
           ELSE aircraft_states.on_ground
         END,
         velocity = CASE 
           WHEN (
-            EXCLUDED.source_priority < aircraft_states.source_priority
-            OR (EXCLUDED.source_priority = aircraft_states.source_priority AND EXCLUDED.last_contact > COALESCE(aircraft_states.last_contact, 0))
-            OR ((EXTRACT(EPOCH FROM NOW())::bigint - COALESCE(aircraft_states.last_contact, 0)) > 600 
-                AND EXCLUDED.last_contact > COALESCE(aircraft_states.last_contact, 0))
+            ${fresherDataCondition}
           )
           THEN EXCLUDED.velocity
           ELSE aircraft_states.velocity
         END,
         true_track = CASE 
           WHEN (
-            EXCLUDED.source_priority < aircraft_states.source_priority
-            OR (EXCLUDED.source_priority = aircraft_states.source_priority AND EXCLUDED.last_contact > COALESCE(aircraft_states.last_contact, 0))
-            OR ((EXTRACT(EPOCH FROM NOW())::bigint - COALESCE(aircraft_states.last_contact, 0)) > 600 
-                AND EXCLUDED.last_contact > COALESCE(aircraft_states.last_contact, 0))
+            ${fresherDataCondition}
           )
           THEN EXCLUDED.true_track
           ELSE aircraft_states.true_track
         END,
         vertical_rate = CASE 
           WHEN (
-            EXCLUDED.source_priority < aircraft_states.source_priority
-            OR (EXCLUDED.source_priority = aircraft_states.source_priority AND EXCLUDED.last_contact > COALESCE(aircraft_states.last_contact, 0))
-            OR ((EXTRACT(EPOCH FROM NOW())::bigint - COALESCE(aircraft_states.last_contact, 0)) > 600 
-                AND EXCLUDED.last_contact > COALESCE(aircraft_states.last_contact, 0))
+            ${fresherDataCondition}
           )
           THEN EXCLUDED.vertical_rate
           ELSE aircraft_states.vertical_rate
         END,
         sensors = CASE 
           WHEN (
-            EXCLUDED.source_priority < aircraft_states.source_priority
-            OR (EXCLUDED.source_priority = aircraft_states.source_priority AND EXCLUDED.last_contact > COALESCE(aircraft_states.last_contact, 0))
-            OR ((EXTRACT(EPOCH FROM NOW())::bigint - COALESCE(aircraft_states.last_contact, 0)) > 600 
-                AND EXCLUDED.last_contact > COALESCE(aircraft_states.last_contact, 0))
+            ${fresherDataCondition}
           )
           THEN EXCLUDED.sensors
           ELSE aircraft_states.sensors
         END,
         geo_altitude = CASE 
           WHEN (
-            EXCLUDED.source_priority < aircraft_states.source_priority
-            OR (EXCLUDED.source_priority = aircraft_states.source_priority AND EXCLUDED.last_contact > COALESCE(aircraft_states.last_contact, 0))
-            OR ((EXTRACT(EPOCH FROM NOW())::bigint - COALESCE(aircraft_states.last_contact, 0)) > 600 
-                AND EXCLUDED.last_contact > COALESCE(aircraft_states.last_contact, 0))
+            ${fresherDataCondition}
           )
           THEN EXCLUDED.geo_altitude
           ELSE aircraft_states.geo_altitude
         END,
         squawk = CASE 
           WHEN (
-            EXCLUDED.source_priority < aircraft_states.source_priority
-            OR (EXCLUDED.source_priority = aircraft_states.source_priority AND EXCLUDED.last_contact > COALESCE(aircraft_states.last_contact, 0))
-            OR ((EXTRACT(EPOCH FROM NOW())::bigint - COALESCE(aircraft_states.last_contact, 0)) > 600 
-                AND EXCLUDED.last_contact > COALESCE(aircraft_states.last_contact, 0))
+            ${fresherDataCondition}
           )
           THEN EXCLUDED.squawk
           ELSE aircraft_states.squawk
         END,
         spi = CASE 
           WHEN (
-            EXCLUDED.source_priority < aircraft_states.source_priority
-            OR (EXCLUDED.source_priority = aircraft_states.source_priority AND EXCLUDED.last_contact > COALESCE(aircraft_states.last_contact, 0))
-            OR ((EXTRACT(EPOCH FROM NOW())::bigint - COALESCE(aircraft_states.last_contact, 0)) > 600 
-                AND EXCLUDED.last_contact > COALESCE(aircraft_states.last_contact, 0))
+            ${fresherDataCondition}
           )
           THEN EXCLUDED.spi
           ELSE aircraft_states.spi
         END,
         position_source = CASE 
           WHEN (
-            EXCLUDED.source_priority < aircraft_states.source_priority
-            OR (EXCLUDED.source_priority = aircraft_states.source_priority AND EXCLUDED.last_contact > COALESCE(aircraft_states.last_contact, 0))
-            OR ((EXTRACT(EPOCH FROM NOW())::bigint - COALESCE(aircraft_states.last_contact, 0)) > 600 
-                AND EXCLUDED.last_contact > COALESCE(aircraft_states.last_contact, 0))
+            ${fresherDataCondition}
           )
           THEN EXCLUDED.position_source
           ELSE aircraft_states.position_source
         END,
         category = CASE 
           WHEN (
-            EXCLUDED.source_priority < aircraft_states.source_priority
-            OR (EXCLUDED.source_priority = aircraft_states.source_priority AND EXCLUDED.last_contact > COALESCE(aircraft_states.last_contact, 0))
-            OR ((EXTRACT(EPOCH FROM NOW())::bigint - COALESCE(aircraft_states.last_contact, 0)) > 600 
-                AND EXCLUDED.last_contact > COALESCE(aircraft_states.last_contact, 0))
+            ${fresherDataCondition}
           )
           THEN EXCLUDED.category
           ELSE aircraft_states.category
         END,
         feeder_id = CASE 
           WHEN (
-            EXCLUDED.source_priority < aircraft_states.source_priority
-            OR (EXCLUDED.source_priority = aircraft_states.source_priority AND EXCLUDED.last_contact > COALESCE(aircraft_states.last_contact, 0))
-            OR ((EXTRACT(EPOCH FROM NOW())::bigint - COALESCE(aircraft_states.last_contact, 0)) > 600 
-                AND EXCLUDED.last_contact > COALESCE(aircraft_states.last_contact, 0))
+            ${fresherDataCondition}
           )
           THEN EXCLUDED.feeder_id
           ELSE aircraft_states.feeder_id
         END,
         ingestion_timestamp = CASE 
           WHEN (
-            EXCLUDED.source_priority < aircraft_states.source_priority
-            OR (EXCLUDED.source_priority = aircraft_states.source_priority AND EXCLUDED.last_contact > COALESCE(aircraft_states.last_contact, 0))
-            OR ((EXTRACT(EPOCH FROM NOW())::bigint - COALESCE(aircraft_states.last_contact, 0)) > 600 
-                AND EXCLUDED.last_contact > COALESCE(aircraft_states.last_contact, 0))
+            ${fresherDataCondition}
           )
           THEN EXCLUDED.ingestion_timestamp
           ELSE aircraft_states.ingestion_timestamp
         END,
         data_source = CASE 
           WHEN (
-            EXCLUDED.source_priority < aircraft_states.source_priority
-            OR (EXCLUDED.source_priority = aircraft_states.source_priority AND EXCLUDED.last_contact > COALESCE(aircraft_states.last_contact, 0))
-            OR ((EXTRACT(EPOCH FROM NOW())::bigint - COALESCE(aircraft_states.last_contact, 0)) > 600 
-                AND EXCLUDED.last_contact > COALESCE(aircraft_states.last_contact, 0))
+            ${fresherDataCondition}
           )
           THEN EXCLUDED.data_source
           ELSE aircraft_states.data_source
         END,
         source_priority = CASE 
           WHEN (
-            EXCLUDED.source_priority < aircraft_states.source_priority
-            OR (EXCLUDED.source_priority = aircraft_states.source_priority AND EXCLUDED.last_contact > COALESCE(aircraft_states.last_contact, 0))
-            OR ((EXTRACT(EPOCH FROM NOW())::bigint - COALESCE(aircraft_states.last_contact, 0)) > 600 
-                AND EXCLUDED.last_contact > COALESCE(aircraft_states.last_contact, 0))
+            ${fresherDataCondition}
           )
           THEN EXCLUDED.source_priority
           ELSE aircraft_states.source_priority
-        END;
+        END,
+        -- Enriched fields: Only update if not already set or if new data is better
+        aircraft_type = COALESCE(EXCLUDED.aircraft_type, aircraft_states.aircraft_type),
+        aircraft_description = COALESCE(EXCLUDED.aircraft_description, aircraft_states.aircraft_description),
+        registration = COALESCE(EXCLUDED.registration, aircraft_states.registration),
+        emergency_status = CASE
+          WHEN EXCLUDED.emergency_status IS NOT NULL AND EXCLUDED.emergency_status != 'none'
+          THEN EXCLUDED.emergency_status
+          ELSE aircraft_states.emergency_status
+        END,
+        nav_qnh = COALESCE(EXCLUDED.nav_qnh, aircraft_states.nav_qnh),
+        nav_altitude_mcp = COALESCE(EXCLUDED.nav_altitude_mcp, aircraft_states.nav_altitude_mcp),
+        nav_heading = COALESCE(EXCLUDED.nav_heading, aircraft_states.nav_heading),
+        owner_operator = COALESCE(EXCLUDED.owner_operator, aircraft_states.owner_operator),
+        year_built = COALESCE(EXCLUDED.year_built, aircraft_states.year_built);
     `;
     await this.db.query(upsertQuery, [
       state[0],
@@ -614,6 +591,15 @@ class AircraftRepository {
       ingestionTimestamp,
       dataSource,
       sourcePriority,
+      aircraftType,
+      aircraftDescription,
+      registration,
+      emergencyStatus,
+      navQnh,
+      navAltitudeMcp,
+      navHeading,
+      ownerOperator,
+      yearBuilt,
     ]);
   }
 }

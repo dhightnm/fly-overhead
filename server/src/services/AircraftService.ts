@@ -8,7 +8,7 @@ import flightRouteService from './FlightRouteService';
 import config from '../config';
 import logger from '../utils/logger';
 import { mapAircraftType } from '../utils/aircraftCategoryMapper';
-import { initializeAirportSchema } from '../database/airportSchema';
+import initializeAirportSchema from '../database/airportSchema';
 
 interface BoundingBox {
   lamin: number;
@@ -62,7 +62,9 @@ class AircraftService {
         }
 
         if (i + BATCH_SIZE < data.states.length) {
-          await new Promise((resolve) => setImmediate(resolve));
+          await new Promise((resolve) => {
+            setImmediate(() => resolve(undefined));
+          });
         }
       }
 
@@ -244,7 +246,8 @@ class AircraftService {
             return aircraft; // Return stale data if rate limited
           }
 
-          // Use bounding box query if we have position data. Only fall back to global fetch when data is still relatively fresh.
+          // Use bounding box query if we have position data.
+          // Only fall back to global fetch when data is still relatively fresh.
           let openSkyData;
           let attemptedGlobalFetch = false;
 
@@ -259,7 +262,7 @@ class AircraftService {
               lomax: aircraft.longitude + boxSize,
             };
 
-            logger.info(`Fetching aircraft in bounding box around last known position`, {
+            logger.info('Fetching aircraft in bounding box around last known position', {
               icao24: aircraft.icao24,
               bounds,
             });
@@ -284,9 +287,9 @@ class AircraftService {
             }
 
             if (
-              (!openSkyData || !openSkyData.states || openSkyData.states.length === 0) &&
-              shouldAttemptGlobalFetch &&
-              !attemptedGlobalFetch
+              (!openSkyData || !openSkyData.states || openSkyData.states.length === 0)
+              && shouldAttemptGlobalFetch
+              && !attemptedGlobalFetch
             ) {
               logger.info('Bounding box query returned no states, attempting global fetch within freshness window', {
                 icao24: aircraft.icao24,
@@ -295,7 +298,7 @@ class AircraftService {
               attemptedGlobalFetch = true;
             }
           } else if (shouldAttemptGlobalFetch) {
-            logger.info(`No position data available, using getAllStates`, {
+            logger.info('No position data available, using getAllStates', {
               icao24: aircraft.icao24,
             });
             openSkyData = await openSkyService.getAllStates();
@@ -318,7 +321,7 @@ class AircraftService {
 
             if (matchingState) {
               const openSkyCallsign = matchingState[1]; // Index 1 is callsign in OpenSky state
-              logger.info(`Found fresh data for aircraft in OpenSky response`, {
+              logger.info('Found fresh data for aircraft in OpenSky response', {
                 icao24: matchingState[0],
                 callsign: openSkyCallsign,
               });
@@ -345,18 +348,16 @@ class AircraftService {
               const updatedResults = await postgresRepository.findAircraftByIdentifier(identifier);
               if (updatedResults.length > 0) {
                 const refreshedAircraft = updatedResults[0];
-                const refreshedLastContact =
-                  typeof refreshedAircraft.last_contact === 'number' ? refreshedAircraft.last_contact : null;
-                const refreshedAgeSeconds =
-                  refreshedLastContact !== null
-                    ? Math.max(0, Math.floor(Date.now() / 1000) - refreshedLastContact)
-                    : null;
+                const refreshedLastContact = typeof refreshedAircraft.last_contact === 'number' ? refreshedAircraft.last_contact : null;
+                const refreshedAgeSeconds = refreshedLastContact !== null
+                  ? Math.max(0, Math.floor(Date.now() / 1000) - refreshedLastContact)
+                  : null;
                 if (refreshedAgeSeconds !== null) {
                   refreshedAircraft.data_age_seconds = refreshedAgeSeconds;
                   refreshedAircraft.last_update_age_seconds = refreshedAgeSeconds;
                 }
 
-                logger.info(`Returning fresh aircraft data`, {
+                logger.info('Returning fresh aircraft data', {
                   icao24: refreshedAircraft.icao24,
                   callsign: refreshedAircraft.callsign,
                   last_contact: refreshedAircraft.last_contact,
@@ -365,7 +366,7 @@ class AircraftService {
                 return refreshedAircraft;
               }
             } else {
-              logger.info(`Aircraft not found in OpenSky response (likely landed or out of range)`, {
+              logger.info('Aircraft not found in OpenSky response (likely landed or out of range)', {
                 identifier,
                 icao24: aircraft.icao24,
               });
@@ -410,12 +411,11 @@ class AircraftService {
     const enriched = { ...aircraft };
 
     // Extract route data if available
-    const hasRouteData =
-      aircraft.departure_icao ||
-      aircraft.departure_iata ||
-      aircraft.arrival_icao ||
-      aircraft.arrival_iata ||
-      aircraft.aircraft_type;
+    const hasRouteData = aircraft.departure_icao
+      || aircraft.departure_iata
+      || aircraft.arrival_icao
+      || aircraft.arrival_iata
+      || aircraft.aircraft_type;
 
     if (hasRouteData) {
       // Build route object
@@ -423,18 +423,18 @@ class AircraftService {
         departureAirport:
           aircraft.departure_icao || aircraft.departure_iata
             ? {
-                icao: aircraft.departure_icao || null,
-                iata: aircraft.departure_iata || null,
-                name: aircraft.departure_name || null,
-              }
+              icao: aircraft.departure_icao || null,
+              iata: aircraft.departure_iata || null,
+              name: aircraft.departure_name || null,
+            }
             : null,
         arrivalAirport:
           aircraft.arrival_icao || aircraft.arrival_iata
             ? {
-                icao: aircraft.arrival_icao || null,
-                iata: aircraft.arrival_iata || null,
-                name: aircraft.arrival_name || null,
-              }
+              icao: aircraft.arrival_icao || null,
+              iata: aircraft.arrival_iata || null,
+              name: aircraft.arrival_name || null,
+            }
             : null,
         source: aircraft.route_source || null,
       };
@@ -504,13 +504,13 @@ class AircraftService {
 
       // If threshold is less than 2 hours, increase it temporarily to show stale data
       // This is a workaround for OpenSky timeout issues
-      if (contactThreshold < MAX_REASONABLE_THRESHOLD) {
-        logger.warn('Temporarily increasing contact threshold to show stale data (OpenSky timeout workaround)', {
-          original: contactThreshold,
-          temporary: MAX_REASONABLE_THRESHOLD,
-        });
-        contactThreshold = MAX_REASONABLE_THRESHOLD;
-      }
+      // if (contactThreshold < MAX_REASONABLE_THRESHOLD) {
+      //   logger.warn('Temporarily increasing contact threshold to show stale data (OpenSky timeout workaround)', {
+      //     original: contactThreshold,
+      //     temporary: MAX_REASONABLE_THRESHOLD,
+      //   });
+      //   contactThreshold = MAX_REASONABLE_THRESHOLD;
+      // }
 
       const thresholdTimestamp = Math.floor(Date.now() / 1000) - contactThreshold;
 
@@ -569,7 +569,7 @@ class AircraftService {
       };
 
       filteredAircraft.forEach((aircraft: any) => {
-        const route = aircraft.route;
+        const { route } = aircraft;
         if (!route?.arrivalAirport?.location) return;
 
         const arrivalLocation = route.arrivalAirport.location;
@@ -577,12 +577,12 @@ class AircraftService {
 
         const normalizedStatus = normalizeStatus(route.flightStatus);
         const hasArrivalStatus = normalizedStatus ? LANDED_STATUSES.has(normalizedStatus) : false;
-        const actualArrivalTimestamp =
-          typeof route.flightData?.actualArrival === 'number' ? route.flightData.actualArrival : null;
+        const actualArrivalTimestamp = typeof route.flightData?.actualArrival === 'number' ? route.flightData.actualArrival : null;
         const actualArrivalAgeSeconds = actualArrivalTimestamp ? Math.max(0, now - actualArrivalTimestamp) : null;
         const hasActualArrival = actualArrivalAgeSeconds !== null;
-        const dataAgeSeconds =
-          aircraft.data_age_seconds ?? (aircraft.last_contact ? Math.max(0, now - aircraft.last_contact) : null);
+        const dataAgeSeconds = aircraft.data_age_seconds ?? (
+          aircraft.last_contact ? Math.max(0, now - aircraft.last_contact) : null
+        );
         const staleByAge = dataAgeSeconds !== null ? dataAgeSeconds > LANDED_OVERRIDE_THRESHOLD_SECONDS : false;
 
         if (hasArrivalStatus || hasActualArrival || staleByAge) {
@@ -651,10 +651,9 @@ class AircraftService {
           return false;
         }
         const missingCallsign = !plane.callsign || String(plane.callsign).trim() === '';
-        const missingArrival =
-          !plane.route?.arrivalAirport?.icao &&
-          !plane.route?.arrivalAirport?.iata &&
-          !plane.route?.arrivalAirport?.name;
+        const missingArrival = !plane.route?.arrivalAirport?.icao
+          && !plane.route?.arrivalAirport?.iata
+          && !plane.route?.arrivalAirport?.name;
         return missingCallsign || missingArrival;
       })
       .slice(0, maxLookups);
@@ -667,7 +666,9 @@ class AircraftService {
           continue;
         }
 
-        const { routeData, callsign, aircraftModel, registration } = aerodataboxData;
+        const {
+          routeData, callsign, aircraftModel, registration,
+        } = aerodataboxData;
 
         if (callsign && (!plane.callsign || String(plane.callsign).trim() === '')) {
           plane.callsign = callsign;
@@ -688,10 +689,10 @@ class AircraftService {
           flightData: routeData.flightData,
           aircraft: routeData.aircraft
             ? {
-                model: routeData.aircraft.model || null,
-                type: routeData.aircraft.type || null,
-                category: null,
-              }
+              model: routeData.aircraft.model || null,
+              type: routeData.aircraft.type || null,
+              category: null,
+            }
             : undefined,
           flightStatus: routeData.flightStatus || null,
           registration: routeData.registration || registration || null,
@@ -719,10 +720,9 @@ class AircraftService {
           plane.registration = registration;
         }
 
-        const cacheKey =
-          mappedRoute.callsign && mappedRoute.callsign.trim() !== ''
-            ? mappedRoute.callsign.trim()
-            : mappedRoute.icao24 || icao24;
+        const cacheKey = mappedRoute.callsign && mappedRoute.callsign.trim() !== ''
+          ? mappedRoute.callsign.trim()
+          : mappedRoute.icao24 || icao24;
 
         if (cacheKey) {
           try {

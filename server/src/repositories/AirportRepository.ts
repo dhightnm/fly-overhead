@@ -7,6 +7,7 @@ import PostGISService from '../services/PostGISService';
  */
 class AirportRepository {
   private db: pgPromise.IDatabase<any>;
+
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   // @ts-ignore - postgis reserved for future use
   private _postgis: PostGISService;
@@ -20,7 +21,7 @@ class AirportRepository {
     latitude: number,
     longitude: number,
     radiusKm: number = 50,
-    airportType: string | null = null
+    airportType: string | null = null,
   ): Promise<Airport[]> {
     let query = `
       SELECT *,
@@ -67,7 +68,7 @@ class AirportRepository {
     latmax: number,
     lonmax: number,
     airportType: string | null = null,
-    limit: number = 100
+    limit: number = 100,
   ): Promise<Airport[]> {
     let query = `
       SELECT
@@ -114,7 +115,7 @@ class AirportRepository {
     latitude: number,
     longitude: number,
     radiusKm: number = 50,
-    navaidType: string | null = null
+    navaidType: string | null = null,
   ): Promise<Navaid[]> {
     let query = `
       SELECT *,
@@ -168,4 +169,3 @@ class AirportRepository {
 }
 
 export default AirportRepository;
-

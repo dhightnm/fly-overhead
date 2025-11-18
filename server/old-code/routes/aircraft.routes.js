@@ -13,7 +13,7 @@ const { requireApiKeyAuth } = require('../middlewares/apiKeyAuth');
 const cache = new NodeCache({ stdTTL: 60, maxKeys: 100 });
 
 // Enhanced cache for bounding box queries (shorter TTL for freshness)
-const boundsCache = new NodeCache({ 
+const boundsCache = new NodeCache({
   stdTTL: 5, // 5 second cache for faster updates on zoom/pan
   maxKeys: 1000, // Cache up to 1000 different bounding boxes
   checkperiod: 60, // Check for expired keys every minute
@@ -80,7 +80,7 @@ router.get('/planes/:identifier', async (req, res, next) => {
       );
       if (route) {
         aircraft.route = route;
-        
+
         // Update aircraft category if we got type/model from route
         if (aircraft.icao24 && (route.aircraft?.type || route.aircraft?.model)) {
           const inferredCategory = mapAircraftTypeToCategory(route.aircraft?.type, route.aircraft?.model);
@@ -189,7 +189,7 @@ router.get('/area/:latmin/:lonmin/:latmax/:lonmax', async (req, res, next) => {
   const roundedLonMin = Math.floor(parseFloat(lonmin) * 100) / 100;
   const roundedLatMax = Math.ceil(parseFloat(latmax) * 100) / 100;
   const roundedLonMax = Math.ceil(parseFloat(lonmax) * 100) / 100;
-  
+
   const cacheKey = `/area/${roundedLatMin}/${roundedLonMin}/${roundedLatMax}/${roundedLonMax}`;
 
   try {
@@ -210,9 +210,9 @@ router.get('/area/:latmin/:lonmin/:latmax/:lonmax', async (req, res, next) => {
 
     // Store in cache
     boundsCache.set(cacheKey, aircraft);
-    logger.debug('Cached aircraft data for bounding box', { 
-      cacheKey, 
-      aircraftCount: aircraft.length 
+    logger.debug('Cached aircraft data for bounding box', {
+      cacheKey,
+      aircraftCount: aircraft.length,
     });
 
     return res.json(aircraft);

@@ -133,6 +133,22 @@ const Home: React.FC = () => {
         ? Math.max(0, nowSeconds - lastContact)
         : null;
 
+    const registration =
+      (aircraft as any).registration ??
+      (aircraft as any).reg ??
+      (aircraft as any).r ??
+      aircraft.registration ??
+      null;
+
+    const modelCandidate =
+      aircraft.model ||
+      (aircraft as any).aircraft_model ||
+      (aircraft as any).aircraft_description ||
+      (aircraft as any).description ||
+      aircraft.aircraft_type ||
+      aircraft.type ||
+      null;
+
     return {
       ...aircraft,
       latitude: toNumber(aircraft.latitude) ?? aircraft.latitude,
@@ -154,6 +170,15 @@ const Home: React.FC = () => {
       predicted: aircraft.predicted === true,
       prediction_confidence: aircraft.prediction_confidence,
       route: aircraft.route, // Preserve route data from backend
+      registration,
+      aircraft_description:
+        (aircraft as any).aircraft_description ??
+        (aircraft as any).description ??
+        (aircraft as any).aircraft_model ??
+        aircraft.aircraft_description ??
+        aircraft.description ??
+        null,
+      model: modelCandidate ?? aircraft.model ?? null,
     } as Aircraft;
   }, []);
 
@@ -1093,7 +1118,7 @@ const Home: React.FC = () => {
                     <span className="detail-label">Speed:</span>
                     <span className="detail-value">
                       {plane.velocity
-                        ? `${Math.round(plane.velocity * 1.94384)}kts`
+                        ? `${Math.round(plane.velocity)}kts`
                         : "N/A"}
                     </span>
                   </div>

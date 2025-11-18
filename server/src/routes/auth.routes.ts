@@ -1,4 +1,6 @@
-import { Router, Request, Response, NextFunction } from 'express';
+import {
+  Router, Request, Response, NextFunction,
+} from 'express';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 import axios from 'axios';
@@ -163,8 +165,8 @@ router.post('/google', async (req: Request, res: Response, next: NextFunction) =
   try {
     const { code, credential } = req.body;
 
-    const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
-    const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
+    const { GOOGLE_CLIENT_ID } = process.env;
+    const { GOOGLE_CLIENT_SECRET } = process.env;
 
     if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET) {
       logger.error('Google OAuth credentials not configured');

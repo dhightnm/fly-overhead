@@ -1,30 +1,45 @@
 /* eslint-env jest */
 
-import { beforeEach, describe, expect, it, jest } from '@jest/globals';
-const aerodataboxMock = {
-  getFlightByIcao24: jest.fn(),
-};
+import {
+  beforeEach, describe, expect, it, jest,
+} from '@jest/globals';
 
-const cacheRouteRepoMock = jest.fn();
-const updateAircraftCallsignMock = jest.fn();
-const storeRouteHistoryMock = jest.fn();
-const dbOneOrNoneMock = jest.fn();
-const getDbMock = jest.fn(() => ({ oneOrNone: dbOneOrNoneMock }));
-
+// Mock dependencies - define functions inside factory to avoid hoisting issues
 jest.mock('../AerodataboxService', () => ({
   __esModule: true,
-  default: aerodataboxMock,
+  default: {
+    getFlightByIcao24: jest.fn(),
+  },
 }));
 
 jest.mock('../../repositories/PostgresRepository', () => ({
   __esModule: true,
   default: {
-    cacheRoute: cacheRouteRepoMock,
-    updateAircraftCallsign: updateAircraftCallsignMock,
-    storeRouteHistory: storeRouteHistoryMock,
-    getDb: getDbMock,
+    cacheRoute: jest.fn(),
+    updateAircraftCallsign: jest.fn(),
+    storeRouteHistory: jest.fn(),
+    getDb: jest.fn(() => ({ oneOrNone: jest.fn() })),
   },
 }));
+
+// Import after mocks are set up
+import { FlightRouteService, shouldFilterAsLanded } from '../FlightRouteService';
+import aerodataboxService from '../AerodataboxService';
+import postgresRepository from '../../repositories/PostgresRepository';
+
+// Type-safe mock accessors
+const aerodataboxMock = aerodataboxService as jest.Mocked<typeof aerodataboxService>;
+const cacheRouteRepoMock = postgresRepository.cacheRoute as jest.MockedFunction<
+  typeof postgresRepository.cacheRoute
+>;
+const updateAircraftCallsignMock = postgresRepository.updateAircraftCallsign as jest.MockedFunction<
+  typeof postgresRepository.updateAircraftCallsign
+>;
+const storeRouteHistoryMock = postgresRepository.storeRouteHistory as jest.MockedFunction<
+  typeof postgresRepository.storeRouteHistory
+>;
+const getDbMock = postgresRepository.getDb as jest.MockedFunction<typeof postgresRepository.getDb>;
+const dbOneOrNoneMock = jest.fn() as any;
 
 jest.mock('../OpenSkyService', () => ({
   __esModule: true,
@@ -45,8 +60,6 @@ jest.mock('../../utils/logger', () => ({
   },
 }));
 
-import { FlightRouteService, shouldFilterAsLanded } from '../FlightRouteService';
-
 describe('FlightRouteService - Aerodatabox integration', () => {
   let flightRouteService: FlightRouteService;
 
@@ -56,8 +69,8 @@ describe('FlightRouteService - Aerodatabox integration', () => {
     updateAircraftCallsignMock.mockReset();
     storeRouteHistoryMock.mockReset();
     dbOneOrNoneMock.mockReset().mockResolvedValue(null);
-    getDbMock.mockReset().mockReturnValue({ oneOrNone: dbOneOrNoneMock });
-    flightRouteService = new FlightRouteService({ flightAwareApiKey: null, flightAwareBaseUrl: null });
+    getDbMock.mockReset().mockReturnValue({ oneOrNone: dbOneOrNoneMock } as any);
+    flightRouteService = new FlightRouteService({ flightAwareApiKey: undefined, flightAwareBaseUrl: undefined });
   });
 
   it('returns Aerodatabox route data when expensive API calls are allowed', async () => {
@@ -146,4 +159,3 @@ describe('shouldFilterAsLanded', () => {
     expect(shouldFilterAsLanded(now, now - 24 * 60 * minute)).toBe(false);
   });
 });
-

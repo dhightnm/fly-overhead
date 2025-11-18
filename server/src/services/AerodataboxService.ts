@@ -71,11 +71,17 @@ export interface AerodataboxServiceOptions {
 
 export class AerodataboxService {
   private readonly baseUrl: string;
+
   private readonly apiKey?: string;
+
   private readonly dailyBudget: number;
+
   private flightCache: Map<string, { expiresAt: number; result: AerodataboxResult }>;
+
   private failureCache: Map<string, number>;
+
   private usageCounter: { dateKey: string; count: number };
+
   private loggedMissingKey = false;
 
   constructor(options?: AerodataboxServiceOptions) {
@@ -84,22 +90,17 @@ export class AerodataboxService {
       apiKey?: string;
       dailyBudget?: number;
     };
-    const resolvedBaseUrl =
-      options && Object.prototype.hasOwnProperty.call(options, 'baseUrl') ? options.baseUrl : configSource.baseUrl;
-    const resolvedApiKey =
-      options && Object.prototype.hasOwnProperty.call(options, 'apiKey') ? options.apiKey : configSource.apiKey;
-    const resolvedDailyBudget =
-      options && Object.prototype.hasOwnProperty.call(options, 'dailyBudget')
-        ? options.dailyBudget
-        : configSource.dailyBudget;
+    const resolvedBaseUrl = options && Object.prototype.hasOwnProperty.call(options, 'baseUrl') ? options.baseUrl : configSource.baseUrl;
+    const resolvedApiKey = options && Object.prototype.hasOwnProperty.call(options, 'apiKey') ? options.apiKey : configSource.apiKey;
+    const resolvedDailyBudget = options && Object.prototype.hasOwnProperty.call(options, 'dailyBudget')
+      ? options.dailyBudget
+      : configSource.dailyBudget;
 
     this.baseUrl = String(resolvedBaseUrl || DEFAULT_BASE_URL).replace(/\/$/, '');
-    this.apiKey =
-      typeof resolvedApiKey === 'string' && resolvedApiKey.trim() !== '' ? resolvedApiKey.trim() : undefined;
-    this.dailyBudget =
-      typeof resolvedDailyBudget === 'number' && Number.isFinite(resolvedDailyBudget) && resolvedDailyBudget > 0
-        ? resolvedDailyBudget
-        : DEFAULT_DAILY_BUDGET;
+    this.apiKey = typeof resolvedApiKey === 'string' && resolvedApiKey.trim() !== '' ? resolvedApiKey.trim() : undefined;
+    this.dailyBudget = typeof resolvedDailyBudget === 'number' && Number.isFinite(resolvedDailyBudget) && resolvedDailyBudget > 0
+      ? resolvedDailyBudget
+      : DEFAULT_DAILY_BUDGET;
     this.flightCache = new Map();
     this.failureCache = new Map();
     this.usageCounter = { dateKey: this.getTodayKey(), count: 0 };
@@ -209,18 +210,16 @@ export class AerodataboxService {
   }
 
   private deriveFlightKey(flight: AerodataboxFlightRecord): string | null {
-    const departureTime =
-      flight.departure?.actualTimeUtc ||
-      flight.departure?.scheduledTimeUtc ||
-      flight.movement?.departure?.actualTimeUtc ||
-      flight.movement?.departure?.scheduledTimeUtc ||
-      null;
-    const arrivalTime =
-      flight.arrival?.actualTimeUtc ||
-      flight.arrival?.scheduledTimeUtc ||
-      flight.movement?.arrival?.actualTimeUtc ||
-      flight.movement?.arrival?.scheduledTimeUtc ||
-      null;
+    const departureTime = flight.departure?.actualTimeUtc
+      || flight.departure?.scheduledTimeUtc
+      || flight.movement?.departure?.actualTimeUtc
+      || flight.movement?.departure?.scheduledTimeUtc
+      || null;
+    const arrivalTime = flight.arrival?.actualTimeUtc
+      || flight.arrival?.scheduledTimeUtc
+      || flight.movement?.arrival?.actualTimeUtc
+      || flight.movement?.arrival?.scheduledTimeUtc
+      || null;
     const callsign = flight.callsign || flight.number || null;
 
     if (!departureTime && !callsign) {
@@ -261,9 +260,9 @@ export class AerodataboxService {
       aircraft:
         flight.aircraft?.model || flight.aircraft?.modelCode
           ? {
-              model: flight.aircraft?.model || flight.aircraft?.modelCode || undefined,
-              type: flight.aircraft?.modelCode || flight.aircraft?.model || undefined,
-            }
+            model: flight.aircraft?.model || flight.aircraft?.modelCode || undefined,
+            type: flight.aircraft?.modelCode || flight.aircraft?.model || undefined,
+          }
           : undefined,
       flightStatus: flight.status || null,
       registration: flight.aircraft?.reg || flight.aircraft?.registration || null,

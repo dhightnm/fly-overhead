@@ -23,11 +23,17 @@ interface RateLimitResult {
 
 class RateLimitService {
   private hourlyLimits: Map<string, RateLimitRecord>;
+
   private dailyLimits: Map<string, RateLimitRecord>;
+
   private burstLimits: Map<string, RateLimitRecord>;
+
   private concurrentRequests: Map<string, number>;
+
   private concurrentRequestTimestamps: Map<string, number[]>; // Track when requests started
+
   private cleanupInterval: NodeJS.Timeout | null;
+
   private readonly STUCK_REQUEST_TIMEOUT = 60000; // 60 seconds - auto-release stuck requests
 
   constructor() {
@@ -48,7 +54,7 @@ class RateLimitService {
   async checkRateLimit(
     identifier: string,
     keyType?: string,
-    scopes?: string[]
+    scopes?: string[],
   ): Promise<RateLimitResult> {
     const tier = getRateLimitTier(keyType, scopes);
 
@@ -70,7 +76,7 @@ class RateLimitService {
       identifier,
       tier.burstLimit,
       RATE_LIMIT_WINDOWS.BURST,
-      now
+      now,
     );
 
     if (!burstResult.allowed) {
@@ -88,7 +94,7 @@ class RateLimitService {
       identifier,
       tier.hourlyLimit,
       RATE_LIMIT_WINDOWS.HOURLY,
-      now
+      now,
     );
 
     if (!hourlyResult.allowed) {
@@ -106,7 +112,7 @@ class RateLimitService {
       identifier,
       tier.dailyLimit,
       RATE_LIMIT_WINDOWS.DAILY,
-      now
+      now,
     );
 
     if (!dailyResult.allowed) {
@@ -161,7 +167,7 @@ class RateLimitService {
     // Increment concurrent requests with timestamp tracking
     const current = this.concurrentRequests.get(identifier) || 0;
     this.concurrentRequests.set(identifier, current + 1);
-    
+
     // Track timestamp for auto-cleanup of stuck requests
     const timestamps = this.concurrentRequestTimestamps.get(identifier) || [];
     timestamps.push(now);
@@ -175,7 +181,7 @@ class RateLimitService {
     const current = this.concurrentRequests.get(identifier) || 0;
     if (current > 0) {
       this.concurrentRequests.set(identifier, current - 1);
-      
+
       // Remove oldest timestamp
       const timestamps = this.concurrentRequestTimestamps.get(identifier) || [];
       if (timestamps.length > 0) {
@@ -195,7 +201,7 @@ class RateLimitService {
   async getRateLimitStatus(
     identifier: string,
     keyType?: string,
-    scopes?: string[]
+    scopes?: string[],
   ): Promise<{ hourly: RateLimitResult; daily: RateLimitResult; tier: RateLimitTier }> {
     const tier = getRateLimitTier(keyType, scopes);
     const now = Date.now();
@@ -210,7 +216,7 @@ class RateLimitService {
         limit: tier.hourlyLimit,
         remaining: Math.max(
           0,
-          tier.hourlyLimit - (hourlyRecord?.count || 0)
+          tier.hourlyLimit - (hourlyRecord?.count || 0),
         ),
         resetAt: hourlyRecord?.resetAt || now + RATE_LIMIT_WINDOWS.HOURLY * 1000,
       },
@@ -219,7 +225,7 @@ class RateLimitService {
         limit: tier.dailyLimit,
         remaining: Math.max(
           0,
-          tier.dailyLimit - (dailyRecord?.count || 0)
+          tier.dailyLimit - (dailyRecord?.count || 0),
         ),
         resetAt: dailyRecord?.resetAt || now + RATE_LIMIT_WINDOWS.DAILY * 1000,
       },
@@ -234,7 +240,7 @@ class RateLimitService {
     identifier: string,
     limit: number,
     windowSeconds: number,
-    now: number
+    now: number,
   ): RateLimitResult {
     const record = storage.get(identifier);
     const windowMs = windowSeconds * 1000;
@@ -276,7 +282,7 @@ class RateLimitService {
     storage: Map<string, RateLimitRecord>,
     identifier: string,
     windowSeconds: number,
-    now: number
+    now: number,
   ): void {
     const record = storage.get(identifier);
     const windowMs = windowSeconds * 1000;
@@ -314,16 +320,16 @@ class RateLimitService {
 
       // Clean up stuck concurrent requests (older than timeout)
       for (const [identifier, timestamps] of this.concurrentRequestTimestamps.entries()) {
-        const validTimestamps = timestamps.filter(ts => now - ts < this.STUCK_REQUEST_TIMEOUT);
+        const validTimestamps = timestamps.filter((ts) => now - ts < this.STUCK_REQUEST_TIMEOUT);
         const stuckCount = timestamps.length - validTimestamps.length;
-        
+
         if (stuckCount > 0) {
           logger.warn('Releasing stuck concurrent requests', {
             identifier,
             stuckCount,
             currentCount: this.concurrentRequests.get(identifier),
           });
-          
+
           const current = this.concurrentRequests.get(identifier) || 0;
           const newCount = Math.max(0, current - stuckCount);
           if (newCount > 0) {
@@ -332,7 +338,7 @@ class RateLimitService {
             this.concurrentRequests.delete(identifier);
           }
         }
-        
+
         if (validTimestamps.length > 0) {
           this.concurrentRequestTimestamps.set(identifier, validTimestamps);
         } else {
@@ -385,4 +391,3 @@ class RateLimitService {
 // Export singleton instance
 const rateLimitService = new RateLimitService();
 export default rateLimitService;
-

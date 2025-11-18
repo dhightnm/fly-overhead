@@ -1,6 +1,5 @@
-import { DatabaseConnection, getConnection } from '../DatabaseConnection';
+import { DatabaseConnection } from '../DatabaseConnection';
 import config from '../../config';
-import PostGISService from '../../services/PostGISService';
 
 // Mock dependencies
 jest.mock('../../config', () => ({
@@ -15,7 +14,6 @@ jest.mock('../../config', () => ({
   },
 }));
 
-jest.mock('../../services/PostGISService');
 jest.mock('../../utils/logger', () => ({
   debug: jest.fn(),
   warn: jest.fn(),
@@ -56,38 +54,31 @@ describe('DatabaseConnection', () => {
 
     it('should detect AWS RDS endpoint (.rds.amazonaws.com)', () => {
       const connectionString = 'postgresql://user:pass@db.rds.amazonaws.com:5432/dbname';
-      
-      // Create a minimal instance just to test the private method
-      const dbConnection = Object.create(DatabaseConnection.prototype);
-      const isAwsRds = (dbConnection as any).isAwsRdsEndpoint(connectionString);
+      const isAwsRds = DatabaseConnection.isAwsRdsEndpoint(connectionString);
       expect(isAwsRds).toBe(true);
     });
 
     it('should detect AWS Lightsail endpoint (.lightsail.aws)', () => {
       const connectionString = 'postgresql://user:pass@db.lightsail.aws:5432/dbname';
-      const dbConnection = Object.create(DatabaseConnection.prototype);
-      const isAwsRds = (dbConnection as any).isAwsRdsEndpoint(connectionString);
+      const isAwsRds = DatabaseConnection.isAwsRdsEndpoint(connectionString);
       expect(isAwsRds).toBe(true);
     });
 
     it('should detect AWS Lightsail endpoint (ls- prefix)', () => {
       const connectionString = 'postgresql://user:pass@ls-1234567890.us-east-2.rds.amazonaws.com:5432/dbname';
-      const dbConnection = Object.create(DatabaseConnection.prototype);
-      const isAwsRds = (dbConnection as any).isAwsRdsEndpoint(connectionString);
+      const isAwsRds = DatabaseConnection.isAwsRdsEndpoint(connectionString);
       expect(isAwsRds).toBe(true);
     });
 
     it('should not detect local PostgreSQL as AWS RDS', () => {
       const connectionString = 'postgresql://user:pass@localhost:5432/dbname';
-      const dbConnection = Object.create(DatabaseConnection.prototype);
-      const isAwsRds = (dbConnection as any).isAwsRdsEndpoint(connectionString);
+      const isAwsRds = DatabaseConnection.isAwsRdsEndpoint(connectionString);
       expect(isAwsRds).toBe(false);
     });
 
     it('should not detect generic hostname as AWS RDS', () => {
       const connectionString = 'postgresql://user:pass@example.com:5432/dbname';
-      const dbConnection = Object.create(DatabaseConnection.prototype);
-      const isAwsRds = (dbConnection as any).isAwsRdsEndpoint(connectionString);
+      const isAwsRds = DatabaseConnection.isAwsRdsEndpoint(connectionString);
       expect(isAwsRds).toBe(false);
     });
   });
@@ -133,4 +124,3 @@ describe('DatabaseConnection', () => {
     });
   });
 });
-

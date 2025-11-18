@@ -286,7 +286,9 @@ class RouteRepository {
           if (actualEnd) updateFields.actual_flight_end = actualEnd;
           if (actualStart && !existingFlight.actual_flight_start) updateFields.actual_flight_start = actualStart;
           if (scheduledEnd) updateFields.scheduled_flight_end = scheduledEnd;
-          if (scheduledStart && !existingFlight.scheduled_flight_start) updateFields.scheduled_flight_start = scheduledStart;
+          if (scheduledStart && !existingFlight.scheduled_flight_start) {
+            updateFields.scheduled_flight_start = scheduledStart;
+          }
           if (routeData.flightStatus) updateFields.flight_status = routeData.flightStatus;
           if (routeData.registration) updateFields.registration = routeData.registration;
           if (routeData.route) updateFields.route = routeData.route;
@@ -309,7 +311,8 @@ class RouteRepository {
             updateFields.actual_ete = Math.max(0, Math.floor((actualEnd.getTime() - actualStart.getTime()) / 1000));
           }
 
-          return await this.updateFlightHistoryById(existingFlightId, updateFields);
+          await this.updateFlightHistoryById(existingFlightId, updateFields);
+          return;
         }
       }
     }
@@ -331,13 +334,16 @@ class RouteRepository {
 
     // Calculate ETE if available (reserved for future use)
     // Note: Currently not used in query, but calculated for potential future use
-    const _eteSeconds: number | null = 
-      typeof routeData.flightData?.duration === 'number' 
-        ? routeData.flightData.duration
-        : typeof routeData.flightData?.filedEte === 'number'
-          ? routeData.flightData.filedEte
-          : null;
-    void _eteSeconds; // Suppress unused variable warning - reserved for future use
+    let eteSeconds: number | null = null;
+    if (typeof routeData.flightData?.duration === 'number') {
+      eteSeconds = routeData.flightData.duration;
+    } else if (typeof routeData.flightData?.filedEte === 'number') {
+      eteSeconds = routeData.flightData.filedEte;
+    }
+    // Suppress unused variable warning - reserved for future use
+    if (eteSeconds !== null) {
+      // Reserved for future use - eteSeconds will be used in future queries
+    }
 
     const scheduledEte = (scheduledStart && scheduledEnd)
       ? Math.max(0, Math.floor((scheduledEnd.getTime() - scheduledStart.getTime()) / 1000))
@@ -468,7 +474,7 @@ class RouteRepository {
   async findFlightsNeedingBackfillInRange(
     startDate: string,
     endDate: string,
-    limit: number = 50
+    limit: number = 50,
   ): Promise<FlightRouteHistory[]> {
     const query = `
       SELECT id, icao24, callsign, created_at,
@@ -559,7 +565,7 @@ class RouteRepository {
     icao24: string,
     startDate?: Date | null,
     endDate?: Date | null,
-    limit: number = 100
+    limit: number = 100,
   ): Promise<any[]> {
     let query = `
       SELECT
@@ -646,4 +652,3 @@ class RouteRepository {
 }
 
 export default RouteRepository;
-

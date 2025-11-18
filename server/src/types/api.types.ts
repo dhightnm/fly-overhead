@@ -114,4 +114,3 @@ export interface HealthCheckResponse {
   };
   services?: Record<string, any>;
 }
-

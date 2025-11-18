@@ -12,12 +12,12 @@ import type { AuthenticatedRequest } from './apiKeyAuth';
 export async function rateLimitMiddleware(
   req: AuthenticatedRequest,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ): Promise<void> {
   try {
     // Determine identifier (API key ID or IP address)
     const identifier = req.apiKey?.keyId || req.ip || 'unknown';
-    
+
     // If same-origin request (web app), use 'webapp' tier for better limits
     const keyType = req.isSameOrigin ? 'webapp' : req.apiKey?.type;
     const scopes = req.apiKey?.scopes;
@@ -61,10 +61,10 @@ export async function rateLimitMiddleware(
           },
           help: !req.apiKey
             ? {
-                title: 'Get higher limits with a free API key',
-                action: 'Create an API key at https://flyoverhead.com/dashboard/api-keys',
-                benefit: 'Free API keys get 1,000 requests/hour (20x more!)',
-              }
+              title: 'Get higher limits with a free API key',
+              action: 'Create an API key at https://flyoverhead.com/dashboard/api-keys',
+              benefit: 'Free API keys get 1,000 requests/hour (20x more!)',
+            }
             : undefined,
         },
       });
@@ -125,7 +125,7 @@ export async function rateLimitMiddleware(
  */
 export async function getRateLimitStatusHandler(
   req: AuthenticatedRequest,
-  res: Response
+  res: Response,
 ): Promise<void> {
   try {
     const identifier = req.apiKey?.keyId || req.ip || 'unknown';
@@ -171,4 +171,3 @@ export async function getRateLimitStatusHandler(
     });
   }
 }
-

@@ -40,7 +40,7 @@ async function checkRouteData() {
       console.log(`   ICAO24: ${row.icao24}`);
       console.log(`   Departure: ${row.departure_icao}`);
       console.log(`   Arrival: ${row.arrival_icao}`);
-      console.log(`   Route: ${row.route ? (row.route.length > 80 ? row.route.substring(0, 80) + '...' : row.route) : 'NULL'}`);
+      console.log(`   Route: ${row.route ? (row.route.length > 80 ? `${row.route.substring(0, 80)}...` : row.route) : 'NULL'}`);
       console.log(`   Created: ${row.created_at}`);
       console.log(`   Flight Start: ${row.actual_flight_start}`);
       console.log(`   Flight End: ${row.actual_flight_end}`);
@@ -65,7 +65,7 @@ async function checkRouteData() {
     `;
 
     const currentRow = await db.oneOrNone(currentQuery, [icao24, callsign]);
-    
+
     if (currentRow) {
       console.log('Currently selected route:');
       console.log(`  Departure: ${currentRow.departure_icao}`);
@@ -85,8 +85,3 @@ async function checkRouteData() {
 }
 
 checkRouteData();
-
-
-
-
-

@@ -182,7 +182,7 @@ export function getRequiredScopes(method: string, path: string): string[] | null
 
     // Convert wildcard pattern to regex
     const regex = new RegExp(
-      '^' + patternPath.replace(/\*/g, '.*').replace(/:\w+/g, '[^/]+') + '$'
+      `^${patternPath.replace(/\*/g, '.*').replace(/:\w+/g, '[^/]+')}$`,
     );
 
     if (regex.test(path)) {
@@ -192,4 +192,3 @@ export function getRequiredScopes(method: string, path: string): string[] | null
 
   return null;
 }
-

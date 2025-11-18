@@ -1,7 +1,7 @@
 import pgPromise from 'pg-promise';
 import logger from '../utils/logger';
 import { getConnection } from './DatabaseConnection';
-import { initializeAirportSchema } from '../database/airportSchema';
+import initializeAirportSchema from '../database/airportSchema';
 
 /**
  * Repository for database schema creation and migrations
@@ -38,8 +38,104 @@ class SchemaRepository {
         spi BOOLEAN,
         position_source INT CHECK (position_source BETWEEN 0 AND 3),
         category INT CHECK (category BETWEEN 0 AND 19) NULL,
-        created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+        created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+        feeder_id TEXT,
+        ingestion_timestamp TIMESTAMPTZ,
+        data_source TEXT,
+        source_priority INT,
+        aircraft_type TEXT,
+        aircraft_description TEXT,
+        registration TEXT,
+        emergency_status TEXT,
+        nav_qnh FLOAT8,
+        nav_altitude_mcp FLOAT8,
+        nav_heading FLOAT8,
+        owner_operator TEXT,
+        year_built TEXT
       );
+      
+      -- Add missing columns to existing table (for migrations)
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='aircraft_states' AND column_name='feeder_id'
+        ) THEN
+          ALTER TABLE aircraft_states ADD COLUMN feeder_id TEXT;
+        END IF;
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='aircraft_states' AND column_name='ingestion_timestamp'
+        ) THEN
+          ALTER TABLE aircraft_states ADD COLUMN ingestion_timestamp TIMESTAMPTZ;
+        END IF;
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='aircraft_states' AND column_name='data_source'
+        ) THEN
+          ALTER TABLE aircraft_states ADD COLUMN data_source TEXT;
+        END IF;
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='aircraft_states' AND column_name='source_priority'
+        ) THEN
+          ALTER TABLE aircraft_states ADD COLUMN source_priority INT;
+        END IF;
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='aircraft_states' AND column_name='aircraft_type'
+        ) THEN
+          ALTER TABLE aircraft_states ADD COLUMN aircraft_type TEXT;
+        END IF;
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='aircraft_states' AND column_name='aircraft_description'
+        ) THEN
+          ALTER TABLE aircraft_states ADD COLUMN aircraft_description TEXT;
+        END IF;
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='aircraft_states' AND column_name='registration'
+        ) THEN
+          ALTER TABLE aircraft_states ADD COLUMN registration TEXT;
+        END IF;
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='aircraft_states' AND column_name='emergency_status'
+        ) THEN
+          ALTER TABLE aircraft_states ADD COLUMN emergency_status TEXT;
+        END IF;
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='aircraft_states' AND column_name='nav_qnh'
+        ) THEN
+          ALTER TABLE aircraft_states ADD COLUMN nav_qnh FLOAT8;
+        END IF;
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='aircraft_states' AND column_name='nav_altitude_mcp'
+        ) THEN
+          ALTER TABLE aircraft_states ADD COLUMN nav_altitude_mcp FLOAT8;
+        END IF;
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='aircraft_states' AND column_name='nav_heading'
+        ) THEN
+          ALTER TABLE aircraft_states ADD COLUMN nav_heading FLOAT8;
+        END IF;
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='aircraft_states' AND column_name='owner_operator'
+        ) THEN
+          ALTER TABLE aircraft_states ADD COLUMN owner_operator TEXT;
+        END IF;
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='aircraft_states' AND column_name='year_built'
+        ) THEN
+          ALTER TABLE aircraft_states ADD COLUMN year_built TEXT;
+        END IF;
+      END $$;
     `;
     await this.db.query(query);
     logger.info('Main table created or already exists');
@@ -112,8 +208,104 @@ class SchemaRepository {
         spi BOOLEAN,
         position_source INT CHECK (position_source BETWEEN 0 AND 3),
         category INT CHECK (category BETWEEN 0 AND 19) NULL,
-        created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+        created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+        feeder_id TEXT,
+        ingestion_timestamp TIMESTAMPTZ,
+        data_source TEXT,
+        source_priority INT,
+        aircraft_type TEXT,
+        aircraft_description TEXT,
+        registration TEXT,
+        emergency_status TEXT,
+        nav_qnh FLOAT8,
+        nav_altitude_mcp FLOAT8,
+        nav_heading FLOAT8,
+        owner_operator TEXT,
+        year_built TEXT
       );
+      
+      -- Add missing columns to existing table (for migrations)
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='aircraft_states_history' AND column_name='feeder_id'
+        ) THEN
+          ALTER TABLE aircraft_states_history ADD COLUMN feeder_id TEXT;
+        END IF;
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='aircraft_states_history' AND column_name='ingestion_timestamp'
+        ) THEN
+          ALTER TABLE aircraft_states_history ADD COLUMN ingestion_timestamp TIMESTAMPTZ;
+        END IF;
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='aircraft_states_history' AND column_name='data_source'
+        ) THEN
+          ALTER TABLE aircraft_states_history ADD COLUMN data_source TEXT;
+        END IF;
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='aircraft_states_history' AND column_name='source_priority'
+        ) THEN
+          ALTER TABLE aircraft_states_history ADD COLUMN source_priority INT;
+        END IF;
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='aircraft_states_history' AND column_name='aircraft_type'
+        ) THEN
+          ALTER TABLE aircraft_states_history ADD COLUMN aircraft_type TEXT;
+        END IF;
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='aircraft_states_history' AND column_name='aircraft_description'
+        ) THEN
+          ALTER TABLE aircraft_states_history ADD COLUMN aircraft_description TEXT;
+        END IF;
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='aircraft_states_history' AND column_name='registration'
+        ) THEN
+          ALTER TABLE aircraft_states_history ADD COLUMN registration TEXT;
+        END IF;
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='aircraft_states_history' AND column_name='emergency_status'
+        ) THEN
+          ALTER TABLE aircraft_states_history ADD COLUMN emergency_status TEXT;
+        END IF;
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='aircraft_states_history' AND column_name='nav_qnh'
+        ) THEN
+          ALTER TABLE aircraft_states_history ADD COLUMN nav_qnh FLOAT8;
+        END IF;
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='aircraft_states_history' AND column_name='nav_altitude_mcp'
+        ) THEN
+          ALTER TABLE aircraft_states_history ADD COLUMN nav_altitude_mcp FLOAT8;
+        END IF;
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='aircraft_states_history' AND column_name='nav_heading'
+        ) THEN
+          ALTER TABLE aircraft_states_history ADD COLUMN nav_heading FLOAT8;
+        END IF;
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='aircraft_states_history' AND column_name='owner_operator'
+        ) THEN
+          ALTER TABLE aircraft_states_history ADD COLUMN owner_operator TEXT;
+        END IF;
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='aircraft_states_history' AND column_name='year_built'
+        ) THEN
+          ALTER TABLE aircraft_states_history ADD COLUMN year_built TEXT;
+        END IF;
+      END $$;
     `;
     await this.db.query(query);
     logger.info('History table created or already exists');
@@ -251,6 +443,8 @@ class SchemaRepository {
         id SERIAL PRIMARY KEY,
         icao24 TEXT NOT NULL,
         callsign TEXT,
+        flight_key TEXT,
+        route_key TEXT,
         departure_iata TEXT,
         departure_icao TEXT,
         departure_name TEXT,
@@ -270,10 +464,168 @@ class SchemaRepository {
         first_seen TIMESTAMPTZ,
         last_seen TIMESTAMPTZ,
         source TEXT,
+        registration TEXT,
+        flight_status TEXT,
+        route TEXT,
+        route_distance NUMERIC,
+        baggage_claim TEXT,
+        gate_origin TEXT,
+        gate_destination TEXT,
+        terminal_origin TEXT,
+        terminal_destination TEXT,
+        actual_runway_off TIMESTAMPTZ,
+        actual_runway_on TIMESTAMPTZ,
+        progress_percent NUMERIC,
+        filed_airspeed NUMERIC,
+        blocked BOOLEAN DEFAULT false,
+        diverted BOOLEAN DEFAULT false,
+        cancelled BOOLEAN DEFAULT false,
+        departure_delay INTEGER,
+        arrival_delay INTEGER,
+        scheduled_ete NUMERIC,
+        actual_ete NUMERIC,
         created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
       );
       
+      -- Add missing columns to existing table
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='flight_routes_history' AND column_name='flight_key'
+        ) THEN
+          ALTER TABLE flight_routes_history ADD COLUMN flight_key TEXT;
+        END IF;
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='flight_routes_history' AND column_name='route_key'
+        ) THEN
+          ALTER TABLE flight_routes_history ADD COLUMN route_key TEXT;
+        END IF;
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='flight_routes_history' AND column_name='registration'
+        ) THEN
+          ALTER TABLE flight_routes_history ADD COLUMN registration TEXT;
+        END IF;
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='flight_routes_history' AND column_name='flight_status'
+        ) THEN
+          ALTER TABLE flight_routes_history ADD COLUMN flight_status TEXT;
+        END IF;
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='flight_routes_history' AND column_name='route'
+        ) THEN
+          ALTER TABLE flight_routes_history ADD COLUMN route TEXT;
+        END IF;
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='flight_routes_history' AND column_name='route_distance'
+        ) THEN
+          ALTER TABLE flight_routes_history ADD COLUMN route_distance NUMERIC;
+        END IF;
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='flight_routes_history' AND column_name='baggage_claim'
+        ) THEN
+          ALTER TABLE flight_routes_history ADD COLUMN baggage_claim TEXT;
+        END IF;
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='flight_routes_history' AND column_name='gate_origin'
+        ) THEN
+          ALTER TABLE flight_routes_history ADD COLUMN gate_origin TEXT;
+        END IF;
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='flight_routes_history' AND column_name='gate_destination'
+        ) THEN
+          ALTER TABLE flight_routes_history ADD COLUMN gate_destination TEXT;
+        END IF;
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='flight_routes_history' AND column_name='terminal_origin'
+        ) THEN
+          ALTER TABLE flight_routes_history ADD COLUMN terminal_origin TEXT;
+        END IF;
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='flight_routes_history' AND column_name='terminal_destination'
+        ) THEN
+          ALTER TABLE flight_routes_history ADD COLUMN terminal_destination TEXT;
+        END IF;
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='flight_routes_history' AND column_name='actual_runway_off'
+        ) THEN
+          ALTER TABLE flight_routes_history ADD COLUMN actual_runway_off TIMESTAMPTZ;
+        END IF;
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='flight_routes_history' AND column_name='actual_runway_on'
+        ) THEN
+          ALTER TABLE flight_routes_history ADD COLUMN actual_runway_on TIMESTAMPTZ;
+        END IF;
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='flight_routes_history' AND column_name='progress_percent'
+        ) THEN
+          ALTER TABLE flight_routes_history ADD COLUMN progress_percent NUMERIC;
+        END IF;
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='flight_routes_history' AND column_name='filed_airspeed'
+        ) THEN
+          ALTER TABLE flight_routes_history ADD COLUMN filed_airspeed NUMERIC;
+        END IF;
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='flight_routes_history' AND column_name='blocked'
+        ) THEN
+          ALTER TABLE flight_routes_history ADD COLUMN blocked BOOLEAN DEFAULT false;
+        END IF;
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='flight_routes_history' AND column_name='diverted'
+        ) THEN
+          ALTER TABLE flight_routes_history ADD COLUMN diverted BOOLEAN DEFAULT false;
+        END IF;
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='flight_routes_history' AND column_name='cancelled'
+        ) THEN
+          ALTER TABLE flight_routes_history ADD COLUMN cancelled BOOLEAN DEFAULT false;
+        END IF;
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='flight_routes_history' AND column_name='departure_delay'
+        ) THEN
+          ALTER TABLE flight_routes_history ADD COLUMN departure_delay INTEGER;
+        END IF;
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='flight_routes_history' AND column_name='arrival_delay'
+        ) THEN
+          ALTER TABLE flight_routes_history ADD COLUMN arrival_delay INTEGER;
+        END IF;
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='flight_routes_history' AND column_name='scheduled_ete'
+        ) THEN
+          ALTER TABLE flight_routes_history ADD COLUMN scheduled_ete NUMERIC;
+        END IF;
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='flight_routes_history' AND column_name='actual_ete'
+        ) THEN
+          ALTER TABLE flight_routes_history ADD COLUMN actual_ete NUMERIC;
+        END IF;
+      END $$;
+      
+      CREATE UNIQUE INDEX IF NOT EXISTS uniq_flight_routes_history_flight_key ON flight_routes_history(flight_key);
       CREATE INDEX IF NOT EXISTS idx_routes_history_icao24 ON flight_routes_history(icao24);
       CREATE INDEX IF NOT EXISTS idx_routes_history_callsign ON flight_routes_history(callsign);
       CREATE INDEX IF NOT EXISTS idx_routes_history_created_at ON flight_routes_history(created_at DESC);
@@ -330,7 +682,7 @@ class SchemaRepository {
       );
     `;
     await this.db.query(createTableQuery);
-    
+
     // Add any missing columns for existing tables
     const addColumnsQuery = `
       DO $$
@@ -361,13 +713,13 @@ class SchemaRepository {
       END $$;
     `;
     await this.db.query(addColumnsQuery);
-    
+
     // Create indexes
     const indexQueries = [
       'CREATE INDEX IF NOT EXISTS idx_feeder_stats_feeder_id ON feeder_stats(feeder_id)',
       'CREATE INDEX IF NOT EXISTS idx_feeder_stats_date ON feeder_stats(date DESC)',
     ];
-    
+
     for (const indexQuery of indexQueries) {
       try {
         await this.db.query(indexQuery);
@@ -376,7 +728,7 @@ class SchemaRepository {
         logger.warn('Index creation warning (may already exist)', { error: err.message });
       }
     }
-    
+
     logger.info('Feeder stats table created or already exists');
   }
 
@@ -537,9 +889,9 @@ class SchemaRepository {
           CREATE INDEX IF NOT EXISTS idx_users_is_feeder_provider ON users(is_feeder_provider);
         `);
         logger.info('Added is_feeder_provider column to users table');
-      } catch (err) {
-        const error = err as Error;
-        logger.warn('Feeder provider column may already exist', { error: error.message });
+      } catch (innerErr) {
+        const innerError = innerErr as Error;
+        logger.warn('Feeder provider column may already exist', { error: innerError.message });
       }
     }
   }
@@ -577,4 +929,3 @@ class SchemaRepository {
 }
 
 export default SchemaRepository;
-

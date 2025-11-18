@@ -1,23 +1,125 @@
 ﻿{
-    "env": {
-      "node": true,
-      "es6": true
-    },
-    "extends": ["airbnb-base"],
-    "parserOptions": {
-      "ecmaVersion": 2021,
-      "sourceType": "module"
-    },
-    "rules": {
-      "indent": ["error", 2],
-      "linebreak-style": ["error", "unix"],
-      "no-await-in-loop": "off",
-      "no-promise-executor-return": "off",
-      "no-plusplus": "off",
-      "import/no-extraneous-dependencies": "off",
-      "quotes": ["error", "single"],
-      "semi": ["error", "always"],
-      "no-unused-vars": ["warn"],
-      "no-console": "off"
+  "env": {
+    "node": true,
+    "es6": true,
+    "jest": true
+  },
+  "extends": ["airbnb-base"],
+  "parserOptions": {
+    "ecmaVersion": 2021,
+    "sourceType": "module"
+  },
+  "settings": {
+    "import/resolver": {
+      "typescript": {
+        "alwaysTryTypes": true,
+        "project": "./tsconfig.json"
+      },
+      "node": {
+        "extensions": [".js", ".jsx", ".ts", ".tsx"]
+      }
     }
-  }
+  },
+  "rules": {
+    "indent": ["error", 2],
+    "linebreak-style": ["error", "unix"],
+    "no-await-in-loop": "off",
+    "no-promise-executor-return": "off",
+    "no-plusplus": "off",
+    "import/no-extraneous-dependencies": "off",
+    "import/extensions": [
+      "error",
+      "ignorePackages",
+      {
+        "js": "never",
+        "jsx": "never",
+        "ts": "never",
+        "tsx": "never"
+      }
+    ],
+    "quotes": ["error", "single"],
+    "semi": ["error", "always"],
+    "no-unused-vars": ["warn"],
+    "no-console": "off",
+    "no-underscore-dangle": "off",
+    "class-methods-use-this": "off",
+    "max-len": ["error", { "code": 120, "ignoreUrls": true, "ignoreStrings": true }]
+  },
+  "overrides": [
+    {
+      "files": ["src/**/*.ts", "src/**/*.tsx"],
+      "excludedFiles": ["**/*.test.ts", "**/*.spec.ts", "**/__tests__/**"],
+      "extends": ["airbnb-base", "plugin:@typescript-eslint/recommended"],
+      "parser": "@typescript-eslint/parser",
+      "parserOptions": {
+        "ecmaVersion": 2021,
+        "sourceType": "module",
+        "project": "./tsconfig.json"
+      },
+      "plugins": ["@typescript-eslint"],
+      "rules": {
+        "no-unused-vars": "off",
+        "@typescript-eslint/no-unused-vars": ["warn"],
+        "@typescript-eslint/no-explicit-any": "off",
+        "@typescript-eslint/no-non-null-assertion": "off",
+        "no-shadow": "off",
+        "@typescript-eslint/no-shadow": "error",
+        "no-restricted-syntax": "off",
+        "no-continue": "off",
+        "import/extensions": "off",
+        "max-len": ["error", { "code": 120, "ignoreUrls": true, "ignoreStrings": true }],
+        "no-plusplus": "off",
+        "no-await-in-loop": "off",
+        "no-underscore-dangle": "off",
+        "@typescript-eslint/ban-ts-comment": "off",
+        "camelcase": "off",
+        "class-methods-use-this": "off",
+        "no-mixed-operators": "warn",
+        "no-param-reassign": ["warn", { "props": true, "ignorePropertyModificationsFor": ["aircraft", "state"] }],
+        "no-restricted-globals": "warn",
+        "consistent-return": "warn",
+        "no-nested-ternary": "warn"
+      }
+    },
+    {
+      "files": ["**/*.test.ts", "**/*.spec.ts", "**/__tests__/**/*.ts"],
+      "extends": ["airbnb-base", "plugin:@typescript-eslint/recommended"],
+      "parser": "@typescript-eslint/parser",
+      "parserOptions": {
+        "ecmaVersion": 2021,
+        "sourceType": "module",
+        "project": "./tsconfig.test.json"
+      },
+      "plugins": ["@typescript-eslint"],
+      "rules": {
+        "no-unused-vars": "off",
+        "@typescript-eslint/no-unused-vars": ["warn"],
+        "@typescript-eslint/no-explicit-any": "off",
+        "@typescript-eslint/no-non-null-assertion": "off",
+        "no-shadow": "off",
+        "@typescript-eslint/no-shadow": "error",
+        "import/no-extraneous-dependencies": "off",
+        "import/extensions": "off",
+        "max-len": ["error", { "code": 120, "ignoreUrls": true, "ignoreStrings": true }],
+        "no-plusplus": "off",
+        "no-await-in-loop": "off",
+        "no-underscore-dangle": "off",
+        "@typescript-eslint/ban-ts-comment": "off",
+        "camelcase": "off",
+        "no-mixed-operators": "warn",
+        "no-param-reassign": ["warn", { "props": true, "ignorePropertyModificationsFor": ["aircraft", "state"] }],
+        "no-restricted-globals": "warn",
+        "consistent-return": "warn",
+        "no-nested-ternary": "warn",
+        "global-require": "warn",
+        "@typescript-eslint/no-var-requires": "warn",
+        "import/first": "warn",
+        "prefer-destructuring": "warn",
+        "no-promise-executor-return": "warn",
+        "import/prefer-default-export": "warn",
+        "object-curly-newline": "warn",
+        "import/newline-after-import": "warn"
+      }
+    }
+  ]
+}

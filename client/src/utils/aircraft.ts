@@ -8,6 +8,7 @@ const PLANE_PROPERTY_KEYS = [
   'type_code',
   'aircraft_type',
   'aircraft_model',
+  'aircraft_description',
   'model',
   'manufacturer',
   'make',

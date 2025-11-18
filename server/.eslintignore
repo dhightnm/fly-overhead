@@ -1,0 +1,38 @@
+# Build output
+dist/
+build/
+*.js.map
+
+# Dependencies
+node_modules/
+
+# Old code - legacy files not actively maintained
+old-code/
+
+# Legacy JS files (migrated to TypeScript in src/)
+# Exclude ALL .js files - we only lint TypeScript now
+**/*.js
+# Only allow these specific JS config files
+!jest.config.js
+!.eslintrc.js
+# Explicitly exclude old-code directory
+old-code/
+# Exclude root level legacy JS files
+*.js
+!jest.config.js
+
+# Test coverage
+coverage/
+
+# Environment files
+.env
+.env.*
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+

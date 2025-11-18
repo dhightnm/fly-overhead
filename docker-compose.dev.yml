@@ -2,6 +2,7 @@ services:
   db:
     image: postgis/postgis:15-3.3
     container_name: fly-overhead-postgres
+    command: postgres -c max_connections=200 -c shared_buffers=256MB -c log_statement=none -c log_min_duration_statement=-1 -c log_destination=stderr -c logging_collector=off
     environment:
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=postgres
@@ -27,6 +28,8 @@ services:
       args:
         - BUILD_DATE=${BUILD_DATE:-$(date -u +'%Y-%m-%dT%H:%M:%SZ')}
     container_name: fly-overhead-server
+    working_dir: /app/server
+    command: npm run dev
     ports:
       - "3005:3005"
     env_file:
@@ -34,20 +37,22 @@ services:
     environment:
       # Use local database for dev (switch to prod DB only when specifically testing)
       - POSTGRES_URL=postgresql://postgres:postgres@db:5432/fly_overhead
-      # To test with production DB, uncomment the line below and comment the one above:
-      # - POSTGRES_URL=postgresql://postgres:6Gee%26i8%3B%23zn%3A%3F%21BUo7kvyTYsHAFDy%7Bu%26@ls-720bbe7aa69d44c3435c4409ffc97c72a5518bdd.cb04k2e6gjgx.us-east-2.rds.amazonaws.com:5432/fly_overhead
+      # To test with production DB, set POSTGRES_URL in .env file
       - PORT=3005
       - NODE_ENV=development
-      - AVIATION_EDGE_API_KEY=4f486100c981ea8a41d6a83e395a2827
-      - FLIGHTAWARE_API_KEY=gmyEuwaSA620GprtqWgiJ2jEEsAc200G
-      - OPENSKY_USER=dhight
-      - OPENSKY_PASS=Flatline2!
-    # Mount server code as volume for live reloading (no rebuild needed)
-    # Note: On Windows, use forward slashes and relative paths
+      # API keys should be set in .env file, not hardcoded here
+      - AVIATION_EDGE_API_KEY=${AVIATION_EDGE_API_KEY:-}
+      - FLIGHTAWARE_API_KEY=${FLIGHTAWARE_API_KEY:-}
+      - OPENSKY_USER=${OPENSKY_USER:-}
+      - OPENSKY_PASS=${OPENSKY_PASS:-}
+    # Mount only the working source files for hot reload while keeping container build artifacts
     volumes:
-      - ./server:/app/server
-      # Mount client build directory so the server can serve static files
-      - ./client/build:/app/server/client/build
+      - ./server/src:/app/server/src
+      - ./server/tsconfig.json:/app/server/tsconfig.json
+      - ./server/tsconfig.build.json:/app/server/tsconfig.build.json
+      - ./server/tsconfig.test.json:/app/server/tsconfig.test.json
+      - ./server/package.json:/app/server/package.json
+      - ./server/package-lock.json:/app/server/package-lock.json
       # Anonymous volume to preserve node_modules installed in container
       - /app/server/node_modules
     depends_on:

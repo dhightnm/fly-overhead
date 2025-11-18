@@ -38,7 +38,7 @@ interface FlightPlanRoute {
 
 /**
  * Flight Plan Route Service
- * 
+ *
  * Parses filed flight plan routes (stored as space-separated waypoint codes)
  * and converts them to coordinates using the navaids table.
  */
@@ -52,11 +52,11 @@ class FlightPlanRouteService {
     }
 
     const normalized = routeString.replace(/\./g, ' ');
-    
+
     const waypoints = normalized
       .split(/\s+/)
-      .map(wp => wp.trim().toUpperCase())
-      .filter(wp => wp.length > 0);
+      .map((wp) => wp.trim().toUpperCase())
+      .filter((wp) => wp.length > 0);
 
     const excludePatterns = [
       /^DCT$/,
@@ -68,9 +68,7 @@ class FlightPlanRouteService {
       /^[NS]\d+[EW]$/,
     ];
 
-    return waypoints.filter(wp => {
-      return !excludePatterns.some(pattern => pattern.test(wp));
-    });
+    return waypoints.filter((wp) => !excludePatterns.some((pattern) => pattern.test(wp)));
   }
 
   /**
@@ -95,7 +93,7 @@ class FlightPlanRouteService {
       if (navaid) {
         const lat = parseFloat(navaid.latitude_deg);
         const lng = parseFloat(navaid.longitude_deg);
-        
+
         if (isNaN(lat) || isNaN(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
           logger.warn('Invalid coordinates for navaid', {
             code,
@@ -106,7 +104,7 @@ class FlightPlanRouteService {
           });
           return null;
         }
-        
+
         return {
           code: navaid.ident,
           name: navaid.name,
@@ -140,7 +138,7 @@ class FlightPlanRouteService {
       if (airport) {
         const lat = parseFloat(airport.latitude_deg);
         const lng = parseFloat(airport.longitude_deg);
-        
+
         if (isNaN(lat) || isNaN(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
           logger.warn('Invalid coordinates for airport', {
             code,
@@ -151,7 +149,7 @@ class FlightPlanRouteService {
           });
           return null;
         }
-        
+
         return {
           code: airport.ident,
           name: airport.name,
@@ -179,7 +177,7 @@ class FlightPlanRouteService {
     }
 
     const waypointCodes = this.parseRouteString(routeString);
-    
+
     if (waypointCodes.length === 0) {
       logger.debug('No waypoints parsed from route string', { routeString });
       return [];
@@ -192,7 +190,7 @@ class FlightPlanRouteService {
     });
 
     const waypointLookups = await Promise.allSettled(
-      waypointCodes.map(code => this.lookupWaypoint(code))
+      waypointCodes.map((code) => this.lookupWaypoint(code)),
     );
 
     const waypoints: Waypoint[] = [];
@@ -224,7 +222,7 @@ class FlightPlanRouteService {
       notFound: notFoundCount,
       successRate: `${((foundCount / waypointCodes.length) * 100).toFixed(1)}%`,
       parsedCodes: waypointCodes,
-      foundCodes: waypoints.map(wp => wp.code),
+      foundCodes: waypoints.map((wp) => wp.code),
       notFoundCodes,
     });
 
@@ -236,7 +234,7 @@ class FlightPlanRouteService {
    */
   async createRouteFromAirports(
     departureCode: string | null | undefined,
-    arrivalCode: string | null | undefined
+    arrivalCode: string | null | undefined,
   ): Promise<Waypoint[] | null> {
     if (!departureCode || !arrivalCode) {
       return null;
@@ -298,7 +296,7 @@ class FlightPlanRouteService {
    */
   async getFlightPlanRoute(
     icao24: string | null | undefined,
-    callsign: string | null | undefined
+    callsign: string | null | undefined,
   ): Promise<FlightPlanRoute> {
     try {
       let routeData = await postgresRepository.getDb().oneOrNone<RouteData>(
@@ -316,7 +314,7 @@ class FlightPlanRouteService {
            actual_flight_start DESC NULLS LAST,
            created_at DESC
          LIMIT 1`,
-        [icao24 || null, callsign || null]
+        [icao24 || null, callsign || null],
       );
 
       let waypoints: Waypoint[] | null = null;
@@ -330,7 +328,7 @@ class FlightPlanRouteService {
         });
 
         waypoints = await this.parseRouteToWaypoints(routeData.route);
-        
+
         if (waypoints && waypoints.length > 0) {
           routeSource = 'route_string';
           logger.info('Found route from route string', {
@@ -348,7 +346,7 @@ class FlightPlanRouteService {
 
       if (!waypoints || waypoints.length === 0) {
         logger.debug('Trying previous flights for route', { icao24, callsign });
-        
+
         const previousFlights = await postgresRepository.getDb().any<RouteData>(
           `SELECT route, callsign, icao24, 
                   departure_icao, arrival_icao,
@@ -364,7 +362,7 @@ class FlightPlanRouteService {
              actual_flight_start DESC NULLS LAST,
              created_at DESC
            LIMIT 5`,
-          [icao24 || null, callsign || null]
+          [icao24 || null, callsign || null],
         );
 
         for (const flight of previousFlights) {
@@ -398,7 +396,7 @@ class FlightPlanRouteService {
                actual_flight_start DESC NULLS LAST,
                created_at DESC
              LIMIT 1`,
-            [icao24 || null, callsign || null]
+            [icao24 || null, callsign || null],
           );
         }
 
@@ -412,7 +410,7 @@ class FlightPlanRouteService {
 
           waypoints = await this.createRouteFromAirports(
             routeData.departure_icao,
-            routeData.arrival_icao
+            routeData.arrival_icao,
           );
 
           if (waypoints && waypoints.length > 0) {
@@ -447,15 +445,15 @@ class FlightPlanRouteService {
       }
 
       let finalWaypoints = [...waypoints];
-      
+
       if (routeData && routeData.departure_icao && routeData.arrival_icao) {
         const firstWaypoint = finalWaypoints[0];
         const departureMatches = firstWaypoint && (
-          firstWaypoint.code === routeData.departure_icao ||
-          firstWaypoint.code === routeData.departure_icao.replace(/^K/, '') ||
-          firstWaypoint.name?.toLowerCase().includes(routeData.departure_icao.toLowerCase())
+          firstWaypoint.code === routeData.departure_icao
+          || firstWaypoint.code === routeData.departure_icao.replace(/^K/, '')
+          || firstWaypoint.name?.toLowerCase().includes(routeData.departure_icao.toLowerCase())
         );
-        
+
         if (!departureMatches) {
           try {
             const depAirport = await postgresRepository.findAirportByCode(routeData.departure_icao);
@@ -478,14 +476,14 @@ class FlightPlanRouteService {
             });
           }
         }
-        
+
         const lastWaypoint = finalWaypoints[finalWaypoints.length - 1];
         const arrivalMatches = lastWaypoint && (
-          lastWaypoint.code === routeData.arrival_icao ||
-          lastWaypoint.code === routeData.arrival_icao.replace(/^K/, '') ||
-          lastWaypoint.name?.toLowerCase().includes(routeData.arrival_icao.toLowerCase())
+          lastWaypoint.code === routeData.arrival_icao
+          || lastWaypoint.code === routeData.arrival_icao.replace(/^K/, '')
+          || lastWaypoint.name?.toLowerCase().includes(routeData.arrival_icao.toLowerCase())
         );
-        
+
         if (!arrivalMatches) {
           try {
             const arrAirport = await postgresRepository.findAirportByCode(routeData.arrival_icao);
@@ -509,7 +507,7 @@ class FlightPlanRouteService {
           }
         }
       }
-      
+
       finalWaypoints = finalWaypoints.map((wp, idx) => ({ ...wp, order: idx }));
 
       return {
@@ -548,7 +546,7 @@ class FlightPlanRouteService {
         FROM flight_routes_history
         WHERE route IS NOT NULL
           AND route != ''
-          AND created_at > NOW() - INTERVAL '7 days'`
+          AND created_at > NOW() - INTERVAL '7 days'`,
       );
 
       const samples = await postgresRepository.getDb().any(
@@ -558,16 +556,16 @@ class FlightPlanRouteService {
            AND route != ''
            AND created_at > NOW() - INTERVAL '7 days'
          ORDER BY created_at DESC
-         LIMIT 20`
+         LIMIT 20`,
       );
 
       const testResults: any[] = [];
       for (const sample of (samples as any[]).slice(0, 5)) {
         const waypointCodes = this.parseRouteString(sample.route);
         const waypointCount = await Promise.all(
-          waypointCodes.slice(0, 10).map(code => this.lookupWaypoint(code))
+          waypointCodes.slice(0, 10).map((code) => this.lookupWaypoint(code)),
         );
-        const foundCount = waypointCount.filter(wp => wp !== null).length;
+        const foundCount = waypointCount.filter((wp) => wp !== null).length;
 
         testResults.push({
           callsign: sample.callsign,
@@ -601,4 +599,3 @@ class FlightPlanRouteService {
 }
 
 export default new FlightPlanRouteService();
-

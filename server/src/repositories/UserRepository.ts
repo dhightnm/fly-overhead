@@ -42,7 +42,9 @@ class UserRepository {
   }
 
   async createUser(userData: CreateUserData): Promise<User> {
-    const { email, password, name, isPremium, googleId } = userData;
+    const {
+      email, password, name, isPremium, googleId,
+    } = userData;
     const query = `
       INSERT INTO users (email, password, name, is_premium, google_id)
       VALUES ($1, $2, $3, $4, $5)
@@ -93,7 +95,7 @@ class UserRepository {
   async updateUserPremiumStatus(
     userId: number,
     isPremium: boolean,
-    expiresAt: Date | null = null
+    expiresAt: Date | null = null,
   ): Promise<User> {
     const query = `
       UPDATE users
@@ -120,4 +122,3 @@ class UserRepository {
 }
 
 export default UserRepository;
-

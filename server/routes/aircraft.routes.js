@@ -13,7 +13,7 @@ const { requireApiKeyAuth } = require('../middlewares/apiKeyAuth');
 const cache = new NodeCache({ stdTTL: 60, maxKeys: 100 });
 
 // Enhanced cache for bounding box queries (balanced TTL for stability and freshness)
-const boundsCache = new NodeCache({ 
+const boundsCache = new NodeCache({
   stdTTL: 15, // 15 second cache - reduces flickering while keeping data relatively fresh
   maxKeys: 1000, // Cache up to 1000 different bounding boxes
   checkperiod: 60, // Check for expired keys every minute
@@ -80,7 +80,7 @@ router.get('/planes/:identifier', async (req, res, next) => {
       );
       if (route) {
         aircraft.route = route;
-        
+
         // Update aircraft category if we got type/model from route
         if (aircraft.icao24 && (route.aircraft?.type || route.aircraft?.model)) {
           const inferredCategory = mapAircraftTypeToCategory(route.aircraft?.type, route.aircraft?.model);
@@ -212,7 +212,7 @@ router.get('/area/:latmin/:lonmin/:latmax/:lonmax', async (req, res, next) => {
   const roundedLonMin = Math.floor(parseFloat(lonmin) * 10) / 10;
   const roundedLatMax = Math.ceil(parseFloat(latmax) * 10) / 10;
   const roundedLonMax = Math.ceil(parseFloat(lonmax) * 10) / 10;
-  
+
   const cacheKey = `/area/${roundedLatMin}/${roundedLonMin}/${roundedLatMax}/${roundedLonMax}`;
 
   try {
@@ -222,7 +222,7 @@ router.get('/area/:latmin/:lonmin/:latmax/:lonmax', async (req, res, next) => {
       // Recalculate data age for cached aircraft (cache may be 15 seconds old)
       const cachedAircraft = boundsCache.get(cacheKey);
       const now = Math.floor(Date.now() / 1000);
-      const refreshedAircraft = cachedAircraft.map(plane => ({
+      const refreshedAircraft = cachedAircraft.map((plane) => ({
         ...plane,
         data_age_seconds: plane.last_contact ? now - plane.last_contact : null,
         last_update_age_seconds: plane.last_contact ? now - plane.last_contact : null,
@@ -241,7 +241,7 @@ router.get('/area/:latmin/:lonmin/:latmax/:lonmax', async (req, res, next) => {
 
     // Add data age calculation to each aircraft
     const now = Math.floor(Date.now() / 1000);
-    const enrichedAircraft = aircraft.map(plane => ({
+    const enrichedAircraft = aircraft.map((plane) => ({
       ...plane,
       data_age_seconds: plane.last_contact ? now - plane.last_contact : null,
       last_update_age_seconds: plane.last_contact ? now - plane.last_contact : null, // alias for clarity
@@ -249,9 +249,9 @@ router.get('/area/:latmin/:lonmin/:latmax/:lonmax', async (req, res, next) => {
 
     // Store in cache
     boundsCache.set(cacheKey, enrichedAircraft);
-    logger.debug('Cached aircraft data for bounding box', { 
-      cacheKey, 
-      aircraftCount: enrichedAircraft.length 
+    logger.debug('Cached aircraft data for bounding box', {
+      cacheKey,
+      aircraftCount: enrichedAircraft.length,
     });
 
     return res.json(enrichedAircraft);

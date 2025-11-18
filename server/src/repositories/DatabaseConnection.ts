@@ -7,7 +7,7 @@ import PostGISService from '../services/PostGISService';
 const pgp = pgPromise({
   // Log connection pool events for debugging
   connect: (e: any) => {
-    const client = e.client;
+    const { client } = e;
     logger.debug('New database connection established', {
       totalCount: client?.totalCount,
       idleCount: client?.idleCount,
@@ -45,13 +45,14 @@ const pgp = pgPromise({
  */
 class DatabaseConnection {
   private db: pgPromise.IDatabase<any>;
+
   private postgis: PostGISService;
 
   constructor() {
     const connectionString = config.database.postgres.url;
 
     // Parse connection string to detect AWS RDS/Lightsail endpoints
-    const isAwsRds = this.isAwsRdsEndpoint(connectionString);
+    const isAwsRds = DatabaseConnection.isAwsRdsEndpoint(connectionString);
 
     // Configure SSL for AWS RDS/Lightsail connections
     // Parse connection string and add SSL configuration
@@ -66,10 +67,12 @@ class DatabaseConnection {
           user: url.username,
           password: decodeURIComponent(url.password), // Decode password
           ssl: {
-            rejectUnauthorized: false, // AWS RDS certificates are trusted, but Node.js needs this for self-signed certs in the chain
+            // AWS RDS certificates are trusted, but Node.js needs this for self-signed certs
+            rejectUnauthorized: false,
           },
           // Connection pool settings
-          max: config.database.postgres.pool.max || 10, // Maximum number of clients in the pool (keep below database max_connections limit)
+          // Maximum number of clients in the pool (keep below database max_connections limit)
+          max: config.database.postgres.pool.max || 10,
           min: config.database.postgres.pool.min || 2, // Minimum number of clients in the pool
           idleTimeoutMillis: 30000, // Close idle clients after 30 seconds (reduced to free up connections faster)
           connectionTimeoutMillis: 30000, // Return an error after 30 seconds if connection could not be established
@@ -116,15 +119,15 @@ class DatabaseConnection {
   /**
    * Check if connection string points to AWS RDS/Lightsail endpoint
    */
-  private isAwsRdsEndpoint(connectionString: string): boolean {
+  static isAwsRdsEndpoint(connectionString: string): boolean {
     // AWS RDS/Lightsail endpoints typically contain:
     // - .rds.amazonaws.com
     // - .lightsail.aws
     // - ls- prefix (Lightsail)
     return (
-      connectionString.includes('.rds.amazonaws.com') ||
-      connectionString.includes('.lightsail.aws') ||
-      connectionString.includes('ls-')
+      connectionString.includes('.rds.amazonaws.com')
+      || connectionString.includes('.lightsail.aws')
+      || connectionString.includes('ls-')
     );
   }
 

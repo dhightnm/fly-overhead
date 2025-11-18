@@ -1,9 +1,11 @@
 module.exports = {
-  preset: 'ts-jest',
   testEnvironment: 'node',
   roots: ['<rootDir>/src'],
   testMatch: ['**/__tests__/**/*.test.ts'],
   moduleFileExtensions: ['ts', 'tsx', 'js', 'json'],
+  transform: {
+    '^.+\\.ts$': 'ts-jest',
+  },
   moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/src/$1',
     '^@config/(.*)$': '<rootDir>/src/config/$1',
@@ -15,14 +17,7 @@ module.exports = {
     '^@database/(.*)$': '<rootDir>/src/database/$1',
     '^@types/(.*)$': '<rootDir>/src/types/$1',
   },
-  globals: {
-    'ts-jest': {
-      tsconfig: '<rootDir>/tsconfig.test.json',
-      diagnostics: false,
-    },
-  },
   clearMocks: true,
   resetMocks: true,
   restoreMocks: true,
 };
-

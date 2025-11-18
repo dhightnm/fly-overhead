@@ -1,8 +1,7 @@
 import { Request, Response } from 'express';
-import postgresRepository from '../../repositories/PostgresRepository';
 import bcrypt from 'bcryptjs';
-import type { ApiKey } from '../../types/database.types';
-import type { Feeder } from '../../types/database.types';
+import postgresRepository from '../../repositories/PostgresRepository';
+import type { ApiKey, Feeder } from '../../types/database.types';
 
 // Mock dependencies
 jest.mock('../../repositories/PostgresRepository');
@@ -15,15 +14,10 @@ jest.mock('../../utils/logger', () => ({
 
 const mockPostgresRepository = postgresRepository as jest.Mocked<typeof postgresRepository>;
 
-// Import the router after mocking
-let feederRouter: any;
-let registerHandler: any;
-
 beforeAll(async () => {
   // Dynamically import the router after mocks are set up
-  const module = await import('../feeder.routes');
-  feederRouter = module.default;
-  
+  await import('../feeder.routes');
+
   // We'll test the handler directly by importing the route logic
   // For now, we'll create a test that simulates the registration endpoint
 });
@@ -51,7 +45,7 @@ describe('Feeder Registration Endpoint', () => {
   describe('POST /api/feeder/register', () => {
     it('should successfully register a feeder with fd_ prefix', async () => {
       const feederId = 'feeder_test_123';
-      const apiKey = 'fd_' + 'a'.repeat(32);
+      const apiKey = `fd_${'a'.repeat(32)}`;
       const apiKeyHash = await bcrypt.hash(apiKey, 10);
 
       mockRequest.body = {
@@ -98,6 +92,7 @@ describe('Feeder Registration Endpoint', () => {
           api_key_id: 'key_feeder_123',
         },
         created_at: new Date(),
+        updated_at: new Date(),
         last_seen_at: null,
         is_active: true,
       };
@@ -108,12 +103,11 @@ describe('Feeder Registration Endpoint', () => {
       mockPostgresRepository.registerFeeder = jest.fn().mockResolvedValue(mockFeeder);
 
       // Import and call the handler directly
-      const { optionalApiKeyAuth } = await import('../../middlewares/apiKeyAuth');
-      const { rateLimitMiddleware } = await import('../../middlewares/rateLimitMiddleware');
-
       // Create a mock handler that simulates the registration endpoint
-      const handler = async (req: any, res: any, next: any) => {
-        const { feeder_id, api_key_hash, key_prefix, name, latitude, longitude, metadata } = req.body;
+      const handler = async (req: any, res: any, _next: any) => {
+        const {
+          feeder_id, api_key_hash, key_prefix, name, latitude, longitude, metadata,
+        } = req.body;
 
         if (!feeder_id || !api_key_hash || !name) {
           return res.status(400).json({
@@ -212,7 +206,7 @@ describe('Feeder Registration Endpoint', () => {
 
     it('should default to fd_ prefix when key_prefix is not provided', async () => {
       const feederId = 'feeder_test_456';
-      const apiKey = 'fd_' + 'b'.repeat(32);
+      const apiKey = `fd_${'b'.repeat(32)}`;
       const apiKeyHash = await bcrypt.hash(apiKey, 10);
 
       mockRequest.body = {
@@ -254,6 +248,7 @@ describe('Feeder Registration Endpoint', () => {
           api_key_id: 'key_feeder_456',
         },
         created_at: new Date(),
+        updated_at: new Date(),
         last_seen_at: null,
         is_active: true,
       };
@@ -264,8 +259,10 @@ describe('Feeder Registration Endpoint', () => {
       mockPostgresRepository.registerFeeder = jest.fn().mockResolvedValue(mockFeeder);
 
       // Same handler as above
-      const handler = async (req: any, res: any, next: any) => {
-        const { feeder_id, api_key_hash, key_prefix, name, latitude, longitude, metadata } = req.body;
+      const handler = async (req: any, res: any, _next: any) => {
+        const {
+          feeder_id, api_key_hash, key_prefix, name, latitude, longitude, metadata,
+        } = req.body;
 
         if (!feeder_id || !api_key_hash || !name) {
           return res.status(400).json({
@@ -341,7 +338,7 @@ describe('Feeder Registration Endpoint', () => {
       expect(mockPostgresRepository.createApiKey).toHaveBeenCalledWith(
         expect.objectContaining({
           prefix: 'fd_', // Should default to fd_
-        })
+        }),
       );
     });
 
@@ -351,7 +348,7 @@ describe('Feeder Registration Endpoint', () => {
         // Missing api_key_hash and name
       };
 
-      const handler = async (req: any, res: any, next: any) => {
+      const handler = async (req: any, res: any, _next: any) => {
         const { feeder_id, api_key_hash, name } = req.body;
 
         if (!feeder_id || !api_key_hash || !name) {
@@ -393,13 +390,14 @@ describe('Feeder Registration Endpoint', () => {
         longitude: null,
         metadata: {},
         created_at: new Date(),
+        updated_at: new Date(),
         last_seen_at: null,
         is_active: true,
       };
 
       mockPostgresRepository.getFeederById = jest.fn().mockResolvedValue(existingFeeder);
 
-      const handler = async (req: any, res: any, next: any) => {
+      const handler = async (req: any, res: any, _next: any) => {
         const { feeder_id, api_key_hash, name } = req.body;
 
         if (!feeder_id || !api_key_hash || !name) {
@@ -473,7 +471,7 @@ describe('Feeder Registration Endpoint', () => {
       mockPostgresRepository.getFeederById = jest.fn().mockResolvedValue(null);
       mockPostgresRepository.getApiKeyByHash = jest.fn().mockResolvedValue(existingApiKey);
 
-      const handler = async (req: any, res: any, next: any) => {
+      const handler = async (req: any, res: any, _next: any) => {
         const { feeder_id, api_key_hash, name } = req.body;
 
         if (!feeder_id || !api_key_hash || !name) {
@@ -524,7 +522,7 @@ describe('Feeder Registration Endpoint', () => {
 
     it('should link feeder to user account when JWT token is provided', async () => {
       const feederId = 'feeder_user_linked';
-      const apiKey = 'fd_' + 'u'.repeat(32);
+      const apiKey = `fd_${'u'.repeat(32)}`;
       const apiKeyHash = await bcrypt.hash(apiKey, 10);
       const userId = 123;
 
@@ -571,6 +569,7 @@ describe('Feeder Registration Endpoint', () => {
           user_id: userId,
         },
         created_at: new Date(),
+        updated_at: new Date(),
         last_seen_at: null,
         is_active: true,
       };
@@ -590,10 +589,12 @@ describe('Feeder Registration Endpoint', () => {
       mockPostgresRepository.registerFeeder = jest.fn().mockResolvedValue(mockFeeder);
       mockPostgresRepository.updateUserFeederProviderStatus = jest.fn().mockResolvedValue(mockUser);
 
-      const handler = async (req: any, res: any, next: any) => {
-        const { feeder_id, api_key_hash, key_prefix, name, latitude, longitude, metadata } = req.body;
+      const handler = async (req: any, res: any, _next: any) => {
+        const {
+          feeder_id, api_key_hash, key_prefix, name, latitude, longitude, metadata,
+        } = req.body;
         const authenticatedUser = req.user;
-        const userId = authenticatedUser?.userId || null;
+        const authenticatedUserId = authenticatedUser?.userId || null;
         const createdBy = authenticatedUser?.userId || null;
 
         if (!feeder_id || !api_key_hash || !name) {
@@ -629,10 +630,10 @@ describe('Feeder Registration Endpoint', () => {
             keyHash: api_key_hash,
             prefix,
             name: `Feeder: ${name}`,
-            description: userId
+            description: authenticatedUserId
               ? `Auto-generated API key for feeder ${feeder_id} (linked to user account)`
               : `Auto-generated API key for feeder ${feeder_id}`,
-            userId,
+            userId: authenticatedUserId,
             scopes: ['feeder:write', 'feeder:read', 'aircraft:write'],
             createdBy,
             expiresAt: null,
@@ -647,14 +648,14 @@ describe('Feeder Registration Endpoint', () => {
             metadata: {
               ...metadata,
               api_key_id: apiKeyData.key_id,
-              user_id: userId,
+              user_id: authenticatedUserId,
             },
           });
 
           // If feeder is linked to a user, mark user as feeder provider
-          if (userId) {
+          if (authenticatedUserId) {
             try {
-              await postgresRepository.updateUserFeederProviderStatus(userId, true);
+              await postgresRepository.updateUserFeederProviderStatus(authenticatedUserId, true);
             } catch (error) {
               // Non-critical error
             }
@@ -665,9 +666,9 @@ describe('Feeder Registration Endpoint', () => {
             feeder_id: feeder.feeder_id,
             api_key_id: apiKeyData.key_id,
             scopes: apiKeyData.scopes,
-            user_id: userId,
-            linked_to_user: !!userId,
-            message: userId
+            user_id: authenticatedUserId,
+            linked_to_user: !!authenticatedUserId,
+            message: authenticatedUserId
               ? 'Feeder registered successfully and linked to your account. API key record created with feeder scopes.'
               : 'Feeder registered successfully. API key record created with feeder scopes.',
           });
@@ -685,9 +686,9 @@ describe('Feeder Registration Endpoint', () => {
 
       expect(mockPostgresRepository.createApiKey).toHaveBeenCalledWith(
         expect.objectContaining({
-          userId: userId,
+          userId,
           createdBy: userId,
-        })
+        }),
       );
       expect(mockPostgresRepository.updateUserFeederProviderStatus).toHaveBeenCalledWith(userId, true);
       expect(mockResponse.status).toHaveBeenCalledWith(201);
@@ -696,9 +697,8 @@ describe('Feeder Registration Endpoint', () => {
           success: true,
           user_id: userId,
           linked_to_user: true,
-        })
+        }),
       );
     });
   });
 });
-

@@ -9,7 +9,7 @@ import pgPromise from 'pg-promise';
 
 dotenv.config();
 
-const POSTGRES_URL = process.env.POSTGRES_URL;
+const { POSTGRES_URL } = process.env;
 
 if (!POSTGRES_URL) {
   console.error('❌ POSTGRES_URL environment variable is not set');
@@ -17,10 +17,9 @@ if (!POSTGRES_URL) {
 }
 
 // Check if it's an AWS RDS/Lightsail endpoint
-const isAwsRds =
-  POSTGRES_URL.includes('.rds.amazonaws.com') ||
-  POSTGRES_URL.includes('.lightsail.aws') ||
-  POSTGRES_URL.includes('ls-');
+const isAwsRds = POSTGRES_URL.includes('.rds.amazonaws.com')
+  || POSTGRES_URL.includes('.lightsail.aws')
+  || POSTGRES_URL.includes('ls-');
 
 async function testConnection(): Promise<void> {
   console.log('🔍 Testing database connection...');
@@ -95,7 +94,7 @@ async function testConnection(): Promise<void> {
       FROM pg_stat_activity
       WHERE datname = current_database()
     `);
-    console.log(`✅ Connection pool stats:`);
+    console.log('✅ Connection pool stats:');
     console.log(`   Total connections: ${poolStats.total_connections}`);
     console.log(`   Active: ${poolStats.active_connections}`);
     console.log(`   Idle: ${poolStats.idle_connections}`);
@@ -124,7 +123,7 @@ async function testConnection(): Promise<void> {
       ) as postgis_exists
     `);
     if (postgisCheck?.postgis_exists) {
-      const postgisVersion = await db.one("SELECT PostGIS_version() as version");
+      const postgisVersion = await db.one('SELECT PostGIS_version() as version');
       console.log(`✅ PostGIS extension enabled: ${postgisVersion.version}`);
     } else {
       console.log('⚠️  PostGIS extension not found');
@@ -163,4 +162,3 @@ testConnection().catch((error) => {
   console.error('Fatal error:', error);
   process.exit(1);
 });
-

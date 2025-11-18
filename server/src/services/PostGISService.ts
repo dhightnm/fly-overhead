@@ -277,7 +277,7 @@ class PostGISService {
   async findAircraftNearPoint(
     latitude: number,
     longitude: number,
-    radiusMeters: number = 5000
+    radiusMeters: number = 5000,
   ): Promise<any[]> {
     const query = `
       SELECT 
@@ -322,7 +322,7 @@ class PostGISService {
   async getFlightPathGeoJSON(
     icao24: string,
     startTime: Date | null = null,
-    endTime: Date | null = null
+    endTime: Date | null = null,
   ): Promise<any> {
     let query = `
       SELECT 
@@ -396,7 +396,7 @@ class PostGISService {
   async findSpottingLocations(
     airportLat: number,
     airportLon: number,
-    radiusKm: number = 20
+    radiusKm: number = 20,
   ): Promise<any[]> {
     const query = `
       SELECT 
@@ -430,10 +430,9 @@ class PostGISService {
       ORDER BY aircraft_count DESC
       LIMIT 20;
     `;
-    
+
     return this.db.query(query, [airportLat, airportLon, radiusKm * 1000]);
   }
 }
 
 export default PostGISService;
-

@@ -45,10 +45,10 @@ class OpenSkyService {
         },
         headers: this.getAuthHeader(),
       });
-      
+
       // Record successful request
       rateLimitManager.recordSuccess();
-      
+
       // Log sample state structure if available (use info level for visibility)
       if (response.data.states && response.data.states.length > 0) {
         const sample = response.data.states[0];
@@ -65,7 +65,7 @@ class OpenSkyService {
       if (error.response && error.response.status === 429) {
         const retryAfter = error.response.headers['x-rate-limit-retry-after-seconds'];
         rateLimitManager.recordRateLimit(retryAfter ? parseInt(retryAfter, 10) : null);
-        
+
         const rateLimitError = new Error('OpenSky API rate limited');
         rateLimitError.rateLimited = true;
         rateLimitError.retryAfter = retryAfter || rateLimitManager.getSecondsUntilRetry();
@@ -75,7 +75,7 @@ class OpenSkyService {
         });
         throw rateLimitError;
       }
-      
+
       logger.error('Error fetching all states from OpenSky', { error: error.message });
       throw error;
     }
@@ -100,31 +100,36 @@ class OpenSkyService {
       const response = await axios.get(`${this.baseUrl}/states/all`, {
         params: {
           extended: 1, // Include category field (index 17) - use 1 instead of true
-          lamin, lomin, lamax, lomax,
+          lamin,
+          lomin,
+          lamax,
+          lomax,
         },
         headers: this.getAuthHeader(),
       });
-      
+
       // Record successful request
       rateLimitManager.recordSuccess();
-      
+
       return response.data;
     } catch (error) {
       // Handle rate limiting
       if (error.response && error.response.status === 429) {
         const retryAfter = error.response.headers['x-rate-limit-retry-after-seconds'];
         rateLimitManager.recordRateLimit(retryAfter ? parseInt(retryAfter, 10) : null);
-        
+
         const rateLimitError = new Error('OpenSky API rate limited');
         rateLimitError.rateLimited = true;
         rateLimitError.retryAfter = retryAfter || rateLimitManager.getSecondsUntilRetry();
         logger.error('OpenSky rate limit detected (bounded query)', {
-          bounds: { lamin, lomin, lamax, lomax },
+          bounds: {
+            lamin, lomin, lamax, lomax,
+          },
           retryAfter: rateLimitError.retryAfter,
         });
         throw rateLimitError;
       }
-      
+
       logger.error('Error fetching bounded states from OpenSky', {
         bounds: {
           lamin, lomin, lamax, lomax,
@@ -191,7 +196,7 @@ class OpenSkyService {
     // Index 17 is category (may be null if not broadcast by aircraft)
     // Append created_at as index 18
     let category = state[17] !== undefined ? state[17] : null;
-    
+
     // Validate category: must be between 0 and 19 (OpenSky valid range)
     // Some data sources may return invalid values (e.g., 20), so clamp to valid range
     if (category !== null && (typeof category !== 'number' || category < 0 || category > 19)) {
@@ -201,7 +206,7 @@ class OpenSkyService {
       });
       category = null;
     }
-    
+
     const stateWithDate = [...state.slice(0, 17), category, new Date()];
     return stateWithDate;
   }

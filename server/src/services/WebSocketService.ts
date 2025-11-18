@@ -28,6 +28,7 @@ interface IncrementalChanges {
  */
 class WebSocketService {
   private io: Server | null = null;
+
   private connectedClients: number = 0;
 
   /**
@@ -129,7 +130,9 @@ class WebSocketService {
     logger.debug('Broadcasted aircraft update', {
       room: roomName,
       type: updateType,
-      aircraftCount: Array.isArray(data) ? data.length : (data.added?.length || 0) + (data.updated?.length || 0) + (data.removed?.length || 0),
+      aircraftCount: Array.isArray(data)
+        ? data.length
+        : (data.added?.length || 0) + (data.updated?.length || 0) + (data.removed?.length || 0),
       clientsInRoom: this.io.sockets.adapter.rooms.get(roomName)?.size || 0,
     });
   }
@@ -175,4 +178,3 @@ class WebSocketService {
 // Export singleton instance
 const webSocketService = new WebSocketService();
 export default webSocketService;
-

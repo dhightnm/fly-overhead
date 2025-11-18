@@ -9,10 +9,15 @@ import { mapAircraftTypeToCategory } from '../utils/aircraftCategoryMapper';
  */
 class BackgroundRouteService {
   private isRunning: boolean = false;
+
   private intervalId: NodeJS.Timeout | null = null;
+
   private readonly BATCH_SIZE: number = 5;
+
   private readonly INTERVAL_MS: number = 5 * 60 * 1000; // 5 minutes
+
   private readonly BACKFILL_BATCH: number = 10;
+
   private readonly FLIGHTAWARE_CALLS_CAP: number;
 
   constructor() {
@@ -85,7 +90,9 @@ class BackgroundRouteService {
           );
 
           if (i < aircraft.length - 1) {
-            await new Promise((resolve) => setTimeout(resolve, 2000));
+            await new Promise((resolve) => {
+              setTimeout(() => resolve(undefined), 2000);
+            });
           }
         } catch (error) {
           const err = error as Error;
@@ -116,7 +123,7 @@ class BackgroundRouteService {
   private async _fetchRouteForFlight(
     flight: any,
     flightAwareRemaining: number,
-    logContext: string = ''
+    logContext: string = '',
   ): Promise<{ route: any | null; flightAwareRemaining: number }> {
     let route: any | null = null;
     let faRemaining = flightAwareRemaining;
@@ -157,7 +164,7 @@ class BackgroundRouteService {
             }
           }
 
-          route = routes[0];
+          [route] = routes;
           logger.info(`FlightAware API call successful ${logContext}`, {
             callsign: flight.callsign,
             flightsFound: routes.length,
@@ -202,10 +209,16 @@ class BackgroundRouteService {
 
     // Compute ETEs
     if (updates.scheduled_flight_start && updates.scheduled_flight_end) {
-      updates.scheduled_ete = Math.max(0, Math.floor((updates.scheduled_flight_end.getTime() - updates.scheduled_flight_start.getTime()) / 1000));
+      const scheduledEte = Math.floor(
+        (updates.scheduled_flight_end.getTime() - updates.scheduled_flight_start.getTime()) / 1000,
+      );
+      updates.scheduled_ete = Math.max(0, scheduledEte);
     }
     if (updates.actual_flight_start && updates.actual_flight_end) {
-      updates.actual_ete = Math.max(0, Math.floor((updates.actual_flight_end.getTime() - updates.actual_flight_start.getTime()) / 1000));
+      const actualEte = Math.floor(
+        (updates.actual_flight_end.getTime() - updates.actual_flight_start.getTime()) / 1000,
+      );
+      updates.actual_ete = Math.max(0, actualEte);
       if (!updates.ete) updates.ete = updates.actual_ete;
     }
 
@@ -247,7 +260,9 @@ class BackgroundRouteService {
    * Update aircraft category based on type/model
    */
   private async _updateAircraftCategory(icao24: string, route: any, updates: any): Promise<void> {
-    if (!icao24 || (!route?.aircraft?.type && !route?.aircraft?.model && !updates.aircraft_type && !updates.aircraft_model)) {
+    const hasAircraftInfo = route?.aircraft?.type || route?.aircraft?.model
+      || updates.aircraft_type || updates.aircraft_model;
+    if (!icao24 || !hasAircraftInfo) {
       return;
     }
 
@@ -277,7 +292,7 @@ class BackgroundRouteService {
   private async _processFlightBackfill(
     flight: any,
     flightAwareRemaining: number,
-    logContext: string = ''
+    logContext: string = '',
   ): Promise<number> {
     const { route, flightAwareRemaining: faRemaining } = await this._fetchRouteForFlight(
       flight,
@@ -293,7 +308,9 @@ class BackgroundRouteService {
       logger.info(`Backfill ${logContext}: updated flight`, { id: flight.id });
     }
 
-    await new Promise((resolve) => setTimeout(resolve, 500));
+    await new Promise((resolve) => {
+      setTimeout(() => resolve(undefined), 500);
+    });
 
     return faRemaining;
   }
@@ -396,4 +413,3 @@ class BackgroundRouteService {
 // Export singleton instance
 const backgroundRouteService = new BackgroundRouteService();
 export default backgroundRouteService;
-

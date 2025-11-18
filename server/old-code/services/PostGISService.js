@@ -402,7 +402,7 @@ class PostGISService {
       ORDER BY aircraft_count DESC
       LIMIT 20;
     `;
-    
+
     return this.db.query(query, [airportLat, airportLon, radiusKm * 1000]);
   }
 }

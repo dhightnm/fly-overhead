@@ -1,0 +1,7 @@
+---
+description: No mds and small commits
+alwaysApply: false
+---
+
+- Do not automatically create .md files. If you deem it necessary, ask the user if the creation is necessary.
+- Make small commits. If a process is changing a lot of code, stop, ask if we should write tests for that specific feature, then test the feature then commit.

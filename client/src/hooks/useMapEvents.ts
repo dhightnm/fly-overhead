@@ -61,7 +61,7 @@ export const useMapDataFetcher = ({
           const currentTime = Math.floor(Date.now() / 1000);
           // Backend polls every 10 minutes, preserve planes for 30 minutes
           // This prevents flickering and shows planes even if update is delayed
-          const MERGE_AGE_THRESHOLD = 30 * 60; // 30 minutes
+          const MERGE_AGE_THRESHOLD = 40; 
           const maxAge = MERGE_AGE_THRESHOLD;
 
           const normalizedAircraft = aircraft.map((plane) => ({
@@ -133,7 +133,7 @@ export const useMapDataFetcher = ({
     } else {
       setAirports([]);
     }
-  }, [setPlanes, setStarlink, setAirports, showAirports]);
+  }, [setPlanes, setStarlink, setAirports, showAirports, getCachedAirports]);
 
   // Expose fetchData to parent via ref
   useEffect(() => {

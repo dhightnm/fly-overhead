@@ -26,7 +26,9 @@ interface RateLimitError extends Error {
  */
 class OpenSkyService {
   private baseUrl: string;
+
   private user?: string;
+
   private pass?: string;
 
   constructor() {
@@ -78,7 +80,7 @@ class OpenSkyService {
         // Record successful request
         rateLimitManager.recordSuccess();
 
-        const data: OpenSkyResponse = response.data;
+        const { data } = response;
 
         // Log sample state structure if available (use info level for visibility)
         if (data.states && data.states.length > 0) {
@@ -113,12 +115,11 @@ class OpenSkyService {
         }
 
         // Retry on timeout/network errors
-        const isTimeoutError =
-          axiosError.code === 'ETIMEDOUT' ||
-          axiosError.code === 'ECONNRESET' ||
-          axiosError.code === 'ENOTFOUND' ||
-          axiosError.message?.includes('timeout') ||
-          axiosError.message?.includes('ETIMEDOUT');
+        const isTimeoutError = axiosError.code === 'ETIMEDOUT'
+          || axiosError.code === 'ECONNRESET'
+          || axiosError.code === 'ENOTFOUND'
+          || axiosError.message?.includes('timeout')
+          || axiosError.message?.includes('ETIMEDOUT');
 
         if (isTimeoutError && attempt < maxRetries - 1) {
           const retryDelay = (attempt + 1) * 2000; // 2s, 4s, 6s delays
@@ -129,7 +130,9 @@ class OpenSkyService {
               code: axiosError.code,
             },
           );
-          await new Promise((resolve) => setTimeout(resolve, retryDelay));
+          await new Promise((resolve) => {
+            setTimeout(() => resolve(undefined), retryDelay);
+          });
           continue; // Retry
         }
 
@@ -151,7 +154,9 @@ class OpenSkyService {
    * Fetch aircraft states within bounding box
    */
   async getStatesInBounds(bounds: BoundingBox): Promise<OpenSkyResponse> {
-    const { lamin, lomin, lamax, lomax } = bounds;
+    const {
+      lamin, lomin, lamax, lomax,
+    } = bounds;
 
     // Check if we're rate limited
     if (rateLimitManager.isRateLimited()) {
@@ -194,7 +199,9 @@ class OpenSkyService {
           ? parseInt(String(retryAfter), 10)
           : rateLimitManager.getSecondsUntilRetry();
         logger.error('OpenSky rate limit detected (bounded query)', {
-          bounds: { lamin, lomin, lamax, lomax },
+          bounds: {
+            lamin, lomin, lamax, lomax,
+          },
           retryAfter: rateLimitError.retryAfter,
         });
         throw rateLimitError;

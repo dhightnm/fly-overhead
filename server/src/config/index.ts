@@ -25,7 +25,7 @@ const config: AppConfig = {
       url: process.env.POSTGRES_URL || 'postgresql://example:example@localhost:5432/fly_overhead',
       pool: {
         min: 2, // Keep minimal connections ready
-        max: 35, // Use ~60% of ~55 max_connections, leaving room for admin/monitoring
+        max: 50, // Increased from 35 to handle CONUS polling concurrency
       },
     },
   },
@@ -39,6 +39,13 @@ const config: AppConfig = {
       baseUrl: 'https://opensky-network.org/api',
       user: process.env.OPENSKY_USER,
       pass: process.env.OPENSKY_PASS,
+    },
+    airplanesLive: {
+      baseUrl: process.env.AIRPLANES_LIVE_BASE_URL || 'https://api.airplanes.live/v2',
+      maxRadiusNm: 250, // Maximum radius in nautical miles
+      rateLimit: {
+        requestsPerSecond: 1,
+      },
     },
     n2yo: {
       baseUrl: 'https://api.n2yo.com/rest/v1',

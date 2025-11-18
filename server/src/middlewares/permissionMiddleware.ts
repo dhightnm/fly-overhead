@@ -75,11 +75,11 @@ export function requireScopes(...requiredScopes: string[]) {
 export async function autoPermissionCheck(
   req: AuthenticatedRequest,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ): Promise<void> {
   try {
-    const method = req.method;
-    const path = req.path;
+    const { method } = req;
+    const { path } = req;
 
     // Get required scopes for this endpoint
     const requiredScopes = getRequiredScopes(method, path);
@@ -204,4 +204,3 @@ export function optionalPermissionCheck(...requiredScopes: string[]) {
     }
   };
 }
-
