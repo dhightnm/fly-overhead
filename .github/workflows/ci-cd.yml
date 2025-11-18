@@ -132,32 +132,29 @@ jobs:
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Build and push server Docker image to ECR
-        working-directory: ./server
+      - name: Build and push Docker image to ECR
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-          ECR_REPOSITORY: fly-overhead-server
+          ECR_REPOSITORY: fly-overhead
           IMAGE_TAG: ${{ github.sha }}
+          REACT_APP_API_URL: https://container-service-1.f199m4bz801f2.us-east-2.cs.amazonlightsail.com
         run: |
-          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
-          docker tag $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPOSITORY:latest
+          # Build the combined server+client image from root Dockerfile
+          docker build \
+            --build-arg REACT_APP_API_URL="$REACT_APP_API_URL" \
+            --platform linux/amd64 \
+            -t fly-overhead-server:latest \
+            .
+          
+          # Tag for ECR
+          docker tag fly-overhead-server:latest $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          docker tag fly-overhead-server:latest $ECR_REGISTRY/$ECR_REPOSITORY:latest
+          
+          # Push to ECR
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
-          echo "Server image pushed: $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
-
-      - name: Build and push client Docker image to ECR
-        working-directory: ./client
-        env:
-          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-          ECR_REPOSITORY: fly-overhead-client
-          IMAGE_TAG: ${{ github.sha }}
-          NODE_OPTIONS: --openssl-legacy-provider
-        run: |
-          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
-          docker tag $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPOSITORY:latest
-          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
-          docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
-          echo "Client image pushed: $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
+          
+          echo "Image pushed: $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
 
       - name: Deploy to Lightsail
         env:
@@ -176,17 +173,19 @@ jobs:
             # Login to ECR
             aws ecr get-login-password --region us-east-2 | docker login --username AWS --password-stdin $ECR_REGISTRY
             
-            # Pull latest images
-            docker pull $ECR_REGISTRY/fly-overhead-server:latest
-            docker pull $ECR_REGISTRY/fly-overhead-client:latest
+            # Pull latest image
+            docker pull $ECR_REGISTRY/fly-overhead:latest
             
-            # Stop and remove old containers
-            docker stop fly-overhead-server fly-overhead-client || true
-            docker rm fly-overhead-server fly-overhead-client || true
+            # Stop and remove old container
+            docker stop fly-overhead-server || true
+            docker rm fly-overhead-server || true
             
-            # Run new containers
-            docker run -d --name fly-overhead-server -p 3005:3005 --env-file ~/fly-overhead/.env $ECR_REGISTRY/fly-overhead-server:latest
-            docker run -d --name fly-overhead-client -p 3000:3000 $ECR_REGISTRY/fly-overhead-client:latest
+            # Run new container
+            docker run -d \
+              --name fly-overhead-server \
+              -p 3005:3005 \
+              --env-file ~/fly-overhead/.env \
+              $ECR_REGISTRY/fly-overhead:latest
             
             echo "✅ Deployment complete"
           EOF
