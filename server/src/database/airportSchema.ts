@@ -5,7 +5,7 @@ import logger from '../utils/logger';
  * Initialize airport schema tables
  * This is a placeholder - the actual implementation should be migrated from database/airportSchema.js
  */
-export async function initializeAirportSchema(_db: pgPromise.IDatabase<any>): Promise<void> {
+async function initializeAirportSchema(_db: pgPromise.IDatabase<any>): Promise<void> {
   try {
     // TODO: Migrate full implementation from database/airportSchema.js
     logger.info('Airport schema initialization called (placeholder)');
@@ -16,3 +16,5 @@ export async function initializeAirportSchema(_db: pgPromise.IDatabase<any>): Pr
     throw error;
   }
 }
+
+export default initializeAirportSchema;

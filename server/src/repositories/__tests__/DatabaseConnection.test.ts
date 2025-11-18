@@ -57,35 +57,35 @@ describe('DatabaseConnection', () => {
 
       // Create a minimal instance just to test the private method
       const dbConnection = Object.create(DatabaseConnection.prototype);
-      const isAwsRds = (dbConnection as any).isAwsRdsEndpoint(connectionString);
+      const isAwsRds = DatabaseConnection.isAwsRdsEndpoint(connectionString);
       expect(isAwsRds).toBe(true);
     });
 
     it('should detect AWS Lightsail endpoint (.lightsail.aws)', () => {
       const connectionString = 'postgresql://user:pass@db.lightsail.aws:5432/dbname';
       const dbConnection = Object.create(DatabaseConnection.prototype);
-      const isAwsRds = (dbConnection as any).isAwsRdsEndpoint(connectionString);
+      const isAwsRds = DatabaseConnection.isAwsRdsEndpoint(connectionString);
       expect(isAwsRds).toBe(true);
     });
 
     it('should detect AWS Lightsail endpoint (ls- prefix)', () => {
       const connectionString = 'postgresql://user:pass@ls-1234567890.us-east-2.rds.amazonaws.com:5432/dbname';
       const dbConnection = Object.create(DatabaseConnection.prototype);
-      const isAwsRds = (dbConnection as any).isAwsRdsEndpoint(connectionString);
+      const isAwsRds = DatabaseConnection.isAwsRdsEndpoint(connectionString);
       expect(isAwsRds).toBe(true);
     });
 
     it('should not detect local PostgreSQL as AWS RDS', () => {
       const connectionString = 'postgresql://user:pass@localhost:5432/dbname';
       const dbConnection = Object.create(DatabaseConnection.prototype);
-      const isAwsRds = (dbConnection as any).isAwsRdsEndpoint(connectionString);
+      const isAwsRds = DatabaseConnection.isAwsRdsEndpoint(connectionString);
       expect(isAwsRds).toBe(false);
     });
 
     it('should not detect generic hostname as AWS RDS', () => {
       const connectionString = 'postgresql://user:pass@example.com:5432/dbname';
       const dbConnection = Object.create(DatabaseConnection.prototype);
-      const isAwsRds = (dbConnection as any).isAwsRdsEndpoint(connectionString);
+      const isAwsRds = DatabaseConnection.isAwsRdsEndpoint(connectionString);
       expect(isAwsRds).toBe(false);
     });
   });

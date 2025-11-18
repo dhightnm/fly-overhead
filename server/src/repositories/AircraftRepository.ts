@@ -382,7 +382,8 @@ class AircraftRepository {
           EXCLUDED.last_contact > COALESCE(aircraft_states.last_contact, 0)
           OR (
             EXCLUDED.last_contact = COALESCE(aircraft_states.last_contact, 0)
-            AND COALESCE(EXCLUDED.ingestion_timestamp, TO_TIMESTAMP(0)) > COALESCE(aircraft_states.ingestion_timestamp, TO_TIMESTAMP(0))
+            AND COALESCE(EXCLUDED.ingestion_timestamp, TO_TIMESTAMP(0))
+              > COALESCE(aircraft_states.ingestion_timestamp, TO_TIMESTAMP(0))
           )
         )
       )

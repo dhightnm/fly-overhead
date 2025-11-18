@@ -74,12 +74,91 @@ function getKeyTypeFromPrefix(prefix: string): 'development' | 'production' | 'f
 }
 
 /**
+ * Check if request is from same origin (React app)
+ * Allows same-origin requests to bypass API key requirement
+ * Same-origin requests typically include browser signals (cookies/origin/referrer)
+ */
+function isSameOriginRequest(req: Request): boolean {
+  const { origin } = req.headers;
+  const { referer } = req.headers;
+  const { host } = req.headers;
+  const hasCookies = !!req.headers.cookie;
+
+  // Extract hostname from current request
+  const currentHostname = host ? host.split(':')[0] : '';
+
+  // In development, allow localhost requests (React dev server on 3000 → backend on 3005)
+  const isDevelopment = process.env.NODE_ENV === 'development';
+  if (isDevelopment) {
+    const localhostPatterns = ['localhost', '127.0.0.1', '0.0.0.0'];
+    const isLocalhostHost = currentHostname && localhostPatterns.some((pattern) => currentHostname.includes(pattern));
+
+    if (isLocalhostHost) {
+      // If origin is also localhost (even different port), allow it in dev
+      if (origin) {
+        try {
+          const originUrl = new URL(origin);
+          if (localhostPatterns.some((pattern) => originUrl.hostname.includes(pattern))) {
+            return true; // localhost to localhost in dev = same origin
+          }
+        } catch {
+          // Invalid origin URL, continue checking
+        }
+      }
+      // If no origin/referer but we're on localhost in dev, allow it
+      if (!origin && !referer) {
+        return true;
+      }
+    }
+  }
+
+  // Browser-based requests generally include cookies
+  if (hasCookies) {
+    return true;
+  }
+
+  // Allowed domains (where React app is served from)
+  const allowedDomains = [
+    'flyoverhead.com',
+    'www.flyoverhead.com',
+    'api.flyoverhead.com',
+    'container-service-1.f199m4bz801f2.us-east-2.cs.amazonlightsail.com',
+  ];
+
+  if (origin) {
+    try {
+      const originUrl = new URL(origin);
+      if (allowedDomains.some((domain) => originUrl.hostname === domain || originUrl.hostname.endsWith(`.${domain}`))) {
+        return true;
+      }
+    } catch {
+      // Invalid origin URL, continue checking
+    }
+  }
+
+  if (referer) {
+    try {
+      const refererUrl = new URL(referer);
+      const isAllowedDomain = allowedDomains.some(
+        (domain) => refererUrl.hostname === domain || refererUrl.hostname.endsWith(`.${domain}`),
+      );
+      if (isAllowedDomain) {
+        return true;
+      }
+    } catch {
+      // Invalid referer URL, continue checking
+    }
+  }
+
+  return false;
+}
+
+/**
  * Common API key validation logic
  * Returns validation result with key data or error
  */
 async function validateApiKeyInternal(
   apiKey: string,
-  _required: boolean,
 ): Promise<{ valid: boolean; keyData?: ApiKey; error?: { code: string; message: string; status: number } }> {
   // Validate API key format
   const formatValidation = validateApiKeyFormat(apiKey);
@@ -161,7 +240,7 @@ export async function optionalApiKeyAuth(req: AuthenticatedRequest, res: Respons
       return;
     }
 
-    const validation = await validateApiKeyInternal(apiKey, false);
+    const validation = await validateApiKeyInternal(apiKey);
 
     if (!validation.valid || !validation.keyData) {
       logger.warn('Invalid API key format', {
@@ -223,101 +302,6 @@ export async function optionalApiKeyAuth(req: AuthenticatedRequest, res: Respons
 }
 
 /**
- * Check if request is from same origin (React app)
- * Allows same-origin requests to bypass API key requirement
- * Same-origin requests typically include browser signals (cookies/origin/referrer)
- */
-function isSameOriginRequest(req: Request): boolean {
-  const { origin } = req.headers;
-  const { referer } = req.headers;
-  const { host } = req.headers;
-  const hasCookies = !!req.headers.cookie;
-
-  // Extract hostname from current request
-  const currentHostname = host ? host.split(':')[0] : '';
-
-  // In development, allow localhost requests (React dev server on 3000 → backend on 3005)
-  const isDevelopment = process.env.NODE_ENV === 'development';
-  if (isDevelopment) {
-    const localhostPatterns = ['localhost', '127.0.0.1', '0.0.0.0'];
-    const isLocalhostHost = currentHostname && localhostPatterns.some((pattern) => currentHostname.includes(pattern));
-
-    if (isLocalhostHost) {
-      // If origin is also localhost (even different port), allow it in dev
-      if (origin) {
-        try {
-          const originUrl = new URL(origin);
-          if (localhostPatterns.some((pattern) => originUrl.hostname.includes(pattern))) {
-            return true; // localhost to localhost in dev = same origin
-          }
-        } catch {
-          // Invalid origin URL, continue checking
-        }
-      }
-      // If no origin/referer but we're on localhost in dev, allow it
-      if (!origin && !referer) {
-        return true;
-      }
-    }
-  }
-
-  // Browser-based requests generally include cookies
-  if (hasCookies) {
-    return true;
-  }
-
-  // Allowed domains (where React app is served from)
-  const allowedDomains = [
-    'flyoverhead.com',
-    'www.flyoverhead.com',
-    'api.flyoverhead.com',
-    'container-service-1.f199m4bz801f2.us-east-2.cs.amazonlightsail.com',
-  ];
-
-  // Check origin
-  if (origin) {
-    try {
-      const originUrl = new URL(origin);
-      const originHostname = originUrl.hostname;
-
-      // If origin hostname matches current hostname, it's same-origin
-      if (currentHostname && originHostname === currentHostname) {
-        return true;
-      }
-
-      // Check if origin is from allowed domains
-      if (allowedDomains.some((domain) => originHostname === domain || originHostname.endsWith(`.${domain}`))) {
-        return true;
-      }
-    } catch {
-      // Invalid origin URL, continue checking
-    }
-  }
-
-  // Check referer (fallback for same-origin requests that might have referer)
-  if (referer) {
-    try {
-      const refererUrl = new URL(referer);
-      const refererHostname = refererUrl.hostname;
-
-      // If referer hostname matches current hostname, it's same-origin
-      if (currentHostname && refererHostname === currentHostname) {
-        return true;
-      }
-
-      // Check if referer is from allowed domains
-      if (allowedDomains.some((domain) => refererHostname === domain || refererHostname.endsWith(`.${domain}`))) {
-        return true;
-      }
-    } catch {
-      // Invalid referer URL, continue
-    }
-  }
-
-  return false;
-}
-
-/**
  * Required API key authentication middleware
  * Allows same-origin requests (from React app) without API key
  * Requires API key for external requests
@@ -367,7 +351,7 @@ export async function requireApiKeyAuth(req: AuthenticatedRequest, res: Response
       return;
     }
 
-    const validation = await validateApiKeyInternal(apiKey, true);
+    const validation = await validateApiKeyInternal(apiKey);
 
     if (!validation.valid || !validation.keyData) {
       logger.warn('Invalid API key', {

@@ -1,7 +1,7 @@
 import pgPromise from 'pg-promise';
 import logger from '../utils/logger';
 import { getConnection } from './DatabaseConnection';
-import { initializeAirportSchema } from '../database/airportSchema';
+import initializeAirportSchema from '../database/airportSchema';
 
 /**
  * Repository for database schema creation and migrations
@@ -57,43 +57,82 @@ class SchemaRepository {
       -- Add missing columns to existing table (for migrations)
       DO $$
       BEGIN
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='aircraft_states' AND column_name='feeder_id') THEN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='aircraft_states' AND column_name='feeder_id'
+        ) THEN
           ALTER TABLE aircraft_states ADD COLUMN feeder_id TEXT;
         END IF;
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='aircraft_states' AND column_name='ingestion_timestamp') THEN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='aircraft_states' AND column_name='ingestion_timestamp'
+        ) THEN
           ALTER TABLE aircraft_states ADD COLUMN ingestion_timestamp TIMESTAMPTZ;
         END IF;
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='aircraft_states' AND column_name='data_source') THEN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='aircraft_states' AND column_name='data_source'
+        ) THEN
           ALTER TABLE aircraft_states ADD COLUMN data_source TEXT;
         END IF;
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='aircraft_states' AND column_name='source_priority') THEN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='aircraft_states' AND column_name='source_priority'
+        ) THEN
           ALTER TABLE aircraft_states ADD COLUMN source_priority INT;
         END IF;
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='aircraft_states' AND column_name='aircraft_type') THEN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='aircraft_states' AND column_name='aircraft_type'
+        ) THEN
           ALTER TABLE aircraft_states ADD COLUMN aircraft_type TEXT;
         END IF;
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='aircraft_states' AND column_name='aircraft_description') THEN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='aircraft_states' AND column_name='aircraft_description'
+        ) THEN
           ALTER TABLE aircraft_states ADD COLUMN aircraft_description TEXT;
         END IF;
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='aircraft_states' AND column_name='registration') THEN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='aircraft_states' AND column_name='registration'
+        ) THEN
           ALTER TABLE aircraft_states ADD COLUMN registration TEXT;
         END IF;
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='aircraft_states' AND column_name='emergency_status') THEN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='aircraft_states' AND column_name='emergency_status'
+        ) THEN
           ALTER TABLE aircraft_states ADD COLUMN emergency_status TEXT;
         END IF;
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='aircraft_states' AND column_name='nav_qnh') THEN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='aircraft_states' AND column_name='nav_qnh'
+        ) THEN
           ALTER TABLE aircraft_states ADD COLUMN nav_qnh FLOAT8;
         END IF;
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='aircraft_states' AND column_name='nav_altitude_mcp') THEN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='aircraft_states' AND column_name='nav_altitude_mcp'
+        ) THEN
           ALTER TABLE aircraft_states ADD COLUMN nav_altitude_mcp FLOAT8;
         END IF;
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='aircraft_states' AND column_name='nav_heading') THEN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='aircraft_states' AND column_name='nav_heading'
+        ) THEN
           ALTER TABLE aircraft_states ADD COLUMN nav_heading FLOAT8;
         END IF;
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='aircraft_states' AND column_name='owner_operator') THEN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='aircraft_states' AND column_name='owner_operator'
+        ) THEN
           ALTER TABLE aircraft_states ADD COLUMN owner_operator TEXT;
         END IF;
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='aircraft_states' AND column_name='year_built') THEN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='aircraft_states' AND column_name='year_built'
+        ) THEN
           ALTER TABLE aircraft_states ADD COLUMN year_built TEXT;
         END IF;
       END $$;
@@ -188,43 +227,82 @@ class SchemaRepository {
       -- Add missing columns to existing table (for migrations)
       DO $$
       BEGIN
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='aircraft_states_history' AND column_name='feeder_id') THEN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='aircraft_states_history' AND column_name='feeder_id'
+        ) THEN
           ALTER TABLE aircraft_states_history ADD COLUMN feeder_id TEXT;
         END IF;
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='aircraft_states_history' AND column_name='ingestion_timestamp') THEN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='aircraft_states_history' AND column_name='ingestion_timestamp'
+        ) THEN
           ALTER TABLE aircraft_states_history ADD COLUMN ingestion_timestamp TIMESTAMPTZ;
         END IF;
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='aircraft_states_history' AND column_name='data_source') THEN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='aircraft_states_history' AND column_name='data_source'
+        ) THEN
           ALTER TABLE aircraft_states_history ADD COLUMN data_source TEXT;
         END IF;
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='aircraft_states_history' AND column_name='source_priority') THEN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='aircraft_states_history' AND column_name='source_priority'
+        ) THEN
           ALTER TABLE aircraft_states_history ADD COLUMN source_priority INT;
         END IF;
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='aircraft_states_history' AND column_name='aircraft_type') THEN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='aircraft_states_history' AND column_name='aircraft_type'
+        ) THEN
           ALTER TABLE aircraft_states_history ADD COLUMN aircraft_type TEXT;
         END IF;
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='aircraft_states_history' AND column_name='aircraft_description') THEN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='aircraft_states_history' AND column_name='aircraft_description'
+        ) THEN
           ALTER TABLE aircraft_states_history ADD COLUMN aircraft_description TEXT;
         END IF;
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='aircraft_states_history' AND column_name='registration') THEN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='aircraft_states_history' AND column_name='registration'
+        ) THEN
           ALTER TABLE aircraft_states_history ADD COLUMN registration TEXT;
         END IF;
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='aircraft_states_history' AND column_name='emergency_status') THEN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='aircraft_states_history' AND column_name='emergency_status'
+        ) THEN
           ALTER TABLE aircraft_states_history ADD COLUMN emergency_status TEXT;
         END IF;
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='aircraft_states_history' AND column_name='nav_qnh') THEN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='aircraft_states_history' AND column_name='nav_qnh'
+        ) THEN
           ALTER TABLE aircraft_states_history ADD COLUMN nav_qnh FLOAT8;
         END IF;
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='aircraft_states_history' AND column_name='nav_altitude_mcp') THEN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='aircraft_states_history' AND column_name='nav_altitude_mcp'
+        ) THEN
           ALTER TABLE aircraft_states_history ADD COLUMN nav_altitude_mcp FLOAT8;
         END IF;
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='aircraft_states_history' AND column_name='nav_heading') THEN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='aircraft_states_history' AND column_name='nav_heading'
+        ) THEN
           ALTER TABLE aircraft_states_history ADD COLUMN nav_heading FLOAT8;
         END IF;
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='aircraft_states_history' AND column_name='owner_operator') THEN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='aircraft_states_history' AND column_name='owner_operator'
+        ) THEN
           ALTER TABLE aircraft_states_history ADD COLUMN owner_operator TEXT;
         END IF;
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='aircraft_states_history' AND column_name='year_built') THEN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='aircraft_states_history' AND column_name='year_built'
+        ) THEN
           ALTER TABLE aircraft_states_history ADD COLUMN year_built TEXT;
         END IF;
       END $$;
@@ -413,70 +491,136 @@ class SchemaRepository {
       -- Add missing columns to existing table
       DO $$
       BEGIN
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='flight_routes_history' AND column_name='flight_key') THEN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='flight_routes_history' AND column_name='flight_key'
+        ) THEN
           ALTER TABLE flight_routes_history ADD COLUMN flight_key TEXT;
         END IF;
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='flight_routes_history' AND column_name='route_key') THEN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='flight_routes_history' AND column_name='route_key'
+        ) THEN
           ALTER TABLE flight_routes_history ADD COLUMN route_key TEXT;
         END IF;
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='flight_routes_history' AND column_name='registration') THEN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='flight_routes_history' AND column_name='registration'
+        ) THEN
           ALTER TABLE flight_routes_history ADD COLUMN registration TEXT;
         END IF;
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='flight_routes_history' AND column_name='flight_status') THEN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='flight_routes_history' AND column_name='flight_status'
+        ) THEN
           ALTER TABLE flight_routes_history ADD COLUMN flight_status TEXT;
         END IF;
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='flight_routes_history' AND column_name='route') THEN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='flight_routes_history' AND column_name='route'
+        ) THEN
           ALTER TABLE flight_routes_history ADD COLUMN route TEXT;
         END IF;
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='flight_routes_history' AND column_name='route_distance') THEN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='flight_routes_history' AND column_name='route_distance'
+        ) THEN
           ALTER TABLE flight_routes_history ADD COLUMN route_distance NUMERIC;
         END IF;
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='flight_routes_history' AND column_name='baggage_claim') THEN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='flight_routes_history' AND column_name='baggage_claim'
+        ) THEN
           ALTER TABLE flight_routes_history ADD COLUMN baggage_claim TEXT;
         END IF;
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='flight_routes_history' AND column_name='gate_origin') THEN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='flight_routes_history' AND column_name='gate_origin'
+        ) THEN
           ALTER TABLE flight_routes_history ADD COLUMN gate_origin TEXT;
         END IF;
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='flight_routes_history' AND column_name='gate_destination') THEN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='flight_routes_history' AND column_name='gate_destination'
+        ) THEN
           ALTER TABLE flight_routes_history ADD COLUMN gate_destination TEXT;
         END IF;
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='flight_routes_history' AND column_name='terminal_origin') THEN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='flight_routes_history' AND column_name='terminal_origin'
+        ) THEN
           ALTER TABLE flight_routes_history ADD COLUMN terminal_origin TEXT;
         END IF;
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='flight_routes_history' AND column_name='terminal_destination') THEN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='flight_routes_history' AND column_name='terminal_destination'
+        ) THEN
           ALTER TABLE flight_routes_history ADD COLUMN terminal_destination TEXT;
         END IF;
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='flight_routes_history' AND column_name='actual_runway_off') THEN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='flight_routes_history' AND column_name='actual_runway_off'
+        ) THEN
           ALTER TABLE flight_routes_history ADD COLUMN actual_runway_off TIMESTAMPTZ;
         END IF;
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='flight_routes_history' AND column_name='actual_runway_on') THEN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='flight_routes_history' AND column_name='actual_runway_on'
+        ) THEN
           ALTER TABLE flight_routes_history ADD COLUMN actual_runway_on TIMESTAMPTZ;
         END IF;
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='flight_routes_history' AND column_name='progress_percent') THEN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='flight_routes_history' AND column_name='progress_percent'
+        ) THEN
           ALTER TABLE flight_routes_history ADD COLUMN progress_percent NUMERIC;
         END IF;
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='flight_routes_history' AND column_name='filed_airspeed') THEN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='flight_routes_history' AND column_name='filed_airspeed'
+        ) THEN
           ALTER TABLE flight_routes_history ADD COLUMN filed_airspeed NUMERIC;
         END IF;
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='flight_routes_history' AND column_name='blocked') THEN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='flight_routes_history' AND column_name='blocked'
+        ) THEN
           ALTER TABLE flight_routes_history ADD COLUMN blocked BOOLEAN DEFAULT false;
         END IF;
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='flight_routes_history' AND column_name='diverted') THEN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='flight_routes_history' AND column_name='diverted'
+        ) THEN
           ALTER TABLE flight_routes_history ADD COLUMN diverted BOOLEAN DEFAULT false;
         END IF;
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='flight_routes_history' AND column_name='cancelled') THEN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='flight_routes_history' AND column_name='cancelled'
+        ) THEN
           ALTER TABLE flight_routes_history ADD COLUMN cancelled BOOLEAN DEFAULT false;
         END IF;
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='flight_routes_history' AND column_name='departure_delay') THEN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='flight_routes_history' AND column_name='departure_delay'
+        ) THEN
           ALTER TABLE flight_routes_history ADD COLUMN departure_delay INTEGER;
         END IF;
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='flight_routes_history' AND column_name='arrival_delay') THEN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='flight_routes_history' AND column_name='arrival_delay'
+        ) THEN
           ALTER TABLE flight_routes_history ADD COLUMN arrival_delay INTEGER;
         END IF;
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='flight_routes_history' AND column_name='scheduled_ete') THEN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='flight_routes_history' AND column_name='scheduled_ete'
+        ) THEN
           ALTER TABLE flight_routes_history ADD COLUMN scheduled_ete NUMERIC;
         END IF;
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='flight_routes_history' AND column_name='actual_ete') THEN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='flight_routes_history' AND column_name='actual_ete'
+        ) THEN
           ALTER TABLE flight_routes_history ADD COLUMN actual_ete NUMERIC;
         END IF;
       END $$;
