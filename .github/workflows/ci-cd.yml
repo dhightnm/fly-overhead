@@ -78,6 +78,8 @@ jobs:
       - name: Build client (staging)
         if: github.ref == 'refs/heads/staging' && github.event_name == 'push'
         working-directory: ./client
+        env:
+          NODE_OPTIONS: --openssl-legacy-provider
         run: |
           echo "Building client for staging..."
           npm run build
@@ -115,6 +117,8 @@ jobs:
 
       - name: Build client
         working-directory: ./client
+        env:
+          NODE_OPTIONS: --openssl-legacy-provider
         run: npm run build
 
       - name: Production build complete
