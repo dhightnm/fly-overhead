@@ -145,50 +145,99 @@ jobs:
             --platform linux/amd64 \
             -t fly-overhead-server:latest \
             .
-          
+
           # Tag for ECR
           docker tag fly-overhead-server:latest $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
           docker tag fly-overhead-server:latest $ECR_REGISTRY/$ECR_REPOSITORY:latest
-          
+
           # Push to ECR
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
-          
+
           echo "Image pushed: $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
 
       - name: Deploy to Lightsail
         env:
-          HOST: ${{ secrets.HOST }}
-          USERNAME: ${{ secrets.USERNAME }}
+          LIGHTSAIL_SERVICE_NAME: container-service-1
         run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.SSH_KEY }}" | base64 --decode > ~/.ssh/id_rsa
-          chmod 600 ~/.ssh/id_rsa
-          ssh-keyscan -H $HOST >> ~/.ssh/known_hosts
-
           ECR_REGISTRY="${{ steps.login-ecr.outputs.registry }}"
-          IMAGE_TAG="${{ github.sha }}"
-
-          ssh -i ~/.ssh/id_rsa $USERNAME@$HOST << EOF
-            # Login to ECR
-            aws ecr get-login-password --region us-east-2 | docker login --username AWS --password-stdin $ECR_REGISTRY
+          IMAGE_URI="$ECR_REGISTRY/fly-overhead:latest"
+          
+          echo "Deploying to Lightsail container service: $LIGHTSAIL_SERVICE_NAME"
+          echo "Image URI: $IMAGE_URI"
+          
+          # Get current deployment to preserve environment variables
+          CURRENT_DEPLOYMENT=$(aws lightsail get-container-services \
+            --service-name $LIGHTSAIL_SERVICE_NAME \
+            --region us-east-2 \
+            --query 'containerServices[0].currentDeployment' \
+            --output json)
+          
+          # Create new deployment with updated image
+          aws lightsail create-container-service-deployment \
+            --service-name $LIGHTSAIL_SERVICE_NAME \
+            --region us-east-2 \
+            --cli-input-json "{
+              \"containers\": {
+                \"fly-overhead\": {
+                  \"image\": \"$IMAGE_URI\",
+                  \"environment\": $(echo "$CURRENT_DEPLOYMENT" | jq -r '.containers.fly-overhead.environment // {}'),
+                  \"ports\": {
+                    \"3005\": \"HTTP\"
+                  }
+                }
+              },
+              \"publicEndpoint\": {
+                \"containerName\": \"fly-overhead\",
+                \"containerPort\": 3005,
+                \"healthCheck\": {
+                  \"healthyThreshold\": 2,
+                  \"unhealthyThreshold\": 2,
+                  \"timeoutSeconds\": 5,
+                  \"intervalSeconds\": 30,
+                  \"path\": \"/health\",
+                  \"successCodes\": \"200\"
+                }
+              }
+            }" || {
+            echo "Failed to create deployment"
+            exit 1
+          }
+          
+          echo "✅ Deployment initiated"
+          echo "Waiting for deployment to complete..."
+          
+          # Wait for deployment to be active (with timeout)
+          TIMEOUT=300
+          ELAPSED=0
+          while [ $ELAPSED -lt $TIMEOUT ]; do
+            STATE=$(aws lightsail get-container-services \
+              --service-name $LIGHTSAIL_SERVICE_NAME \
+              --region us-east-2 \
+              --query 'containerServices[0].state' \
+              --output text)
             
-            # Pull latest image
-            docker pull $ECR_REGISTRY/fly-overhead:latest
+            if [ "$STATE" = "RUNNING" ]; then
+              DEPLOYMENT_STATE=$(aws lightsail get-container-services \
+                --service-name $LIGHTSAIL_SERVICE_NAME \
+                --region us-east-2 \
+                --query 'containerServices[0].currentDeployment.state' \
+                --output text)
+              
+              if [ "$DEPLOYMENT_STATE" = "ACTIVE" ]; then
+                echo "✅ Deployment completed successfully!"
+                break
+              fi
+            fi
             
-            # Stop and remove old container
-            docker stop fly-overhead-server || true
-            docker rm fly-overhead-server || true
-            
-            # Run new container
-            docker run -d \
-              --name fly-overhead-server \
-              -p 3005:3005 \
-              --env-file ~/fly-overhead/.env \
-              $ECR_REGISTRY/fly-overhead:latest
-            
-            echo "✅ Deployment complete"
-          EOF
+            echo "Deployment state: $DEPLOYMENT_STATE (waiting...)"
+            sleep 10
+            ELAPSED=$((ELAPSED + 10))
+          done
+          
+          if [ $ELAPSED -ge $TIMEOUT ]; then
+            echo "⚠️  Deployment timeout - check Lightsail console for status"
+          fi
 
       - name: Production deployment complete
         run: |
