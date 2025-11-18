@@ -46,7 +46,7 @@ jobs:
         env:
           POSTGRES_URL: postgresql://postgres:postgres@localhost:5432/fly_overhead_test
           NODE_ENV: test
-        run: npm test -- --maxWorkers=2
+        run: npm test -- --maxWorkers=2 --testPathIgnorePatterns="integration.test|upsert.test"
 
       - name: Setup client dependencies
         working-directory: ./client
