@@ -121,9 +121,77 @@ jobs:
           NODE_OPTIONS: --openssl-legacy-provider
         run: npm run build
 
-      - name: Production build complete
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: us-east-2
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push server Docker image to ECR
+        working-directory: ./server
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          ECR_REPOSITORY: fly-overhead-server
+          IMAGE_TAG: ${{ github.sha }}
         run: |
-          echo "✅ Production build successful"
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+          docker tag $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPOSITORY:latest
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
+          echo "Server image pushed: $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
+
+      - name: Build and push client Docker image to ECR
+        working-directory: ./client
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          ECR_REPOSITORY: fly-overhead-client
+          IMAGE_TAG: ${{ github.sha }}
+          NODE_OPTIONS: --openssl-legacy-provider
+        run: |
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+          docker tag $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPOSITORY:latest
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
+          echo "Client image pushed: $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
+
+      - name: Deploy to Lightsail
+        env:
+          HOST: ${{ secrets.HOST }}
+          USERNAME: ${{ secrets.USERNAME }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_KEY }}" | base64 --decode > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H $HOST >> ~/.ssh/known_hosts
+          
+          ECR_REGISTRY="${{ steps.login-ecr.outputs.registry }}"
+          IMAGE_TAG="${{ github.sha }}"
+          
+          ssh -i ~/.ssh/id_rsa $USERNAME@$HOST << EOF
+            # Login to ECR
+            aws ecr get-login-password --region us-east-2 | docker login --username AWS --password-stdin $ECR_REGISTRY
+            
+            # Pull latest images
+            docker pull $ECR_REGISTRY/fly-overhead-server:latest
+            docker pull $ECR_REGISTRY/fly-overhead-client:latest
+            
+            # Stop and remove old containers
+            docker stop fly-overhead-server fly-overhead-client || true
+            docker rm fly-overhead-server fly-overhead-client || true
+            
+            # Run new containers
+            docker run -d --name fly-overhead-server -p 3005:3005 --env-file ~/fly-overhead/.env $ECR_REGISTRY/fly-overhead-server:latest
+            docker run -d --name fly-overhead-client -p 3000:3000 $ECR_REGISTRY/fly-overhead-client:latest
+            
+            echo "✅ Deployment complete"
+          EOF
+
+      - name: Production deployment complete
+        run: |
+          echo "✅ Production deployment successful"
           echo "Branch: ${{ github.ref }}"
           echo "Commit: ${{ github.sha }}"
-          echo "Ready for ECR push and deployment (not implemented yet)"
+          echo "Images pushed to ECR and deployed to Lightsail"
