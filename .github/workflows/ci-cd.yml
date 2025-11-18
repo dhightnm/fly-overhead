@@ -162,33 +162,33 @@ jobs:
         run: |
           ECR_REGISTRY="${{ steps.login-ecr.outputs.registry }}"
           IMAGE_URI="$ECR_REGISTRY/fly-overhead:latest"
-          
+
           echo "Deploying to Lightsail container service: $LIGHTSAIL_SERVICE_NAME"
           echo "Image URI: $IMAGE_URI"
-          
+
           # Get current deployment to preserve environment variables
           CURRENT_DEPLOYMENT=$(aws lightsail get-container-services \
             --service-name $LIGHTSAIL_SERVICE_NAME \
             --region us-east-2 \
             --query 'containerServices[0].currentDeployment' \
             --output json)
-          
+
           # Create new deployment with updated image
           aws lightsail create-container-service-deployment \
             --service-name $LIGHTSAIL_SERVICE_NAME \
             --region us-east-2 \
             --cli-input-json "{
               \"containers\": {
-                \"fly-overhead\": {
+                \"flyoverheadapp\": {
                   \"image\": \"$IMAGE_URI\",
-                  \"environment\": $(echo "$CURRENT_DEPLOYMENT" | jq -r '.containers.fly-overhead.environment // {}'),
+                  \"environment\": $(echo "$CURRENT_DEPLOYMENT" | jq -r '.containers.flyoverheadapp.environment // {}'),
                   \"ports\": {
                     \"3005\": \"HTTP\"
                   }
                 }
               },
               \"publicEndpoint\": {
-                \"containerName\": \"fly-overhead\",
+                \"containerName\": \"flyoverheadapp\",
                 \"containerPort\": 3005,
                 \"healthCheck\": {
                   \"healthyThreshold\": 2,
@@ -203,10 +203,10 @@ jobs:
             echo "Failed to create deployment"
             exit 1
           }
-          
+
           echo "✅ Deployment initiated"
           echo "Waiting for deployment to complete..."
-          
+
           # Wait for deployment to be active (with timeout)
           TIMEOUT=300
           ELAPSED=0
@@ -234,7 +234,7 @@ jobs:
             sleep 10
             ELAPSED=$((ELAPSED + 10))
           done
-          
+
           if [ $ELAPSED -ge $TIMEOUT ]; then
             echo "⚠️  Deployment timeout - check Lightsail console for status"
           fi
