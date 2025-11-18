@@ -133,7 +133,7 @@ export const useMapDataFetcher = ({
     } else {
       setAirports([]);
     }
-  }, [setPlanes, setStarlink, setAirports, showAirports]);
+  }, [setPlanes, setStarlink, setAirports, showAirports, getCachedAirports]);
 
   // Expose fetchData to parent via ref
   useEffect(() => {
