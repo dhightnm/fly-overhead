@@ -197,7 +197,7 @@ jobs:
                   \"unhealthyThreshold\": 2,
                   \"timeoutSeconds\": 5,
                   \"intervalSeconds\": 30,
-                  \"path\": \"/api/health\",
+                  \"path\": \"/health\",
                   \"successCodes\": \"200\"
                 }
               }
@@ -212,7 +212,7 @@ jobs:
             --region us-east-2 \
             --query 'containerServices[0].nextDeployment.version' \
             --output text)
-          
+
           echo "✅ Deployment initiated (version: $NEW_VERSION)"
           echo "⏳ Waiting for deployment to complete (timeout: 5 minutes)..."
           echo ""
@@ -221,7 +221,7 @@ jobs:
           TIMEOUT=300
           ELAPSED=0
           LAST_STATE=""
-          
+
           while [ $ELAPSED -lt $TIMEOUT ]; do
             # Check service state
             SERVICE_STATE=$(aws lightsail get-container-services \
