@@ -197,7 +197,7 @@ jobs:
                   \"unhealthyThreshold\": 2,
                   \"timeoutSeconds\": 5,
                   \"intervalSeconds\": 30,
-                  \"path\": \"/health\",
+                  \"path\": \"/api/health\",
                   \"successCodes\": \"200\"
                 }
               }

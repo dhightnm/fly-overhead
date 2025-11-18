@@ -154,10 +154,14 @@ class AirplanesLiveService {
 
   /**
    * Internal method to fetch aircraft data with rate limiting
+   * Includes retry logic for transient 500 errors
    */
-  private async _fetchAircraftNearPoint(lat: number, lon: number, radiusNm: number): Promise<AirplanesLiveResponse> {
+  private async _fetchAircraftNearPoint(lat: number, lon: number, radiusNm: number, retryCount = 0): Promise<AirplanesLiveResponse> {
     // Enforce rate limit
     await this.enforceRateLimit();
+
+    const maxRetries = 2; // Retry up to 2 times (3 total attempts)
+    const retryDelayMs = 1000 * (retryCount + 1); // Exponential backoff: 1s, 2s
 
     try {
       const response = await axios.get<AirplanesLiveResponse>(`${this.baseUrl}/point/${lat}/${lon}/${radiusNm}`, {
@@ -182,16 +186,65 @@ class AirplanesLiveService {
     } catch (error) {
       const axiosError = error as AxiosError;
 
-      logger.error('Error fetching from airplanes.live', {
+      // Log detailed error information
+      const errorDetails: any = {
         lat,
         lon,
         radiusNm,
         error: axiosError.message,
         status: axiosError.response?.status,
         code: axiosError.code,
-      });
+      };
 
-      // Return empty response on error
+      // Include response body if available (helps debug API issues)
+      if (axiosError.response?.data) {
+        errorDetails.responseData = typeof axiosError.response.data === 'string'
+          ? axiosError.response.data.substring(0, 200) // Truncate long responses
+          : JSON.stringify(axiosError.response.data).substring(0, 200);
+      }
+
+      // Include response headers if available
+      if (axiosError.response?.headers) {
+        errorDetails.responseHeaders = {
+          'content-type': axiosError.response.headers['content-type'],
+          'x-ratelimit-remaining': axiosError.response.headers['x-ratelimit-remaining'],
+          'retry-after': axiosError.response.headers['retry-after'],
+        };
+      }
+
+      // Retry on 500 errors (server-side issues) up to maxRetries
+      if (axiosError.response?.status === 500 && retryCount < maxRetries) {
+        logger.warn(`airplanes.live API returned 500, retrying (${retryCount + 1}/${maxRetries})`, {
+          lat,
+          lon,
+          radiusNm,
+          retryAfter: `${retryDelayMs}ms`,
+        });
+
+        // Wait before retrying
+        await new Promise((resolve) => {
+          setTimeout(() => resolve(undefined), retryDelayMs);
+        });
+
+        // Retry the request
+        return this._fetchAircraftNearPoint(lat, lon, radiusNm, retryCount + 1);
+      }
+
+      // Log error only on final failure or non-retryable errors
+      // Use warn level for 500s (external service issue) to reduce noise
+      if (axiosError.response?.status === 500) {
+        logger.warn('airplanes.live API error (after retries)', {
+          lat,
+          lon,
+          radiusNm,
+          status: 500,
+          message: 'API returned 500 error - external service issue',
+        });
+      } else {
+        logger.error('Error fetching from airplanes.live', errorDetails);
+      }
+
+      // Return empty response on error (graceful degradation)
       return {
         ac: [],
         total: 0,
