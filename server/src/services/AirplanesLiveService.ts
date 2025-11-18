@@ -156,7 +156,12 @@ class AirplanesLiveService {
    * Internal method to fetch aircraft data with rate limiting
    * Includes retry logic for transient 500 errors
    */
-  private async _fetchAircraftNearPoint(lat: number, lon: number, radiusNm: number, retryCount = 0): Promise<AirplanesLiveResponse> {
+  private async _fetchAircraftNearPoint(
+    lat: number,
+    lon: number,
+    radiusNm: number,
+    retryCount = 0,
+  ): Promise<AirplanesLiveResponse> {
     // Enforce rate limit
     await this.enforceRateLimit();
 
