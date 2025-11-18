@@ -62,7 +62,9 @@ class AircraftService {
         }
 
         if (i + BATCH_SIZE < data.states.length) {
-          await new Promise((resolve) => setImmediate(resolve));
+          await new Promise((resolve) => {
+            setImmediate(() => resolve(undefined));
+          });
         }
       }
 
@@ -244,7 +246,8 @@ class AircraftService {
             return aircraft; // Return stale data if rate limited
           }
 
-          // Use bounding box query if we have position data. Only fall back to global fetch when data is still relatively fresh.
+          // Use bounding box query if we have position data.
+          // Only fall back to global fetch when data is still relatively fresh.
           let openSkyData;
           let attemptedGlobalFetch = false;
 
@@ -577,7 +580,9 @@ class AircraftService {
         const actualArrivalTimestamp = typeof route.flightData?.actualArrival === 'number' ? route.flightData.actualArrival : null;
         const actualArrivalAgeSeconds = actualArrivalTimestamp ? Math.max(0, now - actualArrivalTimestamp) : null;
         const hasActualArrival = actualArrivalAgeSeconds !== null;
-        const dataAgeSeconds = aircraft.data_age_seconds ?? (aircraft.last_contact ? Math.max(0, now - aircraft.last_contact) : null);
+        const dataAgeSeconds = aircraft.data_age_seconds ?? (
+          aircraft.last_contact ? Math.max(0, now - aircraft.last_contact) : null
+        );
         const staleByAge = dataAgeSeconds !== null ? dataAgeSeconds > LANDED_OVERRIDE_THRESHOLD_SECONDS : false;
 
         if (hasArrivalStatus || hasActualArrival || staleByAge) {

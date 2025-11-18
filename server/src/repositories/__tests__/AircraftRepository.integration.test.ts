@@ -203,7 +203,9 @@ describe('AircraftRepository - Integration Tests', () => {
       );
 
       // Wait a moment to ensure timestamp difference
-      await new Promise((resolve) => setTimeout(resolve, 10));
+      await new Promise((resolve) => {
+        setTimeout(resolve, 10);
+      });
 
       // Second insert: converted altitude (correct)
       const newState: AircraftStateArray = [

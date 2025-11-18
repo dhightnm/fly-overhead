@@ -107,7 +107,12 @@ class TrajectoryPredictionService {
     depLocation: Location,
     arrLocation: Location,
     elapsedSeconds: number,
-    flightData?: { actualDeparture?: number; scheduledDeparture?: number; actualArrival?: number; scheduledArrival?: number } | null,
+    flightData?: {
+      actualDeparture?: number;
+      scheduledDeparture?: number;
+      actualArrival?: number;
+      scheduledArrival?: number;
+    } | null,
   ): PredictedPosition {
     const depLat = depLocation.lat;
     const depLon = depLocation.lng;
@@ -165,7 +170,12 @@ aircraft.longitude!,
    * Dead reckoning: Predict position based on last known speed and heading
    */
   predictDeadReckoning(aircraft: Aircraft, elapsedSeconds: number): PredictedPosition | null {
-    if (!aircraft.velocity || aircraft.true_track === null || aircraft.latitude === null || aircraft.longitude === null) {
+    if (
+      !aircraft.velocity
+      || aircraft.true_track === null
+      || aircraft.latitude === null
+      || aircraft.longitude === null
+    ) {
       return null;
     }
 
@@ -196,7 +206,12 @@ aircraft.longitude!,
    * Calculate time-based progress if we have scheduled/actual flight times
    */
   calculateTimeProgress(
-    flightData: { actualDeparture?: number; scheduledDeparture?: number; actualArrival?: number; scheduledArrival?: number },
+    flightData: {
+      actualDeparture?: number;
+      scheduledDeparture?: number;
+      actualArrival?: number;
+      scheduledArrival?: number;
+    },
     _elapsedSeconds: number,
   ): number | null {
     const now = Math.floor(Date.now() / 1000);

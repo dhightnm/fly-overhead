@@ -130,7 +130,9 @@ class OpenSkyService {
               code: axiosError.code,
             },
           );
-          await new Promise((resolve) => setTimeout(resolve, retryDelay));
+          await new Promise((resolve) => {
+            setTimeout(() => resolve(undefined), retryDelay);
+          });
           continue; // Retry
         }
 

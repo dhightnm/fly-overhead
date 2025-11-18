@@ -1,6 +1,9 @@
 import {
   Router, Request, Response, NextFunction,
 } from 'express';
+import dns from 'dns';
+import { promisify } from 'util';
+import axios from 'axios';
 import NodeCache from 'node-cache';
 import aircraftService from '../services/AircraftService';
 import airplanesLiveService from '../services/AirplanesLiveService';
@@ -1160,9 +1163,6 @@ router.get(
 // Diagnostic endpoint to test network connectivity from inside the container
 router.get('/diagnostics/network', async (_req: Request, res: Response, next: NextFunction) => {
   try {
-    const dns = require('dns');
-    const { promisify } = require('util');
-    const axios = require('axios');
     const dnsLookup = promisify(dns.lookup);
 
     const results: any = {

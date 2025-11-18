@@ -594,7 +594,7 @@ describe('Feeder Registration Endpoint', () => {
           feeder_id, api_key_hash, key_prefix, name, latitude, longitude, metadata,
         } = req.body;
         const authenticatedUser = req.user;
-        const userId = authenticatedUser?.userId || null;
+        const authenticatedUserId = authenticatedUser?.userId || null;
         const createdBy = authenticatedUser?.userId || null;
 
         if (!feeder_id || !api_key_hash || !name) {
@@ -630,10 +630,10 @@ describe('Feeder Registration Endpoint', () => {
             keyHash: api_key_hash,
             prefix,
             name: `Feeder: ${name}`,
-            description: userId
+            description: authenticatedUserId
               ? `Auto-generated API key for feeder ${feeder_id} (linked to user account)`
               : `Auto-generated API key for feeder ${feeder_id}`,
-            userId,
+            userId: authenticatedUserId,
             scopes: ['feeder:write', 'feeder:read', 'aircraft:write'],
             createdBy,
             expiresAt: null,
@@ -648,14 +648,14 @@ describe('Feeder Registration Endpoint', () => {
             metadata: {
               ...metadata,
               api_key_id: apiKeyData.key_id,
-              user_id: userId,
+              user_id: authenticatedUserId,
             },
           });
 
           // If feeder is linked to a user, mark user as feeder provider
-          if (userId) {
+          if (authenticatedUserId) {
             try {
-              await postgresRepository.updateUserFeederProviderStatus(userId, true);
+              await postgresRepository.updateUserFeederProviderStatus(authenticatedUserId, true);
             } catch (error) {
               // Non-critical error
             }
@@ -666,9 +666,9 @@ describe('Feeder Registration Endpoint', () => {
             feeder_id: feeder.feeder_id,
             api_key_id: apiKeyData.key_id,
             scopes: apiKeyData.scopes,
-            user_id: userId,
-            linked_to_user: !!userId,
-            message: userId
+            user_id: authenticatedUserId,
+            linked_to_user: !!authenticatedUserId,
+            message: authenticatedUserId
               ? 'Feeder registered successfully and linked to your account. API key record created with feeder scopes.'
               : 'Feeder registered successfully. API key record created with feeder scopes.',
           });

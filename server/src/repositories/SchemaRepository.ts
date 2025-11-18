@@ -889,9 +889,9 @@ class SchemaRepository {
           CREATE INDEX IF NOT EXISTS idx_users_is_feeder_provider ON users(is_feeder_provider);
         `);
         logger.info('Added is_feeder_provider column to users table');
-      } catch (err) {
-        const error = err as Error;
-        logger.warn('Feeder provider column may already exist', { error: error.message });
+      } catch (innerErr) {
+        const innerError = innerErr as Error;
+        logger.warn('Feeder provider column may already exist', { error: innerError.message });
       }
     }
   }

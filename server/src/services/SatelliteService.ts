@@ -24,7 +24,8 @@ class SatelliteService {
     observerAlt: number,
   ): Promise<any> {
     try {
-      const url = `${this.baseUrl}/satellite/above/${observerLat}/${observerLng}/${observerAlt}/45/52&apiKey=${this.apiKey}`;
+      const url = `${this.baseUrl}/satellite/above/${observerLat}/${observerLng}/${observerAlt}/45/52`
+        + `&apiKey=${this.apiKey}`;
       const response = await axios.get(url);
 
       logger.debug(`Fetched satellite data for observer at ${observerLat}, ${observerLng}`);

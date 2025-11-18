@@ -330,8 +330,8 @@ export class FlightRouteService {
       isCurrentFlight,
     });
 
-    let finalCallsign = callsign;
-    if (!finalCallsign && icao24 && allowExpensiveApis) {
+    let resolvedCallsign = callsign;
+    if (!resolvedCallsign && icao24 && allowExpensiveApis) {
       const callsignFromHistory = await postgresRepository.getDb().oneOrNone<{ callsign: string }>(
         `SELECT callsign 
          FROM flight_routes_history
@@ -346,10 +346,10 @@ export class FlightRouteService {
       );
 
       if (callsignFromHistory?.callsign) {
-        finalCallsign = callsignFromHistory.callsign.trim();
+        resolvedCallsign = callsignFromHistory.callsign.trim();
         logger.info('Retrieved callsign from flight_routes_history for FlightAware query', {
           icao24,
-          callsign: finalCallsign,
+          callsign: resolvedCallsign,
         });
       }
     }
@@ -404,8 +404,8 @@ export class FlightRouteService {
 
           aerodataboxRoute = mappedRoute;
 
-          if (!finalCallsign && aerodataboxCallsign) {
-            finalCallsign = aerodataboxCallsign;
+          if (!resolvedCallsign && aerodataboxCallsign) {
+            resolvedCallsign = aerodataboxCallsign;
           }
         }
       } catch (err) {
@@ -452,10 +452,13 @@ export class FlightRouteService {
       logger.debug('Skipping OpenSky for current flight (saves 4-8 seconds)', { icao24, callsign });
     }
 
-    if (this.flightAwareApiKey && finalCallsign && allowExpensiveApis) {
-      logger.info('Trying FlightAware AeroAPI for route (user-initiated request)', { icao24, callsign: finalCallsign });
+    if (this.flightAwareApiKey && resolvedCallsign && allowExpensiveApis) {
+      logger.info('Trying FlightAware AeroAPI for route (user-initiated request)', {
+        icao24,
+        callsign: resolvedCallsign,
+      });
       try {
-        const routeResult = await this.fetchRouteFromFlightAware(finalCallsign);
+        const routeResult = await this.fetchRouteFromFlightAware(resolvedCallsign);
         if (routeResult) {
           const routes = Array.isArray(routeResult) ? routeResult : [routeResult];
 
@@ -480,11 +483,15 @@ export class FlightRouteService {
               return status.includes('en route') || status.includes('in flight');
             });
 
-            const mostRecentRoute = inFlightRoutes.length > 0 ? inFlightRoutes[0] : activeRoutes.length > 0 ? activeRoutes[0] : routes[0];
+            const mostRecentRoute = inFlightRoutes.length > 0
+              ? inFlightRoutes[0]
+              : activeRoutes.length > 0
+                ? activeRoutes[0]
+                : routes[0];
 
             logger.info('Successfully fetched route from FlightAware', {
               icao24,
-              callsign: finalCallsign,
+              callsign: resolvedCallsign,
               numFlights: routes.length,
               activeFlights: activeRoutes.length,
               departure: mostRecentRoute.departureAirport?.icao || mostRecentRoute.departureAirport?.iata,
@@ -520,7 +527,7 @@ export class FlightRouteService {
 
             await this.cacheRoute(cacheKey, {
               ...enrichedRoute,
-              callsign: finalCallsign,
+              callsign: resolvedCallsign,
               icao24: icao24 || null,
               source: 'flightaware',
             });
@@ -557,7 +564,10 @@ export class FlightRouteService {
             }
 
             return {
-              ...enrichedRoute, callsign: finalCallsign, icao24: icao24 || null, source: 'flightaware',
+              ...enrichedRoute,
+              callsign: resolvedCallsign,
+              icao24: icao24 || null,
+              source: 'flightaware',
             };
           }
         }
@@ -620,12 +630,12 @@ export class FlightRouteService {
 
               logger.info('Found route from FlightAware by icao24', {
                 icao24,
-                callsign: flight.ident || finalCallsign,
+                callsign: flight.ident || resolvedCallsign,
                 departure: mappedRoute.departureAirport?.icao,
                 arrival: mappedRoute.arrivalAirport?.icao,
               });
 
-              const foundCallsign = flight.ident || finalCallsign;
+              const foundCallsign = flight.ident || resolvedCallsign;
 
               await this.cacheRoute(cacheKey, {
                 ...mappedRoute,
@@ -650,7 +660,10 @@ export class FlightRouteService {
           });
         }
 
-        logger.info('FlightAware returned no route data', { icao24, callsign: finalCallsign });
+        logger.info('FlightAware returned no route data', {
+          icao24,
+          callsign: resolvedCallsign,
+        });
       } catch (error) {
         const err = error as AxiosError;
         const statusCode = err.response?.status;
@@ -751,15 +764,15 @@ export class FlightRouteService {
           source: existingRoute.source || 'flight_routes_history',
         };
 
-        const finalCallsign = callsign || existingRoute.callsign;
+        const resolvedCallsignLocal = callsign || existingRoute.callsign;
 
         await this.cacheRoute(cacheKey, {
           ...routeData,
-          callsign: finalCallsign,
+          callsign: resolvedCallsignLocal,
           icao24: icao24 || null,
         });
 
-        return { ...routeData, callsign: finalCallsign, icao24: icao24 || null };
+        return { ...routeData, callsign: resolvedCallsignLocal, icao24: icao24 || null };
       }
     }
 
@@ -961,8 +974,8 @@ export class FlightRouteService {
             logger.warn('Error storing routes in history (non-critical)', { error: err.message });
           });
 
-        const now = Math.floor(Date.now() / 1000);
-        const sevenDaysAgo = now - 7 * 24 * 60 * 60;
+        const currentTime = Math.floor(Date.now() / 1000);
+        const sevenDaysAgo = currentTime - 7 * 24 * 60 * 60;
         const flightIsTooOld = (mostRecentFlight.lastSeen || 0) < sevenDaysAgo;
 
         if (flightIsTooOld) {

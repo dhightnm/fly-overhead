@@ -29,9 +29,15 @@ import postgresRepository from '../../repositories/PostgresRepository';
 
 // Type-safe mock accessors
 const aerodataboxMock = aerodataboxService as jest.Mocked<typeof aerodataboxService>;
-const cacheRouteRepoMock = postgresRepository.cacheRoute as jest.MockedFunction<typeof postgresRepository.cacheRoute>;
-const updateAircraftCallsignMock = postgresRepository.updateAircraftCallsign as jest.MockedFunction<typeof postgresRepository.updateAircraftCallsign>;
-const storeRouteHistoryMock = postgresRepository.storeRouteHistory as jest.MockedFunction<typeof postgresRepository.storeRouteHistory>;
+const cacheRouteRepoMock = postgresRepository.cacheRoute as jest.MockedFunction<
+  typeof postgresRepository.cacheRoute
+>;
+const updateAircraftCallsignMock = postgresRepository.updateAircraftCallsign as jest.MockedFunction<
+  typeof postgresRepository.updateAircraftCallsign
+>;
+const storeRouteHistoryMock = postgresRepository.storeRouteHistory as jest.MockedFunction<
+  typeof postgresRepository.storeRouteHistory
+>;
 const getDbMock = postgresRepository.getDb as jest.MockedFunction<typeof postgresRepository.getDb>;
 const dbOneOrNoneMock = jest.fn() as any;
 

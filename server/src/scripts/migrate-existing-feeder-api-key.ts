@@ -127,4 +127,4 @@ if (require.main === module) {
     });
 }
 
-export { migrateFeederApiKey };
+export default migrateFeederApiKey;

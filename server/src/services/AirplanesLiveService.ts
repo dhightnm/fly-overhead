@@ -107,7 +107,9 @@ class AirplanesLiveService {
     if (timeSinceLastRequest < this.MIN_REQUEST_INTERVAL_MS) {
       const waitTime = this.MIN_REQUEST_INTERVAL_MS - timeSinceLastRequest;
       logger.debug(`Rate limiting: waiting ${waitTime}ms before next request`);
-      await new Promise((resolve) => setTimeout(resolve, waitTime));
+      await new Promise((resolve) => {
+        setTimeout(() => resolve(undefined), waitTime);
+      });
     }
 
     this.lastRequestTime = Date.now();
