@@ -138,10 +138,12 @@ jobs:
           ECR_REPOSITORY: fly-overhead
           IMAGE_TAG: ${{ github.sha }}
           REACT_APP_API_URL: https://container-service-1.f199m4bz801f2.us-east-2.cs.amazonlightsail.com
+          REACT_APP_GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
         run: |
           # Build the combined server+client image from root Dockerfile
           docker build \
             --build-arg REACT_APP_API_URL="$REACT_APP_API_URL" \
+            --build-arg REACT_APP_GOOGLE_CLIENT_ID="$REACT_APP_GOOGLE_CLIENT_ID" \
             --platform linux/amd64 \
             -t fly-overhead-server:latest \
             .

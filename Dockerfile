@@ -3,9 +3,11 @@
 # ---------------------------------------
 FROM node:16 AS build-frontend
 
-# Accept build argument for API URL
+# Accept build arguments for React environment variables
 ARG REACT_APP_API_URL
+ARG REACT_APP_GOOGLE_CLIENT_ID
 ENV REACT_APP_API_URL=${REACT_APP_API_URL}
+ENV REACT_APP_GOOGLE_CLIENT_ID=${REACT_APP_GOOGLE_CLIENT_ID}
 
 # Set working directory inside container
 WORKDIR /app/client

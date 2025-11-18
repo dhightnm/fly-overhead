@@ -84,6 +84,17 @@ function isSameOriginRequest(req: Request): boolean {
   const { host } = req.headers;
   const hasCookies = !!req.headers.cookie;
 
+  // Modern browsers send sec-fetch-site header
+  // 'same-origin' means the request is from the same origin (same host, port, protocol)
+  const secFetchSite = req.headers['sec-fetch-site'];
+  if (secFetchSite === 'same-origin') {
+    logger.debug('Same-origin detected (sec-fetch-site header)', {
+      path: req.path,
+      host,
+    });
+    return true;
+  }
+
   // Extract hostname from current request
   const currentHostname = host ? host.split(':')[0] : '';
 
@@ -94,19 +105,46 @@ function isSameOriginRequest(req: Request): boolean {
     const isLocalhostHost = currentHostname && localhostPatterns.some((pattern) => currentHostname.includes(pattern));
 
     if (isLocalhostHost) {
-      // If origin is also localhost (even different port), allow it in dev
+      // Check if origin is also localhost (cross-origin but both localhost)
       if (origin) {
         try {
           const originUrl = new URL(origin);
           if (localhostPatterns.some((pattern) => originUrl.hostname.includes(pattern))) {
+            logger.debug('Same-origin detected (localhost origin)', {
+              path: req.path,
+              origin,
+              host,
+            });
             return true; // localhost to localhost in dev = same origin
           }
         } catch {
           // Invalid origin URL, continue checking
         }
       }
-      // If no origin/referer but we're on localhost in dev, allow it
+
+      // Check if referer is also localhost (same-origin requests often have referer but no origin)
+      if (referer) {
+        try {
+          const refererUrl = new URL(referer);
+          if (localhostPatterns.some((pattern) => refererUrl.hostname.includes(pattern))) {
+            logger.debug('Same-origin detected (localhost referer)', {
+              path: req.path,
+              referer,
+              host,
+            });
+            return true; // localhost to localhost in dev = same origin
+          }
+        } catch {
+          // Invalid referer URL, continue checking
+        }
+      }
+
+      // If no origin/referer but we're on localhost in dev, allow it (e.g., direct API calls)
       if (!origin && !referer) {
+        logger.debug('Same-origin detected (localhost, no origin/referer)', {
+          path: req.path,
+          host,
+        });
         return true;
       }
     }
@@ -148,6 +186,18 @@ function isSameOriginRequest(req: Request): boolean {
     } catch {
       // Invalid referer URL, continue checking
     }
+  }
+
+  // Log when same-origin detection fails in development for debugging
+  if (isDevelopment) {
+    logger.debug('Same-origin detection failed', {
+      path: req.path,
+      host,
+      origin: origin || '(none)',
+      referer: referer || '(none)',
+      hasCookies,
+      currentHostname,
+    });
   }
 
   return false;

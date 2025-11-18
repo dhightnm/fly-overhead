@@ -84,8 +84,15 @@ app.use('/api', healthRoutes);
 app.use('/api', feederRoutes);
 
 // Catch-all handler: send back React's index.html for client-side routing
-// This must be AFTER API routes and BEFORE error handler
-app.get('*', (_req: Request, res: Response) => {
+// This must be AFTER API routes and static file middleware, and BEFORE error handler
+// IMPORTANT: Only match routes that don't start with /static, /api, etc.
+app.get('*', (req: Request, res: Response): void => {
+  // Don't intercept static file requests - let them 404 naturally if not found
+  if (req.path.startsWith('/static/') || req.path.startsWith('/api/')) {
+    res.status(404).json({ error: 'Not found' });
+    return;
+  }
+
   // Only serve index.html if build exists, otherwise return 404
   if (buildExists) {
     res.sendFile(path.join(buildPath, 'index.html'));
