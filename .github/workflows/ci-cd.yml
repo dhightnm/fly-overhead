@@ -206,39 +206,96 @@ jobs:
             exit 1
           }
 
-          echo "✅ Deployment initiated"
-          echo "Waiting for deployment to complete..."
+          # Get the new deployment version
+          NEW_VERSION=$(aws lightsail get-container-services \
+            --service-name $LIGHTSAIL_SERVICE_NAME \
+            --region us-east-2 \
+            --query 'containerServices[0].nextDeployment.version' \
+            --output text)
+          
+          echo "✅ Deployment initiated (version: $NEW_VERSION)"
+          echo "⏳ Waiting for deployment to complete (timeout: 5 minutes)..."
+          echo ""
 
           # Wait for deployment to be active (with timeout)
           TIMEOUT=300
           ELAPSED=0
+          LAST_STATE=""
+          
           while [ $ELAPSED -lt $TIMEOUT ]; do
-            STATE=$(aws lightsail get-container-services \
+            # Check service state
+            SERVICE_STATE=$(aws lightsail get-container-services \
               --service-name $LIGHTSAIL_SERVICE_NAME \
               --region us-east-2 \
               --query 'containerServices[0].state' \
               --output text)
             
-            if [ "$STATE" = "RUNNING" ]; then
-              DEPLOYMENT_STATE=$(aws lightsail get-container-services \
+            # Check next deployment state (if exists)
+            NEXT_STATE=$(aws lightsail get-container-services \
+              --service-name $LIGHTSAIL_SERVICE_NAME \
+              --region us-east-2 \
+              --query 'containerServices[0].nextDeployment.state' \
+              --output text 2>/dev/null || echo "None")
+            
+            # Check if deployment failed
+            if [ "$NEXT_STATE" = "FAILED" ]; then
+              echo ""
+              echo "❌ Deployment FAILED!"
+              echo "Service state: $SERVICE_STATE"
+              echo "Deployment version $NEW_VERSION failed to activate"
+              echo ""
+              echo "Recent container logs:"
+              aws lightsail get-container-log \
                 --service-name $LIGHTSAIL_SERVICE_NAME \
                 --region us-east-2 \
-                --query 'containerServices[0].currentDeployment.state' \
-                --output text)
-              
-              if [ "$DEPLOYMENT_STATE" = "ACTIVE" ]; then
-                echo "✅ Deployment completed successfully!"
-                break
-              fi
+                --container-name flyoverheadapp \
+                --start-time $(date -u -d '5 minutes ago' +%s) 2>/dev/null | \
+                jq -r '.logEvents[-20:] | .[] | .message' || echo "Could not fetch logs"
+              exit 1
             fi
             
-            echo "Deployment state: $DEPLOYMENT_STATE (waiting...)"
+            # Check if deployment is active
+            CURRENT_STATE=$(aws lightsail get-container-services \
+              --service-name $LIGHTSAIL_SERVICE_NAME \
+              --region us-east-2 \
+              --query 'containerServices[0].currentDeployment.state' \
+              --output text)
+            
+            CURRENT_VERSION=$(aws lightsail get-container-services \
+              --service-name $LIGHTSAIL_SERVICE_NAME \
+              --region us-east-2 \
+              --query 'containerServices[0].currentDeployment.version' \
+              --output text)
+            
+            # Success: deployment is now active
+            if [ "$SERVICE_STATE" = "RUNNING" ] && [ "$CURRENT_VERSION" = "$NEW_VERSION" ] && [ "$CURRENT_STATE" = "ACTIVE" ]; then
+              echo ""
+              echo "✅ Deployment completed successfully!"
+              echo "Version $NEW_VERSION is now ACTIVE"
+              break
+            fi
+            
+            # Show progress only when state changes
+            if [ "$NEXT_STATE" != "$LAST_STATE" ] && [ "$NEXT_STATE" != "None" ]; then
+              echo "⏳ Service: $SERVICE_STATE | Next deployment: $NEXT_STATE"
+              LAST_STATE="$NEXT_STATE"
+            fi
+            
             sleep 10
             ELAPSED=$((ELAPSED + 10))
           done
 
+          # Handle timeout
           if [ $ELAPSED -ge $TIMEOUT ]; then
-            echo "⚠️  Deployment timeout - check Lightsail console for status"
+            echo ""
+            echo "❌ Deployment timeout after 5 minutes"
+            echo "Service state: $SERVICE_STATE"
+            echo "Next deployment state: $NEXT_STATE"
+            echo "Current deployment: version $CURRENT_VERSION ($CURRENT_STATE)"
+            echo ""
+            echo "The deployment may still be in progress. Check Lightsail console:"
+            echo "https://lightsail.aws.amazon.com/ls/webapp/us-east-2/container-services/$LIGHTSAIL_SERVICE_NAME"
+            exit 1
           fi
 
       - name: Production deployment complete
