@@ -169,7 +169,7 @@ router.get(
             const preparedState = airplanesLiveService.prepareStateForDatabase(aircraft);
 
             return postgresRepository
-              .upsertAircraftStateWithPriority(preparedState, null, new Date(), 'airplanes.live', 20)
+              .upsertAircraftStateWithPriority(preparedState, null, new Date(), 'airplanes.live', 20, true)
               .catch((err: Error) => {
                 logger.debug('Failed to store aircraft from airplanes.live', {
                   icao24: aircraft.hex,

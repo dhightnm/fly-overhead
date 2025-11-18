@@ -10,6 +10,57 @@ if (fs.existsSync(rootEnvPath)) {
 
 dotenv.config();
 
+const serverEnv = (process.env.NODE_ENV || 'development') as 'development' | 'production' | 'test';
+const isProduction = serverEnv === 'production';
+
+const parseNumber = (value: string | undefined, fallback: number): number => {
+  if (!value) {
+    return fallback;
+  }
+  const parsed = parseInt(value, 10);
+  return Number.isNaN(parsed) ? fallback : parsed;
+};
+
+const poolMin = Math.max(1, parseNumber(process.env.POSTGRES_POOL_MIN, 2));
+const defaultPoolMax = isProduction ? 20 : 5;
+const poolMax = Math.max(poolMin, parseNumber(process.env.POSTGRES_POOL_MAX, defaultPoolMax));
+
+const resolveBooleanFlag = (
+  enableKey: string | undefined,
+  disableKey: string | undefined,
+  defaultValue: boolean,
+): boolean => {
+  if (enableKey !== undefined) {
+    return enableKey === 'true';
+  }
+  if (disableKey !== undefined) {
+    return disableKey !== 'true';
+  }
+  return defaultValue;
+};
+
+const backgroundJobsEnabled = resolveBooleanFlag(
+  process.env.ENABLE_BACKGROUND_JOBS,
+  process.env.DISABLE_BACKGROUND_JOBS,
+  isProduction,
+);
+
+const conusPollingEnabled = backgroundJobsEnabled
+  ? resolveBooleanFlag(
+    process.env.ENABLE_CONUS_POLLING,
+    process.env.DISABLE_CONUS_POLLING,
+    isProduction,
+  )
+  : false;
+
+const backfillEnabled = backgroundJobsEnabled
+  ? resolveBooleanFlag(
+    process.env.ENABLE_BACKGROUND_BACKFILL,
+    process.env.DISABLE_BACKGROUND_BACKFILL,
+    isProduction,
+  )
+  : false;
+
 /**
  * Centralized configuration management
  * All environment variables and config should live here
@@ -17,15 +68,15 @@ dotenv.config();
 const config: AppConfig = {
   server: {
     port: parseInt(process.env.PORT || '3005', 10),
-    env: (process.env.NODE_ENV || 'development') as 'development' | 'production' | 'test',
+    env: serverEnv,
     host: process.env.HOST || '0.0.0.0',
   },
   database: {
     postgres: {
       url: process.env.POSTGRES_URL || 'postgresql://example:example@localhost:5432/fly_overhead',
       pool: {
-        min: 2, // Keep minimal connections ready
-        max: 50, // Increased from 35 to handle CONUS polling concurrency
+        min: poolMin,
+        max: poolMax,
       },
     },
   },
@@ -85,6 +136,11 @@ const config: AppConfig = {
     staleRecordThreshold: 2 * 60 * 60 * 1000, // 2 hours
     recentContactThreshold: 30 * 60, // 30 minutes in seconds (increased to show more aircraft during rate limiting)
     devModeStaleThreshold: 24 * 60 * 60, // 24 hours in seconds - for development when rate limited
+  },
+  features: {
+    backgroundJobsEnabled,
+    conusPollingEnabled,
+    backfillEnabled,
   },
 };
 

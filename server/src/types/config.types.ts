@@ -64,6 +64,12 @@ export interface AircraftConfig {
   devModeStaleThreshold: number;
 }
 
+export interface FeatureFlagsConfig {
+  backgroundJobsEnabled: boolean;
+  conusPollingEnabled: boolean;
+  backfillEnabled: boolean;
+}
+
 export interface AppConfig {
   server: ServerConfig;
   database: DatabaseConfig;
@@ -71,4 +77,5 @@ export interface AppConfig {
   external: ExternalApiConfig;
   cors: CorsConfig;
   aircraft: AircraftConfig;
+  features: FeatureFlagsConfig;
 }

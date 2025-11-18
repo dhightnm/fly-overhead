@@ -42,22 +42,23 @@ const pgp = pgPromise({
   error: (err: Error, e: any) => {
     const now = Date.now();
     const errorKey = `${err.message}:${e?.query?.substring(0, 50) || ''}`;
-    
+
     // Throttle repeated errors to prevent log flooding
     if (errorKey === errorThrottle.lastError) {
       errorThrottle.errorCount++;
-      
+
       // Only log every 5 seconds for repeated errors
       if (now - errorThrottle.lastErrorTime < errorThrottle.throttleMs) {
-        return; // Skip logging
+        // Skip logging but don't return - let pg-promise handle the error normally
+        return;
       }
-      
+
       // Log summary of repeated errors
-      logger.error('Database error (repeated x' + errorThrottle.errorCount + ')', {
+      logger.error(`Database error (repeated x${errorThrottle.errorCount})`, {
         error: err.message,
         query: e?.query?.substring(0, 100),
       });
-      
+
       // Reset error count after logging
       errorThrottle.errorCount = 0;
     } else {
@@ -68,10 +69,13 @@ const pgp = pgPromise({
       });
       errorThrottle.errorCount = 1;
     }
-    
+
     // Update throttle state
     errorThrottle.lastError = errorKey;
     errorThrottle.lastErrorTime = now;
+
+    // Don't return early - let pg-promise handle the error normally
+    // The error handler is just for logging, not for controlling behavior
   },
 });
 

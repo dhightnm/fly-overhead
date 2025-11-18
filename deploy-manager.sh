@@ -38,6 +38,7 @@ usage() {
     echo "  ./deploy-manager.sh rebuild"
     echo "  ./deploy-manager.sh push us-east-2"
     echo "  ./deploy-manager.sh deploy us-east-2"
+    echo "  ./deploy-manager.sh deploy-lightsail [service-name] [region]"
     echo "  ./deploy-manager.sh start dev"
     echo ""
 }
@@ -52,17 +53,37 @@ cmd_build() {
     # Get API URL from environment or use default
     local api_url="${REACT_APP_API_URL:-https://container-service-1.f199m4bz801f2.us-east-2.cs.amazonlightsail.com}"
     echo "Using REACT_APP_API_URL: $api_url"
+    
+    # Get Google Client ID from environment or .env file
+    local google_client_id="${REACT_APP_GOOGLE_CLIENT_ID:-}"
+    if [ -z "$google_client_id" ] && [ -f .env ]; then
+        google_client_id=$(grep "^REACT_APP_GOOGLE_CLIENT_ID=" .env | cut -d '=' -f2- | tr -d '"' | tr -d "'")
+    fi
+    if [ -n "$google_client_id" ]; then
+        echo "Using REACT_APP_GOOGLE_CLIENT_ID: ${google_client_id:0:20}..."
+    else
+        echo -e "${YELLOW}Warning: REACT_APP_GOOGLE_CLIENT_ID not set${NC}"
+    fi
     echo ""
     
     if [ "$mode" = "dev" ]; then
         docker compose -f docker-compose.dev.yml build --pull server
     else
-        # Build with REACT_APP_API_URL as build argument
-        docker build \
-            --build-arg REACT_APP_API_URL="$api_url" \
-            --platform linux/amd64 \
-            -t fly-overhead-server:latest \
-            .
+        # Build with REACT_APP_API_URL and REACT_APP_GOOGLE_CLIENT_ID as build arguments
+        if [ -n "$google_client_id" ]; then
+            docker build \
+                --build-arg REACT_APP_API_URL="$api_url" \
+                --build-arg REACT_APP_GOOGLE_CLIENT_ID="$google_client_id" \
+                --platform linux/amd64 \
+                -t fly-overhead-server:latest \
+                .
+        else
+            docker build \
+                --build-arg REACT_APP_API_URL="$api_url" \
+                --platform linux/amd64 \
+                -t fly-overhead-server:latest \
+                .
+        fi
     fi
     
     if [ $? -eq 0 ]; then
@@ -241,6 +262,86 @@ cmd_deploy() {
     cmd_push "$region"
 }
 
+# Deploy to Lightsail
+cmd_deploy_lightsail() {
+    local service_name="${1:-container-service-1}"
+    local region="${2:-us-east-2}"
+    
+    echo -e "${BLUE}========================================${NC}"
+    echo -e "${BLUE}Deploy to AWS Lightsail${NC}"
+    echo -e "${BLUE}========================================${NC}"
+    echo ""
+    
+    # Get AWS account info
+    AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+    ECR_URI="$AWS_ACCOUNT_ID.dkr.ecr.$region.amazonaws.com/$REPO_NAME"
+    IMAGE_URI="$ECR_URI:latest"
+    
+    echo "Service: $service_name"
+    echo "Region: $region"
+    echo "Image: $IMAGE_URI"
+    echo ""
+    
+    # Get current deployment to preserve environment variables
+    echo "Fetching current deployment configuration..."
+    CURRENT_DEPLOYMENT=$(aws lightsail get-container-services \
+        --service-name "$service_name" \
+        --region "$region" \
+        --query 'containerServices[0].currentDeployment' \
+        --output json)
+    
+    if [ $? -ne 0 ]; then
+        echo -e "${RED}✗ Failed to get current deployment${NC}"
+        exit 1
+    fi
+    echo -e "${GREEN}✓ Got current deployment${NC}"
+    echo ""
+    
+    # Create new deployment
+    echo "Creating new deployment..."
+    DEPLOYMENT_OUTPUT=$(aws lightsail create-container-service-deployment \
+        --service-name "$service_name" \
+        --region "$region" \
+        --cli-input-json "{
+            \"containers\": {
+                \"flyoverheadapp\": {
+                    \"image\": \"$IMAGE_URI\",
+                    \"environment\": $(echo "$CURRENT_DEPLOYMENT" | jq -r '.containers.flyoverheadapp.environment // {}'),
+                    \"ports\": {
+                        \"3005\": \"HTTP\"
+                    }
+                }
+            },
+            \"publicEndpoint\": {
+                \"containerName\": \"flyoverheadapp\",
+                \"containerPort\": 3005,
+                \"healthCheck\": {
+                    \"healthyThreshold\": 2,
+                    \"unhealthyThreshold\": 2,
+                    \"timeoutSeconds\": 5,
+                    \"intervalSeconds\": 30,
+                    \"path\": \"/health\",
+                    \"successCodes\": \"200\"
+                }
+            }
+        }" 2>&1)
+    
+    if [ $? -eq 0 ]; then
+        NEW_VERSION=$(echo "$DEPLOYMENT_OUTPUT" | jq -r '.containerService.nextDeployment.version // .containerService.currentDeployment.version')
+        echo -e "${GREEN}✓ Deployment initiated (version: $NEW_VERSION)${NC}"
+        echo ""
+        echo -e "${BLUE}Deployment is in progress. Monitor at:${NC}"
+        echo "https://lightsail.aws.amazon.com/ls/webapp/$region/container-services/$service_name"
+        echo ""
+        echo "Or check status with:"
+        echo "  aws lightsail get-container-services --service-name $service_name --region $region --query 'containerServices[0].{state: state, currentVersion: currentDeployment.version, nextVersion: nextDeployment.version, nextState: nextDeployment.state}'"
+    else
+        echo -e "${RED}✗ Deployment failed${NC}"
+        echo "$DEPLOYMENT_OUTPUT"
+        exit 1
+    fi
+}
+
 # Start containers
 cmd_start() {
     local mode="${1:-prod}"
@@ -301,6 +402,9 @@ case "${1:-}" in
         ;;
     deploy)
         cmd_deploy "${2:-us-east-2}"
+        ;;
+    deploy-lightsail)
+        cmd_deploy_lightsail "${2:-container-service-1}" "${3:-us-east-2}"
         ;;
     start)
         cmd_start "${2:-prod}"

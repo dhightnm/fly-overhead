@@ -111,7 +111,17 @@ async function startServer(): Promise<void> {
   try {
     await aircraftService.initializeDatabase();
 
-    logger.info('Starting server with integrated background jobs');
+    const {
+      backgroundJobsEnabled,
+      conusPollingEnabled,
+      backfillEnabled,
+    } = config.features;
+
+    if (backgroundJobsEnabled) {
+      logger.info('Background jobs enabled - starting auxiliary services');
+    } else {
+      logger.warn('Background jobs disabled via configuration - skipping auxiliary services');
+    }
 
     // Initialize WebSocket service before starting server
     webSocketService.initialize(server);
@@ -160,53 +170,63 @@ async function startServer(): Promise<void> {
     //   });
     // }, config.aircraft.updateInterval);
 
-    backgroundRouteService.start();
+    if (backgroundJobsEnabled) {
+      backgroundRouteService.start();
 
-    // Start CONUS polling service for continuous aircraft data updates
-    // This polls airplanes.live at 1 req/sec across CONUS
-    conusPollingService.start();
-    logger.info('CONUS polling service started for continuous aircraft updates');
+      if (conusPollingEnabled) {
+        // Start CONUS polling service for continuous aircraft data updates
+        // This polls airplanes.live at 1 req/sec across CONUS
+        conusPollingService.start();
+        logger.info('CONUS polling service started for continuous aircraft updates');
+      } else {
+        logger.info('CONUS polling service disabled via configuration');
+      }
 
-    // Background backfill jobs use FlightAware (not OpenSky)
-    // to preserve OpenSky quota for real-time aircraft tracking
-    // Run these asynchronously AFTER server is listening to avoid blocking startup
-    setImmediate(() => {
-      backgroundRouteService.backfillFlightHistorySample().catch((err: Error) => {
-        logger.error('Error in initial backfill sample', { error: err.message });
-      });
+      if (backfillEnabled) {
+        // Background backfill jobs use FlightAware (not OpenSky)
+        // to preserve OpenSky quota for real-time aircraft tracking
+        // Run these asynchronously AFTER server is listening to avoid blocking startup
+        setImmediate(() => {
+          backgroundRouteService.backfillFlightHistorySample().catch((err: Error) => {
+            logger.error('Error in initial backfill sample', { error: err.message });
+          });
 
-      const todayStr = new Date().toISOString().split('T')[0];
-      backgroundRouteService.backfillFlightsInRange('2025-10-27', todayStr, 50).catch((err: Error) => {
-        logger.error('Error in initial range backfill', { error: err.message });
-      });
+          const todayStr = new Date().toISOString().split('T')[0];
+          backgroundRouteService.backfillFlightsInRange('2025-10-27', todayStr, 50).catch((err: Error) => {
+            logger.error('Error in initial range backfill', { error: err.message });
+          });
 
-      backgroundRouteService.backfillFlightsMissingAll(50, 100).catch((err: Error) => {
-        logger.error('Error in initial missing-all backfill', { error: err.message });
-      });
-    });
+          backgroundRouteService.backfillFlightsMissingAll(50, 100).catch((err: Error) => {
+            logger.error('Error in initial missing-all backfill', { error: err.message });
+          });
+        });
 
-    const BACKFILL_INTERVAL_MS = 6 * 60 * 60 * 1000;
+        const BACKFILL_INTERVAL_MS = 6 * 60 * 60 * 1000;
 
-    setInterval(() => {
-      logger.info('Running scheduled periodic backfill');
-      backgroundRouteService.backfillFlightHistorySample().catch((err: Error) => {
-        logger.error('Error in scheduled backfill sample', { error: err.message });
-      });
+        setInterval(() => {
+          logger.info('Running scheduled periodic backfill');
+          backgroundRouteService.backfillFlightHistorySample().catch((err: Error) => {
+            logger.error('Error in scheduled backfill sample', { error: err.message });
+          });
 
-      const sevenDaysAgo = new Date();
-      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-      const startDateStr = sevenDaysAgo.toISOString().split('T')[0];
-      const todayStr = new Date().toISOString().split('T')[0];
-      backgroundRouteService.backfillFlightsInRange(startDateStr, todayStr, 25).catch((err: Error) => {
-        logger.error('Error in scheduled range backfill', { error: err.message });
-      });
+          const sevenDaysAgo = new Date();
+          sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+          const startDateStr = sevenDaysAgo.toISOString().split('T')[0];
+          const todayStr = new Date().toISOString().split('T')[0];
+          backgroundRouteService.backfillFlightsInRange(startDateStr, todayStr, 25).catch((err: Error) => {
+            logger.error('Error in scheduled range backfill', { error: err.message });
+          });
 
-      backgroundRouteService.backfillFlightsMissingAll(25, 50).catch((err: Error) => {
-        logger.error('Error in scheduled missing-all backfill', { error: err.message });
-      });
-    }, BACKFILL_INTERVAL_MS);
+          backgroundRouteService.backfillFlightsMissingAll(25, 50).catch((err: Error) => {
+            logger.error('Error in scheduled missing-all backfill', { error: err.message });
+          });
+        }, BACKFILL_INTERVAL_MS);
 
-    logger.info('Scheduled periodic backfills', { intervalHours: BACKFILL_INTERVAL_MS / (60 * 60 * 1000) });
+        logger.info('Scheduled periodic backfills', { intervalHours: BACKFILL_INTERVAL_MS / (60 * 60 * 1000) });
+      } else {
+        logger.info('Background route backfill disabled via configuration');
+      }
+    }
   } catch (err) {
     const error = err as Error;
     logger.error('Error starting server', { error: error.message });

@@ -256,11 +256,11 @@ jobs:
             
             # Check if deployment is active
             CURRENT_STATE=$(aws lightsail get-container-services \
-              --service-name $LIGHTSAIL_SERVICE_NAME \
-              --region us-east-2 \
-              --query 'containerServices[0].currentDeployment.state' \
-              --output text)
-            
+                --service-name $LIGHTSAIL_SERVICE_NAME \
+                --region us-east-2 \
+                --query 'containerServices[0].currentDeployment.state' \
+                --output text)
+              
             CURRENT_VERSION=$(aws lightsail get-container-services \
               --service-name $LIGHTSAIL_SERVICE_NAME \
               --region us-east-2 \
@@ -270,10 +270,10 @@ jobs:
             # Success: deployment is now active
             if [ "$SERVICE_STATE" = "RUNNING" ] && [ "$CURRENT_VERSION" = "$NEW_VERSION" ] && [ "$CURRENT_STATE" = "ACTIVE" ]; then
               echo ""
-              echo "✅ Deployment completed successfully!"
+                echo "✅ Deployment completed successfully!"
               echo "Version $NEW_VERSION is now ACTIVE"
-              break
-            fi
+                break
+              fi
             
             # Show progress only when state changes
             if [ "$NEXT_STATE" != "$LAST_STATE" ] && [ "$NEXT_STATE" != "None" ]; then
