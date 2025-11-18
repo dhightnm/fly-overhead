@@ -3,6 +3,14 @@ import config from '../config';
 import logger from '../utils/logger';
 import PostGISService from '../services/PostGISService';
 
+// Error throttling to prevent log flooding
+const errorThrottle = {
+  lastError: '',
+  lastErrorTime: 0,
+  errorCount: 0,
+  throttleMs: 5000, // Only log same error once per 5 seconds
+};
+
 // Configure pg-promise with connection pool monitoring
 const pgp = pgPromise({
   // Log connection pool events for debugging
@@ -32,10 +40,38 @@ const pgp = pgPromise({
     }
   },
   error: (err: Error, e: any) => {
-    logger.error('Database query error', {
-      error: err.message,
-      query: e?.query?.substring(0, 100),
-    });
+    const now = Date.now();
+    const errorKey = `${err.message}:${e?.query?.substring(0, 50) || ''}`;
+    
+    // Throttle repeated errors to prevent log flooding
+    if (errorKey === errorThrottle.lastError) {
+      errorThrottle.errorCount++;
+      
+      // Only log every 5 seconds for repeated errors
+      if (now - errorThrottle.lastErrorTime < errorThrottle.throttleMs) {
+        return; // Skip logging
+      }
+      
+      // Log summary of repeated errors
+      logger.error('Database error (repeated x' + errorThrottle.errorCount + ')', {
+        error: err.message,
+        query: e?.query?.substring(0, 100),
+      });
+      
+      // Reset error count after logging
+      errorThrottle.errorCount = 0;
+    } else {
+      // New/different error - log immediately
+      logger.error('Database query error', {
+        error: err.message,
+        query: e?.query?.substring(0, 100),
+      });
+      errorThrottle.errorCount = 1;
+    }
+    
+    // Update throttle state
+    errorThrottle.lastError = errorKey;
+    errorThrottle.lastErrorTime = now;
   },
 });
 
