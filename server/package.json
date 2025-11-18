@@ -10,8 +10,8 @@
     "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
     "dev:js": "nodemon index.js",
     "type-check": "tsc --noEmit",
-    "lint": "eslint . --ext .ts,.js",
-    "lint:fix": "eslint --fix . --ext .ts,.js",
+    "lint": "eslint . --ext .ts",
+    "lint:fix": "eslint --fix . --ext .ts",
     "test": "jest"
   },
   "keywords": [],
