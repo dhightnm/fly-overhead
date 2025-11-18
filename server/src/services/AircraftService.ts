@@ -8,7 +8,7 @@ import flightRouteService from './FlightRouteService';
 import config from '../config';
 import logger from '../utils/logger';
 import { mapAircraftType } from '../utils/aircraftCategoryMapper';
-import { initializeAirportSchema } from '../database/airportSchema';
+import initializeAirportSchema from '../database/airportSchema';
 
 interface BoundingBox {
   lamin: number;
