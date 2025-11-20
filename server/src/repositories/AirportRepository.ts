@@ -62,6 +62,11 @@ class AirportRepository {
     return this.db.oneOrNone<Airport>(query, [code]);
   }
 
+  /**
+   * Find airports within bounding box
+   * Orders by importance: large_airport > medium_airport > small_airport, then by IATA code presence, then name
+   * This ensures important airports (like KABQ) are included even when hitting limit constraints
+   */
   async findAirportsInBounds(
     latmin: number,
     lonmin: number,
@@ -100,10 +105,34 @@ class AirportRepository {
     if (airportType) {
       query += ' AND type = $5';
       params.push(airportType);
-      query += ' ORDER BY type, name LIMIT $6';
+      query += ` ORDER BY 
+        CASE type
+          WHEN 'large_airport' THEN 1
+          WHEN 'medium_airport' THEN 2
+          WHEN 'small_airport' THEN 3
+          WHEN 'heliport' THEN 4
+          WHEN 'seaplane_base' THEN 5
+          WHEN 'balloonport' THEN 6
+          ELSE 7
+        END,
+        CASE WHEN iata_code IS NOT NULL THEN 0 ELSE 1 END,
+        name
+        LIMIT $6`;
       params.push(limit);
     } else {
-      query += ' ORDER BY type, name LIMIT $5';
+      query += ` ORDER BY 
+        CASE type
+          WHEN 'large_airport' THEN 1
+          WHEN 'medium_airport' THEN 2
+          WHEN 'small_airport' THEN 3
+          WHEN 'heliport' THEN 4
+          WHEN 'seaplane_base' THEN 5
+          WHEN 'balloonport' THEN 6
+          ELSE 7
+        END,
+        CASE WHEN iata_code IS NOT NULL THEN 0 ELSE 1 END,
+        name
+        LIMIT $5`;
       params.push(limit);
     }
 

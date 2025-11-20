@@ -62,13 +62,15 @@ export function useAirportCache() {
       loadingQuadrants.current.add(key);
 
       try {
-        // Fetch all airports in this quadrant (no limit - load entire quadrant)
+        // Fetch all airports in this quadrant (high limit to get all airports)
+        // Quadrants can be large (60x60 degrees), so we need a high limit
+        // With prioritized ordering, important airports will be included first
         const airports = await aircraftService.getAirportsInBounds(
           {
             southWest: { lat: quadrant.latMin, lng: quadrant.lonMin },
             northEast: { lat: quadrant.latMax, lng: quadrant.lonMax },
           },
-          9999 // High limit to get all airports in quadrant
+          50000 // High limit to get all airports in quadrant (prioritized ordering ensures important ones first)
         );
 
         airportCache.set(key, airports);
