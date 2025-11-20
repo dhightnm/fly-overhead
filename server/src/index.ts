@@ -187,20 +187,27 @@ async function startServer(): Promise<void> {
         // Background backfill jobs use FlightAware (not OpenSky)
         // to preserve OpenSky quota for real-time aircraft tracking
         // Run these asynchronously AFTER server is listening to avoid blocking startup
-        setImmediate(() => {
-          backgroundRouteService.backfillFlightHistorySample().catch((err: Error) => {
-            logger.error('Error in initial backfill sample', { error: err.message });
-          });
-
-          const todayStr = new Date().toISOString().split('T')[0];
-          backgroundRouteService.backfillFlightsInRange('2025-10-27', todayStr, 50).catch((err: Error) => {
-            logger.error('Error in initial range backfill', { error: err.message });
-          });
-
-          backgroundRouteService.backfillFlightsMissingAll(50, 100).catch((err: Error) => {
-            logger.error('Error in initial missing-all backfill', { error: err.message });
-          });
-        });
+        // Run initial backfill after a delay to allow server to stabilize and pass health checks
+        // This prevents connection pool exhaustion during startup
+        setTimeout(async () => {
+          logger.info('Running initial backfill jobs (delayed)');
+          
+          try {
+            await backgroundRouteService.backfillFlightHistorySample();
+            
+            const todayStr = new Date().toISOString().split('T')[0];
+            // Use dynamic start date (3 weeks ago) instead of hardcoded
+            const threeWeeksAgo = new Date();
+            threeWeeksAgo.setDate(threeWeeksAgo.getDate() - 21);
+            const startDateStr = threeWeeksAgo.toISOString().split('T')[0];
+            
+            await backgroundRouteService.backfillFlightsInRange(startDateStr, todayStr, 50);
+            await backgroundRouteService.backfillFlightsMissingAll(50, 100);
+          } catch (err) {
+            const error = err as Error;
+            logger.error('Error in initial backfill sequence', { error: error.message });
+          }
+        }, 5 * 60 * 1000); // 5 minute delay
 
         const BACKFILL_INTERVAL_MS = 6 * 60 * 60 * 1000;
 
