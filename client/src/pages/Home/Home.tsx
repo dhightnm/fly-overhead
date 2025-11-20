@@ -1204,8 +1204,18 @@ const Home: React.FC = () => {
                     document.querySelector(".leaflet-container");
                   if (mapElement && (mapElement as any).__map__) {
                     const map = (mapElement as any).__map__;
-                    const bounds = map.getBounds();
-                    const wrapBounds = map.wrapLatLngBounds(bounds);
+                    let bounds, wrapBounds;
+                    try {
+                      bounds = map.getBounds();
+                      if (!bounds || !bounds.isValid()) {
+                        console.warn('Map bounds not ready for fallback fetch');
+                        return;
+                      }
+                      wrapBounds = map.wrapLatLngBounds(bounds);
+                    } catch (error) {
+                      console.warn('Map not ready for fallback fetch', error);
+                      return;
+                    }
 
                     aircraftService
                       .getAircraftInBounds({

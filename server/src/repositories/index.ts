@@ -82,6 +82,10 @@ class PostgresRepository {
     return this.schema.createUsersTable();
   }
 
+  async addPasswordColumnToUsers(): Promise<void> {
+    return this.schema.addPasswordColumnToUsers();
+  }
+
   async addFeederProviderColumnToUsers(): Promise<void> {
     return this.schema.addFeederProviderColumnToUsers();
   }

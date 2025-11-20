@@ -19,6 +19,7 @@ import adminRoutes from './routes/admin.routes';
 import aircraftRoutes from './routes/aircraft.routes';
 import healthRoutes from './routes/health.routes';
 import feederRoutes from './routes/feeder.routes';
+import portalRoutes from './routes/portal.routes';
 
 const app = express();
 const server = createServer(app);
@@ -83,6 +84,7 @@ app.use('/api/admin', adminRoutes);
 app.use('/api', aircraftRoutes);
 app.use('/api', healthRoutes);
 app.use('/api', feederRoutes);
+app.use('/api/portal', portalRoutes);
 
 // Catch-all handler: send back React's index.html for client-side routing
 // This must be AFTER API routes and static file middleware, and BEFORE error handler

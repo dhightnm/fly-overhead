@@ -1,0 +1,161 @@
+.account-overview-card {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.account-header {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.account-avatar {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #1E40AF 0%, #3B82F6 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-size: 1.5rem;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.account-info h3 {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: #0F172A;
+  margin: 0 0 0.25rem 0;
+}
+
+.account-email {
+  font-size: 0.875rem;
+  color: #64748B;
+  margin: 0;
+}
+
+.account-tier {
+  display: flex;
+  justify-content: center;
+}
+
+.tier-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  border-radius: 12px;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.tier-badge.premium {
+  background: linear-gradient(135deg, #FBBF24 0%, #F59E0B 100%);
+  color: white;
+}
+
+.tier-badge.free {
+  background: #F1F5F9;
+  color: #475569;
+}
+
+.tier-icon {
+  font-size: 1rem;
+}
+
+.account-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid #E2E8F0;
+}
+
+.stat-item {
+  text-align: center;
+}
+
+.stat-value {
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: #1E40AF;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.stat-label {
+  font-size: 0.75rem;
+  color: #64748B;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-top: 0.25rem;
+}
+
+.account-features {
+  padding-top: 1rem;
+  border-top: 1px solid #E2E8F0;
+}
+
+.account-features h4 {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #0F172A;
+  margin-bottom: 0.75rem;
+}
+
+.features-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.features-list li {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-size: 0.875rem;
+  padding: 0.5rem 0;
+}
+
+.features-list li.enabled {
+  color: #065F46;
+}
+
+.features-list li.disabled {
+  color: #94A3B8;
+}
+
+.features-list li.coming-soon {
+  color: #64748B;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.feature-icon {
+  font-size: 1rem;
+  width: 20px;
+  text-align: center;
+}
+
+.coming-soon-badge {
+  font-size: 0.75rem;
+  padding: 0.125rem 0.5rem;
+  background: #FEF3C7;
+  color: #92400E;
+  border-radius: 8px;
+  font-weight: 600;
+  margin-left: auto;
+}
+
+@media (max-width: 768px) {
+  .account-stats {
+    grid-template-columns: 1fr;
+  }
+}
+

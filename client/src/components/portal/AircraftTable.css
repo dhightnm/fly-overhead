@@ -1,0 +1,189 @@
+.aircraft-table-container {
+  background: rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  border-radius: 16px;
+  padding: 1.5rem;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.06);
+}
+
+.aircraft-table-container.compact {
+  max-height: 600px;
+  overflow-y: auto;
+}
+
+.table-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.5rem;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.table-header h2 {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #0F172A;
+  margin: 0;
+}
+
+.table-controls {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.table-search {
+  padding: 0.5rem 1rem;
+  border: 1px solid #E2E8F0;
+  border-radius: 8px;
+  font-size: 0.875rem;
+  width: 300px;
+  transition: all 0.2s;
+}
+
+.table-search:focus {
+  outline: none;
+  border-color: #3B82F6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.aircraft-count {
+  font-size: 0.875rem;
+  color: #64748B;
+  font-weight: 500;
+}
+
+.table-wrapper {
+  overflow-x: auto;
+  border-radius: 12px;
+}
+
+.aircraft-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+
+.aircraft-table thead {
+  background: linear-gradient(135deg, #F8FAFC 0%, #F1F5F9 100%);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.aircraft-table th {
+  padding: 1rem;
+  text-align: left;
+  font-weight: 600;
+  color: #475569;
+  font-size: 0.8125rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border-bottom: 2px solid #E2E8F0;
+}
+
+.aircraft-table th.sortable {
+  cursor: pointer;
+  user-select: none;
+  transition: color 0.2s;
+}
+
+.aircraft-table th.sortable:hover {
+  color: #1E40AF;
+}
+
+.aircraft-table tbody tr {
+  border-bottom: 1px solid #F1F5F9;
+  transition: background 0.15s;
+}
+
+.aircraft-table tbody tr:hover {
+  background: #F8FAFC;
+}
+
+.aircraft-table td {
+  padding: 1rem;
+  color: #334155;
+}
+
+.aircraft-table .callsign-cell {
+  font-weight: 600;
+  color: #1E40AF;
+}
+
+.aircraft-table .icao-cell code {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.8125rem;
+  background: #F1F5F9;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  color: #0F172A;
+}
+
+.aircraft-table .numeric {
+  font-family: 'JetBrains Mono', monospace;
+  text-align: right;
+  color: #475569;
+}
+
+.aircraft-table .route-cell {
+  font-size: 0.8125rem;
+}
+
+.route-info {
+  color: #64748B;
+}
+
+.status-badge {
+  display: inline-block;
+  padding: 0.25rem 0.75rem;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.status-badge.active {
+  background: #D1FAE5;
+  color: #065F46;
+}
+
+.status-badge.recent {
+  background: #FEF3C7;
+  color: #92400E;
+}
+
+.status-badge.stale {
+  background: #FEE2E2;
+  color: #991B1B;
+}
+
+.status-badge.unknown {
+  background: #F1F5F9;
+  color: #64748B;
+}
+
+.empty-state {
+  text-align: center;
+  padding: 3rem;
+  color: #94A3B8;
+}
+
+@media (max-width: 1024px) {
+  .aircraft-table {
+    font-size: 0.8125rem;
+  }
+  
+  .aircraft-table th,
+  .aircraft-table td {
+    padding: 0.75rem 0.5rem;
+  }
+  
+  .table-search {
+    width: 100%;
+  }
+}
+

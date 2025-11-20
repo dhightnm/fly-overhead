@@ -18,25 +18,38 @@ const WebSocketHandler = ({ onAircraftUpdate, onConnectionChange, enabled = true
   // Update bounds when map moves
   useEffect(() => {
     const updateBounds = () => {
-      const bounds = map.getBounds();
-      const newBounds = {
-        latmin: bounds.getSouth(),
-        lonmin: bounds.getWest(),
-        latmax: bounds.getNorth(),
-        lonmax: bounds.getEast(),
-      };
+      try {
+        // Check if map is fully initialized
+        if (!map || !map.getBounds) return;
+        
+        const bounds = map.getBounds();
+        if (!bounds || !bounds.isValid()) {
+          return;
+        }
+        
+        const newBounds = {
+          latmin: bounds.getSouth(),
+          lonmin: bounds.getWest(),
+          latmax: bounds.getNorth(),
+          lonmax: bounds.getEast(),
+        };
 
-      // Only update if bounds changed significantly (0.01 degrees ~= 1.1km)
-      const boundsChanged = !currentBoundsRef.current ||
-        Math.abs(newBounds.latmin - currentBoundsRef.current.latmin) > 0.01 ||
-        Math.abs(newBounds.lonmin - currentBoundsRef.current.lonmin) > 0.01 ||
-        Math.abs(newBounds.latmax - currentBoundsRef.current.latmax) > 0.01 ||
-        Math.abs(newBounds.lonmax - currentBoundsRef.current.lonmax) > 0.01;
+        // Only update if bounds changed significantly (0.01 degrees ~= 1.1km)
+        const boundsChanged = !currentBoundsRef.current ||
+          Math.abs(newBounds.latmin - currentBoundsRef.current.latmin) > 0.01 ||
+          Math.abs(newBounds.lonmin - currentBoundsRef.current.lonmin) > 0.01 ||
+          Math.abs(newBounds.latmax - currentBoundsRef.current.latmax) > 0.01 ||
+          Math.abs(newBounds.lonmax - currentBoundsRef.current.lonmax) > 0.01;
 
-      if (boundsChanged) {
-        currentBoundsRef.current = newBounds;
-        lastBoundsUpdateRef.current = Date.now();
-        setCurrentBounds(newBounds);
+        if (boundsChanged) {
+          currentBoundsRef.current = newBounds;
+          lastBoundsUpdateRef.current = Date.now();
+          setCurrentBounds(newBounds);
+        }
+      } catch (error) {
+        // Map not ready yet, skip update
+        console.warn('Map bounds not ready, skipping update', error);
+        return;
       }
     };
 

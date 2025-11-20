@@ -351,11 +351,14 @@ class SchemaRepository {
     for (const index of indexes) {
       try {
         // Check if index already exists to avoid unnecessary work
-        const exists = await this.db.oneOrNone<{ count: number }>(`
+        const exists = await this.db.oneOrNone<{ count: number }>(
+          `
           SELECT 1 FROM pg_indexes 
           WHERE schemaname = 'public' 
             AND indexname = $1
-        `, [index.name]);
+        `,
+          [index.name],
+        );
 
         if (!exists) {
           logger.info(`Creating ${index.description}...`);
@@ -840,6 +843,7 @@ class SchemaRepository {
       CREATE TABLE IF NOT EXISTS users (
         id SERIAL PRIMARY KEY,
         email TEXT UNIQUE NOT NULL,
+        password TEXT,
         google_id TEXT UNIQUE,
         name TEXT,
         picture TEXT,
@@ -856,6 +860,43 @@ class SchemaRepository {
     `;
     await this.db.query(query);
     logger.info('Users table created or already exists');
+  }
+
+  /**
+   * Add password column to existing users table (migration)
+   */
+  async addPasswordColumnToUsers(): Promise<void> {
+    try {
+      // Check if column exists
+      const columnExists = await this.db.oneOrNone(
+        `SELECT 1 FROM information_schema.columns 
+         WHERE table_name = 'users' AND column_name = 'password'`,
+      );
+
+      if (!columnExists) {
+        await this.db.query(`
+          ALTER TABLE users 
+          ADD COLUMN password TEXT;
+        `);
+        logger.info('Added password column to users table');
+      } else {
+        logger.info('Password column already exists in users table');
+      }
+    } catch (error) {
+      const err = error as Error;
+      logger.warn('Password column migration issue', { error: err.message });
+      // Try with IF NOT EXISTS syntax (PostgreSQL 9.6+)
+      try {
+        await this.db.query(`
+          ALTER TABLE users 
+          ADD COLUMN IF NOT EXISTS password TEXT;
+        `);
+        logger.info('Added password column to users table (using IF NOT EXISTS)');
+      } catch (innerErr) {
+        const innerError = innerErr as Error;
+        logger.warn('Password column may already exist', { error: innerError.message });
+      }
+    }
   }
 
   /**
@@ -906,6 +947,7 @@ class SchemaRepository {
     await this.createHistoryTableIndexes();
     await this.createFlightRoutesTable();
     await this.createUsersTable();
+    await this.addPasswordColumnToUsers(); // Migration for existing tables
     await this.createFeedersTable();
     await this.createFeederStatsTable();
     await this.addFeederColumnsToAircraftStates();

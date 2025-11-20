@@ -1,4 +1,5 @@
 import React, { useState, useContext, useRef, useEffect } from 'react';
+import { useHistory } from 'react-router-dom';
 import { PlaneContext } from '../contexts/PlaneContext';
 import { useAuth } from '../contexts/AuthContext';
 import { aircraftService } from '../services';
@@ -19,6 +20,7 @@ const NavBar = () => {
   const { setSearchLatlng } = useContext(PlaneContext);
   const { user, logout, isPremium, isAuthenticated } = useAuth();
   const userMenuRef = useRef(null);
+  const history = useHistory();
 
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -187,6 +189,12 @@ const NavBar = () => {
             </>
           ) : (
             <>
+              <button 
+                className="nav-button nav-button-portal"
+                onClick={() => history.push('/portal')}
+              >
+                🎛️ Portal
+              </button>
               {!isPremium() && (
                 <button 
                   className="nav-button nav-button-premium"
@@ -209,6 +217,15 @@ const NavBar = () => {
                       {isPremium() && <span className="premium-indicator">PREMIUM</span>}
                     </div>
                     <div className="user-dropdown-item">{user.email}</div>
+                    <button 
+                      className="user-dropdown-item"
+                      onClick={() => {
+                        history.push('/portal');
+                        setShowUserMenu(false);
+                      }}
+                    >
+                      🎛️ Portal
+                    </button>
                     {!isPremium() && (
                       <button 
                         className="user-dropdown-item premium-badge"

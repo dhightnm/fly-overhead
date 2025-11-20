@@ -41,6 +41,18 @@ export const useMapDataFetcher = ({
     const map = mapRef.current;
     if (!map) return;
 
+    // Check if map is fully initialized before accessing bounds
+    try {
+      const bounds = map.getBounds();
+      if (!bounds || !bounds.isValid()) {
+        console.warn('Map bounds not ready yet, skipping fetch');
+        return;
+      }
+    } catch (error) {
+      console.warn('Map not ready for bounds access, skipping fetch', error);
+      return;
+    }
+
     const bounds = map.getBounds();
     const wrapBounds = map.wrapLatLngBounds(bounds);
     const center = map.getCenter();
