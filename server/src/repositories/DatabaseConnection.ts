@@ -153,7 +153,13 @@ class DatabaseConnection {
     }
 
     this.postgis = new PostGISService(this.db);
-    this.initConnection();
+    // Initialize connection asynchronously - don't block constructor
+    // This allows the server to start even if DB is temporarily unavailable
+    this.initConnection().catch((error: Error) => {
+      logger.warn('Database connection initialization failed (non-blocking)', {
+        error: error.message,
+      });
+    });
   }
 
   /**
@@ -186,8 +192,10 @@ class DatabaseConnection {
       });
     } catch (error) {
       const err = error as Error;
-      logger.error('Database connection error', { error: err });
-      process.exit(1);
+      logger.error('Database connection error during initialization', { error: err.message });
+      // Don't exit - allow server to start and retry connection in background
+      // The connection pool will retry automatically on first query
+      logger.warn('Server will start without initial DB connection - will retry on first query');
     }
   }
 
