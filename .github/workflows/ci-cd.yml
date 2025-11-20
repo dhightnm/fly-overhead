@@ -175,7 +175,17 @@ jobs:
             --query 'containerServices[0].currentDeployment' \
             --output json)
 
-          # Create new deployment with updated image
+          # Create new deployment with updated image and emergency environment overrides
+          # Merge current environment with emergency overrides to stabilize deployment
+          EMERGENCY_ENV=$(echo "$CURRENT_DEPLOYMENT" | jq -r '.containers.flyoverheadapp.environment // {}' | \
+            jq '. + {
+              "DISABLE_BACKGROUND_JOBS": "true",
+              "DISABLE_CONUS_POLLING": "true", 
+              "DISABLE_BACKGROUND_BACKFILL": "true",
+              "POSTGRES_POOL_MAX": "5",
+              "POSTGRES_POOL_MIN": "1"
+            }')
+          
           aws lightsail create-container-service-deployment \
             --service-name $LIGHTSAIL_SERVICE_NAME \
             --region us-east-2 \
@@ -183,7 +193,7 @@ jobs:
               \"containers\": {
                 \"flyoverheadapp\": {
                   \"image\": \"$IMAGE_URI\",
-                  \"environment\": $(echo "$CURRENT_DEPLOYMENT" | jq -r '.containers.flyoverheadapp.environment // {}'),
+                  \"environment\": $EMERGENCY_ENV,
                   \"ports\": {
                     \"3005\": \"HTTP\"
                   }
