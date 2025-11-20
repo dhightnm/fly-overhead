@@ -20,6 +20,15 @@ services:
       - fly-overhead-network
     restart: unless-stopped
 
+  redis:
+    image: redis:7-alpine
+    container_name: fly-overhead-redis
+    ports:
+      - "6379:6379"
+    networks:
+      - fly-overhead-network
+    restart: unless-stopped
+
   server:
     build:
       context: .
@@ -37,6 +46,7 @@ services:
     environment:
       # Use local database for dev (switch to prod DB only when specifically testing)
       - POSTGRES_URL=postgresql://postgres:postgres@db:5432/fly_overhead
+      - REDIS_URL=redis://redis:6379
       # To test with production DB, set POSTGRES_URL in .env file
       - PORT=3005
       - NODE_ENV=development
@@ -58,6 +68,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      redis:
+        condition: service_started
     networks:
       - fly-overhead-network
     restart: unless-stopped

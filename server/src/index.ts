@@ -7,6 +7,7 @@ import config from './config';
 import aircraftService from './services/AircraftService';
 import backgroundRouteService from './services/BackgroundRouteService';
 import conusPollingService from './services/ConusPollingService';
+import startAircraftIngestionWorker from './workers/aircraftIngestionWorker';
 import webSocketService from './services/WebSocketService';
 import errorHandler from './middlewares/errorHandler';
 import requestLogger from './middlewares/requestLogger';
@@ -226,6 +227,14 @@ async function startServer(): Promise<void> {
       } else {
         logger.info('Background route backfill disabled via configuration');
       }
+    }
+
+    if (config.queue.enabled && config.queue.spawnWorkerInProcess) {
+      startAircraftIngestionWorker().catch((err: Error) => {
+        logger.error('Error starting embedded ingestion worker', { error: err.message });
+      });
+    } else if (config.queue.enabled) {
+      logger.info('Queue ingestion worker disabled in-process (external worker expected)');
     }
   } catch (err) {
     const error = err as Error;

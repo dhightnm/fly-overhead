@@ -61,6 +61,22 @@ const backfillEnabled = backgroundJobsEnabled
   )
   : false;
 
+const queueEnabled = resolveBooleanFlag(
+  process.env.ENABLE_QUEUE_INGESTION,
+  process.env.DISABLE_QUEUE_INGESTION,
+  true,
+);
+const spawnWorkerInProcess = resolveBooleanFlag(
+  process.env.ENABLE_EMBEDDED_QUEUE_WORKER,
+  process.env.DISABLE_EMBEDDED_QUEUE_WORKER,
+  true,
+);
+
+const redisUrl = process.env.REDIS_URL || 'redis://127.0.0.1:6379';
+const queueKey = process.env.QUEUE_KEY || 'flyoverhead:aircraft_ingest';
+const queueBatchSize = Math.max(10, parseNumber(process.env.QUEUE_BATCH_SIZE, 200));
+const queuePollIntervalMs = Math.max(250, parseNumber(process.env.QUEUE_POLL_INTERVAL_MS, 1000));
+
 /**
  * Centralized configuration management
  * All environment variables and config should live here
@@ -141,6 +157,14 @@ const config: AppConfig = {
     backgroundJobsEnabled,
     conusPollingEnabled,
     backfillEnabled,
+  },
+  queue: {
+    enabled: queueEnabled,
+    redisUrl,
+    key: queueKey,
+    batchSize: queueBatchSize,
+    pollIntervalMs: queuePollIntervalMs,
+    spawnWorkerInProcess,
   },
 };
 

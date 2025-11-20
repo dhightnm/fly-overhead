@@ -64,6 +64,15 @@ export interface AircraftConfig {
   devModeStaleThreshold: number;
 }
 
+export interface QueueConfig {
+  enabled: boolean;
+  redisUrl: string;
+  key: string;
+  batchSize: number;
+  pollIntervalMs: number;
+  spawnWorkerInProcess: boolean;
+}
+
 export interface FeatureFlagsConfig {
   backgroundJobsEnabled: boolean;
   conusPollingEnabled: boolean;
@@ -78,4 +87,5 @@ export interface AppConfig {
   cors: CorsConfig;
   aircraft: AircraftConfig;
   features: FeatureFlagsConfig;
+  queue: QueueConfig;
 }

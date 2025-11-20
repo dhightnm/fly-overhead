@@ -12,6 +12,7 @@ import historyService from '../services/HistoryService';
 import flightRouteService from '../services/FlightRouteService';
 import flightPlanRouteService from '../services/FlightPlanRouteService';
 import postgresRepository from '../repositories/PostgresRepository';
+import queueService from '../services/QueueService';
 import logger from '../utils/logger';
 import { mapAircraftTypeToCategory } from '../utils/aircraftCategoryMapper';
 import { requireApiKeyAuth, optionalApiKeyAuth, type AuthenticatedRequest } from '../middlewares/apiKeyAuth';
@@ -53,6 +54,79 @@ function createBoundingBox(lat: number, lon: number, radiusNm: number) {
 const CURRENT_FLIGHT_THRESHOLD_SECONDS = 15 * 60; // 15 minutes
 const LANDED_OVERRIDE_THRESHOLD_SECONDS = 30 * 60; // 30 minutes before forcing arrival location
 const LANDED_STATUSES = new Set(['arrived', 'landed', 'completed', 'diverted', 'cancelled']);
+
+type DbAircraftRow = Record<string, any>;
+
+const STATE_INDEX = {
+  ICAO24: 0,
+  CALLSIGN: 1,
+  TIME_POSITION: 3,
+  LAST_CONTACT: 4,
+  LONGITUDE: 5,
+  LATITUDE: 6,
+  BARO_ALTITUDE: 7,
+  ON_GROUND: 8,
+  VELOCITY: 9,
+  TRUE_TRACK: 10,
+  VERTICAL_RATE: 11,
+  GEO_ALTITUDE: 13,
+  SQUAWK: 14,
+  SPI: 15,
+  POSITION_SOURCE: 16,
+  CATEGORY: 17,
+};
+
+function applyStateToRecord(record: DbAircraftRow | undefined, state: any[]): DbAircraftRow {
+  const updated: DbAircraftRow = { ...(record || {}) };
+
+  updated.icao24 = state[STATE_INDEX.ICAO24];
+  updated.callsign = state[STATE_INDEX.CALLSIGN] || updated.callsign || null;
+  updated.time_position = state[STATE_INDEX.TIME_POSITION] ?? updated.time_position ?? null;
+  updated.last_contact = state[STATE_INDEX.LAST_CONTACT] ?? updated.last_contact ?? null;
+  updated.longitude = state[STATE_INDEX.LONGITUDE] ?? updated.longitude ?? null;
+  updated.latitude = state[STATE_INDEX.LATITUDE] ?? updated.latitude ?? null;
+  updated.baro_altitude = state[STATE_INDEX.BARO_ALTITUDE] ?? updated.baro_altitude ?? null;
+  updated.on_ground = state[STATE_INDEX.ON_GROUND] ?? updated.on_ground ?? false;
+  updated.velocity = state[STATE_INDEX.VELOCITY] ?? updated.velocity ?? null;
+  updated.true_track = state[STATE_INDEX.TRUE_TRACK] ?? updated.true_track ?? null;
+  updated.vertical_rate = state[STATE_INDEX.VERTICAL_RATE] ?? updated.vertical_rate ?? null;
+  updated.geo_altitude = state[STATE_INDEX.GEO_ALTITUDE] ?? updated.geo_altitude ?? null;
+  updated.squawk = state[STATE_INDEX.SQUAWK] ?? updated.squawk ?? null;
+  updated.spi = state[STATE_INDEX.SPI] ?? updated.spi ?? false;
+  updated.position_source = state[STATE_INDEX.POSITION_SOURCE] ?? updated.position_source ?? null;
+  updated.category = state[STATE_INDEX.CATEGORY] ?? updated.category ?? null;
+  updated.data_source = 'airplanes.live';
+  updated.source_priority = updated.source_priority ?? 20;
+
+  return updated;
+}
+
+function mergeLiveSamplesWithDb(
+  dbRows: DbAircraftRow[],
+  liveStates: any[],
+): DbAircraftRow[] {
+  if (!liveStates.length) {
+    return dbRows;
+  }
+
+  const merged = new Map<string, DbAircraftRow>();
+  dbRows.forEach((row) => {
+    if (row.icao24) {
+      merged.set(row.icao24, { ...row });
+    }
+  });
+
+  liveStates.forEach((state) => {
+    const icao24 = state[STATE_INDEX.ICAO24];
+    if (!icao24) {
+      return;
+    }
+    const existing = merged.get(icao24);
+    merged.set(icao24, applyStateToRecord(existing, state));
+  });
+
+  return Array.from(merged.values());
+}
 
 const normalizeStatus = (status?: string | null): string | null => {
   if (!status || typeof status !== 'string') {
@@ -162,23 +236,34 @@ router.get(
         radiusNm: clampedRadius,
       });
 
+      let preparedStates: any[] = [];
+
       if (result.ac && result.ac.length > 0) {
-        const statePromises = result.ac
+        preparedStates = result.ac
           .filter((aircraft) => aircraft.lat && aircraft.lon)
-          .map((aircraft) => {
-            const preparedState = airplanesLiveService.prepareStateForDatabase(aircraft);
+          .map((aircraft) => airplanesLiveService.prepareStateForDatabase(aircraft));
 
-            return postgresRepository
-              .upsertAircraftStateWithPriority(preparedState, null, new Date(), 'airplanes.live', 20, true)
-              .catch((err: Error) => {
+        if (queueService.isEnabled()) {
+          await queueService.enqueueAircraftStates(
+            preparedStates.map((state) => ({
+              state,
+              source: 'airplanes.live',
+              sourcePriority: 20,
+              ingestionTimestamp: new Date().toISOString(),
+            })),
+          );
+        } else {
+          await Promise.all(
+            preparedStates.map((state) => postgresRepository
+              .upsertAircraftStateWithPriority(state, null, new Date(), 'airplanes.live', 20, true)
+              .catch((error: Error) => {
                 logger.debug('Failed to store aircraft from airplanes.live', {
-                  icao24: aircraft.hex,
-                  error: err.message,
+                  icao24: state[0],
+                  error: error.message,
                 });
-              });
-          });
-
-        await Promise.all(statePromises);
+              })),
+          );
+        }
       }
 
       const {
@@ -194,10 +279,12 @@ router.get(
         recentThreshold,
       );
 
+      const mergedAircraft = mergeLiveSamplesWithDb(aircraftStates, preparedStates);
+
       return res.json({
         success: true,
-        aircraft: aircraftStates,
-        total: aircraftStates.length,
+        aircraft: mergedAircraft,
+        total: mergedAircraft.length,
         timestamp: nowSeconds,
         source: 'airplanes.live',
       });
