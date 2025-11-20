@@ -73,6 +73,14 @@ export interface QueueConfig {
   spawnWorkerInProcess: boolean;
 }
 
+export interface LiveStateConfig {
+  enabled: boolean;
+  ttlSeconds: number;
+  cleanupIntervalSeconds: number;
+  maxEntries: number;
+  minResultsBeforeDbFallback: number;
+}
+
 export interface FeatureFlagsConfig {
   backgroundJobsEnabled: boolean;
   conusPollingEnabled: boolean;
@@ -88,4 +96,5 @@ export interface AppConfig {
   aircraft: AircraftConfig;
   features: FeatureFlagsConfig;
   queue: QueueConfig;
+  liveState: LiveStateConfig;
 }

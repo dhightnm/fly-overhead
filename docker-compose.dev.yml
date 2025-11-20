@@ -36,6 +36,8 @@ services:
       # Force rebuild on code changes
       args:
         - BUILD_DATE=${BUILD_DATE:-$(date -u +'%Y-%m-%dT%H:%M:%SZ')}
+        - REACT_APP_API_URL=${REACT_APP_API_URL:-http://localhost:3005}
+        - REACT_APP_GOOGLE_CLIENT_ID=${REACT_APP_GOOGLE_CLIENT_ID:-}
     container_name: fly-overhead-server
     working_dir: /app/server
     command: npm run dev

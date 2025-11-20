@@ -103,17 +103,23 @@ class RouteRepository {
       FROM flight_routes_cache
       WHERE cache_key = $1
         AND (
-          -- Complete routes: 24h cache
-          (arrival_icao IS NOT NULL OR arrival_iata IS NOT NULL)
-          AND created_at > NOW() - INTERVAL '24 hours'
+          -- Complete routes: 3h cache max
+          (
+            (arrival_icao IS NOT NULL OR arrival_iata IS NOT NULL)
+            AND created_at > NOW() - INTERVAL '3 hours'
+          )
           OR
           -- Incomplete inferred routes: 30min cache
-          (arrival_icao IS NULL AND arrival_iata IS NULL AND source = 'inference')
-          AND created_at > NOW() - INTERVAL '30 minutes'
+          (
+            arrival_icao IS NULL AND arrival_iata IS NULL AND source = 'inference'
+            AND created_at > NOW() - INTERVAL '30 minutes'
+          )
           OR
-          -- Incomplete non-inference routes: 2h cache (APIs might have data later)
-          (arrival_icao IS NULL AND arrival_iata IS NULL AND source != 'inference')
-          AND created_at > NOW() - INTERVAL '2 hours'
+          -- Incomplete non-inference routes: 90min cache
+          (
+            arrival_icao IS NULL AND arrival_iata IS NULL AND (source IS NULL OR source != 'inference')
+            AND created_at > NOW() - INTERVAL '90 minutes'
+          )
         )
       ORDER BY created_at DESC
       LIMIT 1
@@ -138,6 +144,7 @@ class RouteRepository {
       aircraft: result.aircraft_type ? {
         type: result.aircraft_type,
       } : undefined,
+      cachedAt: result.created_at,
     };
   }
 

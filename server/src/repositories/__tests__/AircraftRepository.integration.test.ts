@@ -2,6 +2,9 @@ import { getConnection } from '../DatabaseConnection';
 import AircraftRepository from '../AircraftRepository';
 import SchemaRepository from '../SchemaRepository';
 
+const shouldRunDbTests = process.env.RUN_DB_TESTS === 'true';
+const describeDb = shouldRunDbTests ? describe : describe.skip;
+
 type AircraftStateArray = any[];
 
 // Mock logger
@@ -12,7 +15,7 @@ jest.mock('../../utils/logger', () => ({
   debug: jest.fn(),
 }));
 
-describe('AircraftRepository - Integration Tests', () => {
+describeDb('AircraftRepository - Integration Tests', () => {
   let aircraftRepo: AircraftRepository;
   let schemaRepo: SchemaRepository;
   let db: any;

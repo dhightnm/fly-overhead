@@ -62,6 +62,7 @@ interface Route {
   callsign?: string | null;
   icao24?: string | null;
   incompleteRoute?: boolean;
+  cachedAt?: Date;
 }
 
 interface LandedFlightCache {
@@ -153,6 +154,19 @@ export interface FlightRouteServiceOptions {
 type FlightAwareConfig = {
   baseUrl?: string | null;
   apiKey?: string | null;
+};
+
+const ROUTE_CACHE_MAX_AGE_HOURS = Number.parseInt(process.env.ROUTE_CACHE_MAX_AGE_HOURS || '3', 10);
+const ROUTE_CACHE_MAX_AGE_MS = Number.isFinite(ROUTE_CACHE_MAX_AGE_HOURS)
+  ? ROUTE_CACHE_MAX_AGE_HOURS * 60 * 60 * 1000
+  : 3 * 60 * 60 * 1000;
+
+const hasArrivalData = (route?: Route | null): boolean => !!(route?.arrivalAirport?.icao || route?.arrivalAirport?.iata);
+
+const getRouteAgeMs = (route?: Route | null): number => {
+  if (!route?.cachedAt) return Number.POSITIVE_INFINITY;
+  const cachedAtDate = route.cachedAt instanceof Date ? route.cachedAt : new Date(route.cachedAt);
+  return Date.now() - cachedAtDate.getTime();
 };
 
 export class FlightRouteService {
@@ -277,23 +291,38 @@ export class FlightRouteService {
     const cacheKey = `${callsign || icao24}`;
 
     if (!allowExpensiveApis && this.cache.has(cacheKey)) {
-      logger.debug('Route cache HIT (in-memory) - skipping API call', { cacheKey, icao24, callsign });
       const cachedRoute = this.cache.get(cacheKey)!;
-      if (cachedRoute.aircraft?.type) {
-        const aircraftInfo = mapAircraftType(cachedRoute.aircraft.type, cachedRoute.aircraft.model);
-        cachedRoute.aircraft = {
-          ...cachedRoute.aircraft,
-          model: aircraftInfo.model,
-          type: aircraftInfo.type,
-          category: aircraftInfo.category,
-        };
+      const ageMs = getRouteAgeMs(cachedRoute);
+      if (ageMs <= ROUTE_CACHE_MAX_AGE_MS && hasArrivalData(cachedRoute)) {
+        logger.debug('Route cache HIT (in-memory) - skipping API call', {
+          cacheKey,
+          icao24,
+          callsign,
+          ageMs,
+        });
+        if (cachedRoute.aircraft?.type) {
+          const aircraftInfo = mapAircraftType(cachedRoute.aircraft.type, cachedRoute.aircraft.model);
+          cachedRoute.aircraft = {
+            ...cachedRoute.aircraft,
+            model: aircraftInfo.model,
+            type: aircraftInfo.type,
+            category: aircraftInfo.category,
+          };
+        }
+        return cachedRoute;
       }
-      return cachedRoute;
+      logger.debug('In-memory route cache entry stale or incomplete. Evicting.', {
+        cacheKey,
+        hasArrival: hasArrivalData(cachedRoute),
+        ageMs,
+      });
+      this.cache.delete(cacheKey);
     }
 
     if (!allowExpensiveApis) {
       const cachedRoute = await postgresRepository.getCachedRoute(cacheKey);
       if (cachedRoute) {
+        const ageMs = getRouteAgeMs(cachedRoute);
         if (cachedRoute.aircraft?.type) {
           const aircraftInfo = mapAircraftType(cachedRoute.aircraft.type, cachedRoute.aircraft.model);
           cachedRoute.aircraft = {
@@ -311,9 +340,14 @@ export class FlightRouteService {
           source: cachedRoute.source || 'unknown',
           hasAircraft: !!cachedRoute.aircraft,
           allowExpensiveApis,
+          ageMs,
         });
-        this.cache.set(cacheKey, cachedRoute as Route);
-        return cachedRoute as Route;
+        const cachedRouteWithTimestamp: Route = {
+          ...cachedRoute,
+          cachedAt: cachedRoute.cachedAt || new Date(),
+        };
+        this.cache.set(cacheKey, cachedRouteWithTimestamp);
+        return cachedRouteWithTimestamp;
       }
     } else {
       logger.debug('Skipping database cache for user-initiated request (allowExpensiveApis=true)', {
@@ -403,6 +437,14 @@ export class FlightRouteService {
           }
 
           aerodataboxRoute = mappedRoute;
+
+          if (hasArrivalData(mappedRoute)) {
+            logger.info('Returning route from Aerodatabox (preferred source)', {
+              icao24,
+              callsign: mappedRoute.callsign || aerodataboxCallsign,
+            });
+            return mappedRoute;
+          }
 
           if (!resolvedCallsign && aerodataboxCallsign) {
             resolvedCallsign = aerodataboxCallsign;
@@ -1042,7 +1084,11 @@ export class FlightRouteService {
     });
     try {
       await postgresRepository.cacheRoute(cacheKey, routeData);
-      this.cache.set(cacheKey, routeData);
+      const cachedRoute: Route = {
+        ...routeData,
+        cachedAt: new Date(),
+      };
+      this.cache.set(cacheKey, cachedRoute);
       logger.debug('FlightRouteService.cacheRoute completed', { cacheKey, source: routeData.source });
     } catch (error) {
       const err = error as Error;

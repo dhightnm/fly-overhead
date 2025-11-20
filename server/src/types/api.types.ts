@@ -69,6 +69,7 @@ export interface RouteData {
   cancelled?: boolean;
   departureDelay?: number;
   arrivalDelay?: number;
+  cachedAt?: Date;
 }
 
 export interface AuthRequest {

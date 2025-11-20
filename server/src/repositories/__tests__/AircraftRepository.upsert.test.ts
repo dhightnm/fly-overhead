@@ -4,6 +4,9 @@ import SchemaRepository from '../SchemaRepository';
 
 type AircraftStateArray = any[];
 
+const shouldRunDbTests = process.env.RUN_DB_TESTS === 'true';
+const describeDb = shouldRunDbTests ? describe : describe.skip;
+
 /**
  * Integration tests for AircraftRepository upsert priority logic
  *
@@ -20,7 +23,7 @@ jest.mock('../../utils/logger', () => ({
   debug: jest.fn(),
 }));
 
-describe('AircraftRepository - Upsert Priority Logic (Integration)', () => {
+describeDb('AircraftRepository - Upsert Priority Logic (Integration)', () => {
   let repository: AircraftRepository;
   let db: any;
   let schemaRepo: SchemaRepository;

@@ -71,11 +71,20 @@ const spawnWorkerInProcess = resolveBooleanFlag(
   process.env.DISABLE_EMBEDDED_QUEUE_WORKER,
   true,
 );
+const liveStateEnabled = resolveBooleanFlag(
+  process.env.ENABLE_LIVE_STATE_CACHE,
+  process.env.DISABLE_LIVE_STATE_CACHE,
+  true,
+);
 
 const redisUrl = process.env.REDIS_URL || 'redis://127.0.0.1:6379';
 const queueKey = process.env.QUEUE_KEY || 'flyoverhead:aircraft_ingest';
 const queueBatchSize = Math.max(10, parseNumber(process.env.QUEUE_BATCH_SIZE, 200));
 const queuePollIntervalMs = Math.max(250, parseNumber(process.env.QUEUE_POLL_INTERVAL_MS, 1000));
+const liveStateTtlSeconds = Math.max(60, parseNumber(process.env.LIVE_STATE_TTL_SECONDS, 300));
+const liveStateCleanupSeconds = Math.max(15, parseNumber(process.env.LIVE_STATE_CLEANUP_INTERVAL_SECONDS, 60));
+const liveStateMaxEntries = Math.max(1000, parseNumber(process.env.LIVE_STATE_MAX_ENTRIES, 50000));
+const liveStateMinResults = Math.max(0, parseNumber(process.env.LIVE_STATE_MIN_RESULTS_BEFORE_DB, 25));
 
 /**
  * Centralized configuration management
@@ -165,6 +174,13 @@ const config: AppConfig = {
     batchSize: queueBatchSize,
     pollIntervalMs: queuePollIntervalMs,
     spawnWorkerInProcess,
+  },
+  liveState: {
+    enabled: liveStateEnabled,
+    ttlSeconds: liveStateTtlSeconds,
+    cleanupIntervalSeconds: liveStateCleanupSeconds,
+    maxEntries: liveStateMaxEntries,
+    minResultsBeforeDbFallback: liveStateMinResults,
   },
 };
 

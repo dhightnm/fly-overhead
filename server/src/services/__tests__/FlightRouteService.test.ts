@@ -137,7 +137,7 @@ describe('FlightRouteService - Aerodatabox integration', () => {
       source: 'aerodatabox',
       callsign: 'AAL1958',
     }));
-    expect(inferSpy).toHaveBeenCalledWith('A9034C');
+    expect(inferSpy).not.toHaveBeenCalled();
 
     inferSpy.mockRestore();
   });
