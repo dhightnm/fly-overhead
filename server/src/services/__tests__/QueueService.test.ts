@@ -1,21 +1,27 @@
 import type { AircraftQueueMessage } from '../QueueService';
 
-import queueService from '../QueueService';
-
 // Create a shared mock instance that we can access in tests
-const mockRedisInstance = {
-  lpush: jest.fn().mockResolvedValue(1),
-  rpop: jest.fn().mockResolvedValue(null),
-  brpop: jest.fn().mockResolvedValue(null),
-  rpush: jest.fn().mockResolvedValue(1),
-  llen: jest.fn().mockResolvedValue(0),
-  connect: jest.fn().mockResolvedValue(undefined),
-  on: jest.fn(),
-  disconnect: jest.fn(),
-};
+// Define it as a variable that can be accessed after module load
+let mockRedisInstance: any;
 
 // Mock dependencies BEFORE importing the service
-jest.mock('ioredis', () => jest.fn(() => mockRedisInstance));
+jest.mock('ioredis', () => {
+  // Create the mock instance inside the factory to avoid hoisting issues
+  mockRedisInstance = {
+    lpush: jest.fn().mockResolvedValue(1),
+    rpop: jest.fn().mockResolvedValue(null),
+    brpop: jest.fn().mockResolvedValue(null),
+    rpush: jest.fn().mockResolvedValue(1),
+    llen: jest.fn().mockResolvedValue(0),
+    connect: jest.fn().mockResolvedValue(undefined),
+    on: jest.fn(),
+    disconnect: jest.fn(),
+  };
+  // Return the factory function that creates the mock instance
+  return jest.fn(() => mockRedisInstance);
+});
+
+import queueService from '../QueueService';
 
 jest.mock('../../utils/logger', () => ({
   info: jest.fn(),
