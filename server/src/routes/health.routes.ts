@@ -192,17 +192,15 @@ router.get('/db-pool-status', async (_req: Request, res: Response) => {
         AND pid != pg_backend_pid()
     `,
       )
-      .catch(() => {
+      .catch(() => ({
         // Fallback if query fails (e.g., insufficient permissions)
-        return {
-          total_connections: null,
-          active: null,
-          idle: null,
-          idle_in_transaction: null,
-          waiting_for_lock: null,
-          long_running_queries: null,
-        };
-      });
+        total_connections: null,
+        active: null,
+        idle: null,
+        idle_in_transaction: null,
+        waiting_for_lock: null,
+        long_running_queries: null,
+      }));
 
     res.status(200).json({
       pool: {
