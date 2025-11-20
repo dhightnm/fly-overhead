@@ -921,7 +921,9 @@ describe('Feeder Registration Endpoint', () => {
                 );
                 return { icao24, success: true };
               } catch (error) {
-                throw { icao24, error: (error as Error).message };
+                const err = new Error((error as Error).message);
+                (err as any).icao24 = icao24;
+                throw err;
               }
             }),
           );
@@ -1014,15 +1016,15 @@ describe('Feeder Registration Endpoint', () => {
 
       // Test validation before batch processing
       const errors: Array<{ icao24: string; error: string }> = [];
-      const validStates: Array<{ state: any[]; feeder_id: string | null; icao24: string }> = [];
+      const ingestionTimestamp = new Date();
 
-      for (const { state } of states) {
+      states.forEach(({ state }) => {
         if (!Array.isArray(state) || state.length !== 19) {
           errors.push({
             icao24: (state?.[0] as string) || 'unknown',
             error: 'Invalid state array length (expected 19 items)',
           });
-          continue;
+          return;
         }
         const icao24 = state[0] as string;
         if (!icao24 || typeof icao24 !== 'string' || icao24.length !== 6) {
@@ -1030,18 +1032,34 @@ describe('Feeder Registration Endpoint', () => {
             icao24: icao24 || 'unknown',
             error: 'Invalid icao24 (must be 6-character hex string)',
           });
-          continue;
+          return;
         }
-        validStates.push({ state, feeder_id, icao24 });
-      }
+      });
+
+      const validStates = states
+        .filter(({ state }) => Array.isArray(state) && state.length === 19)
+        .filter(({ state }) => {
+          const icao24 = state[0] as string;
+          return icao24 && typeof icao24 === 'string' && icao24.length === 6;
+        })
+        .map(({ state }) => ({
+          state,
+          feeder_id,
+          icao24: state[0] as string,
+        }));
 
       // Process valid states
-      const ingestionTimestamp = new Date();
-      for (const { state, feeder_id: finalFeederId } of validStates) {
-        await mockPostgresRepository.upsertAircraftStateWithPriority(
-          state, finalFeederId, ingestionTimestamp, 'feeder', 10,
-        );
-      }
+      await Promise.all(
+        validStates.map(async ({ state, feeder_id: finalFeederId }) => {
+          await mockPostgresRepository.upsertAircraftStateWithPriority(
+            state,
+            finalFeederId,
+            ingestionTimestamp,
+            'feeder',
+            10,
+          );
+        }),
+      );
 
       // Should only process 1 valid state
       expect(mockPostgresRepository.upsertAircraftStateWithPriority).toHaveBeenCalledTimes(1);
