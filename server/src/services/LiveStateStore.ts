@@ -84,7 +84,7 @@ class LiveStateStore {
         continue;
       }
 
-      const state = entry.state;
+      const { state } = entry;
       const latitude = state[STATE_INDEX.LATITUDE];
       const longitude = state[STATE_INDEX.LONGITUDE];
       const lastContact = state[STATE_INDEX.LAST_CONTACT];
@@ -176,4 +176,3 @@ class LiveStateStore {
 const liveStateStore = new LiveStateStore();
 
 export default liveStateStore;
-

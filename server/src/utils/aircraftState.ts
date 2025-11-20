@@ -72,4 +72,3 @@ export function getLastContact(state: AircraftStateArray): number | null {
   const value = state[STATE_INDEX.LAST_CONTACT];
   return typeof value === 'number' ? value : null;
 }
-

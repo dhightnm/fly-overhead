@@ -100,4 +100,3 @@ describe('LiveStateStore', () => {
     expect(ids).toEqual(expect.arrayContaining(['second', 'third']));
   });
 });
-

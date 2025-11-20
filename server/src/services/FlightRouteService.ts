@@ -161,7 +161,9 @@ const ROUTE_CACHE_MAX_AGE_MS = Number.isFinite(ROUTE_CACHE_MAX_AGE_HOURS)
   ? ROUTE_CACHE_MAX_AGE_HOURS * 60 * 60 * 1000
   : 3 * 60 * 60 * 1000;
 
-const hasArrivalData = (route?: Route | null): boolean => !!(route?.arrivalAirport?.icao || route?.arrivalAirport?.iata);
+const hasArrivalData = (route?: Route | null): boolean => !!(
+  route?.arrivalAirport?.icao || route?.arrivalAirport?.iata
+);
 
 const getRouteAgeMs = (route?: Route | null): number => {
   if (!route?.cachedAt) return Number.POSITIVE_INFINITY;

@@ -64,7 +64,7 @@ describe('QueueService', () => {
       const onCalls = mockRedisInstance.on.mock.calls;
       const hasConnectHandler = onCalls.some((call: any[]) => call[0] === 'connect');
       const hasErrorHandler = onCalls.some((call: any[]) => call[0] === 'error');
-      
+
       // If not called yet, the service may not have initialized
       // In that case, verify the mock is set up correctly
       if (onCalls.length === 0) {

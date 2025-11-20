@@ -2,9 +2,9 @@ import Redis from 'ioredis';
 import postgresRepository from '../../repositories/PostgresRepository';
 import liveStateStore from '../../services/LiveStateStore';
 import type { AircraftQueueMessage } from '../../services/QueueService';
-import { 
-  initializeWorker, 
-  processQueueIteration
+import {
+  initializeWorker,
+  processQueueIteration,
 } from '../aircraftIngestionWorker';
 
 // Mock dependencies
