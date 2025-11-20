@@ -188,9 +188,9 @@ class DatabaseConnection {
     // - .lightsail.aws
     // - ls- prefix (Lightsail)
     return (
-      connectionString.includes('.rds.amazonaws.com') ||
-      connectionString.includes('.lightsail.aws') ||
-      connectionString.includes('ls-')
+      connectionString.includes('.rds.amazonaws.com')
+      || connectionString.includes('.lightsail.aws')
+      || connectionString.includes('ls-')
     );
   }
 

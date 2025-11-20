@@ -71,7 +71,7 @@ describe('Portal Routes', () => {
       // Test the handler logic directly
       const handler = async (req: AuthenticatedRequest, res: Response, next: jest.Mock) => {
         try {
-          const userId = req.user!.userId;
+          const { userId } = (req.user!);
 
           const feeders = await postgresRepository
             .getDb()
@@ -87,7 +87,7 @@ describe('Portal Routes', () => {
               FROM feeders 
               WHERE metadata->>'user_id' = $1
               ORDER BY created_at DESC`,
-              [userId.toString()]
+              [userId.toString()],
             );
 
           res.json({
@@ -110,7 +110,7 @@ describe('Portal Routes', () => {
 
       expect(mockDb.any).toHaveBeenCalledWith(
         expect.stringContaining('SELECT'),
-        ['123']
+        ['123'],
       );
       expect(mockResponse.json).toHaveBeenCalledWith({
         feeders: [
@@ -141,7 +141,7 @@ describe('Portal Routes', () => {
 
       const handler = async (req: AuthenticatedRequest, res: Response, next: jest.Mock) => {
         try {
-          const userId = req.user!.userId;
+          const { userId } = (req.user!);
 
           const feeders = await postgresRepository
             .getDb()
@@ -157,7 +157,7 @@ describe('Portal Routes', () => {
               FROM feeders 
               WHERE metadata->>'user_id' = $1
               ORDER BY created_at DESC`,
-              [userId.toString()]
+              [userId.toString()],
             );
 
           res.json({
@@ -189,7 +189,7 @@ describe('Portal Routes', () => {
 
       const handler = async (req: AuthenticatedRequest, res: Response, next: jest.Mock) => {
         try {
-          const userId = req.user!.userId;
+          const { userId } = (req.user!);
 
           const feeders = await postgresRepository
             .getDb()
@@ -205,7 +205,7 @@ describe('Portal Routes', () => {
               FROM feeders 
               WHERE metadata->>'user_id' = $1
               ORDER BY created_at DESC`,
-              [userId.toString()]
+              [userId.toString()],
             );
 
           res.json({
@@ -285,15 +285,15 @@ describe('Portal Routes', () => {
 
       const handler = async (req: AuthenticatedRequest, res: Response, next: jest.Mock) => {
         try {
-          const userId = req.user!.userId;
+          const { userId } = (req.user!);
           const limit = parseInt(req.query.limit as string, 10) || 100;
           const offset = parseInt(req.query.offset as string, 10) || 0;
 
           const userFeeders = await postgresRepository
             .getDb()
             .any(
-              `SELECT feeder_id FROM feeders WHERE metadata->>'user_id' = $1`,
-              [userId.toString()]
+              'SELECT feeder_id FROM feeders WHERE metadata->>\'user_id\' = $1',
+              [userId.toString()],
             );
 
           if (userFeeders.length === 0) {
@@ -365,7 +365,7 @@ describe('Portal Routes', () => {
                 AND a.last_contact >= EXTRACT(EPOCH FROM NOW() - INTERVAL '24 hours')
               ORDER BY a.last_contact DESC
               LIMIT $2 OFFSET $3`,
-              [feederIds, limit, offset]
+              [feederIds, limit, offset],
             );
 
           const totalResult = await postgresRepository
@@ -375,7 +375,7 @@ describe('Portal Routes', () => {
               FROM aircraft_states
               WHERE feeder_id = ANY($1)
                 AND last_contact >= EXTRACT(EPOCH FROM NOW() - INTERVAL '24 hours')`,
-              [feederIds]
+              [feederIds],
             );
 
           const transformedAircraft = aircraft.map((ac) => ({
@@ -470,13 +470,13 @@ describe('Portal Routes', () => {
 
       const handler = async (req: AuthenticatedRequest, res: Response, next: jest.Mock) => {
         try {
-          const userId = req.user!.userId;
+          const { userId } = (req.user!);
 
           const userFeeders = await postgresRepository
             .getDb()
             .any(
-              `SELECT feeder_id FROM feeders WHERE metadata->>'user_id' = $1`,
-              [userId.toString()]
+              'SELECT feeder_id FROM feeders WHERE metadata->>\'user_id\' = $1',
+              [userId.toString()],
             );
 
           if (userFeeders.length === 0) {
@@ -511,15 +511,15 @@ describe('Portal Routes', () => {
 
       const handler = async (req: AuthenticatedRequest, res: Response, next: jest.Mock) => {
         try {
-          const userId = req.user!.userId;
+          const { userId } = (req.user!);
           const limit = parseInt(req.query.limit as string, 10) || 100;
           const offset = parseInt(req.query.offset as string, 10) || 0;
 
           const userFeeders = await postgresRepository
             .getDb()
             .any(
-              `SELECT feeder_id FROM feeders WHERE metadata->>'user_id' = $1`,
-              [userId.toString()]
+              'SELECT feeder_id FROM feeders WHERE metadata->>\'user_id\' = $1',
+              [userId.toString()],
             );
 
           if (userFeeders.length === 0) {
@@ -534,8 +534,8 @@ describe('Portal Routes', () => {
           await postgresRepository
             .getDb()
             .any(
-              `SELECT * FROM aircraft_states WHERE feeder_id = ANY($1) LIMIT $2 OFFSET $3`,
-              [feederIds, limit, offset]
+              'SELECT * FROM aircraft_states WHERE feeder_id = ANY($1) LIMIT $2 OFFSET $3',
+              [feederIds, limit, offset],
             );
         } catch (error) {
           return next(error);
@@ -546,7 +546,7 @@ describe('Portal Routes', () => {
 
       expect(mockDb.any).toHaveBeenCalledWith(
         expect.stringContaining('LIMIT'),
-        [['feeder_123'], 50, 10]
+        [['feeder_123'], 50, 10],
       );
     });
 
@@ -563,15 +563,15 @@ describe('Portal Routes', () => {
 
       const handler = async (req: AuthenticatedRequest, res: Response, next: jest.Mock) => {
         try {
-          const userId = req.user!.userId;
+          const { userId } = (req.user!);
           const limit = parseInt(req.query.limit as string, 10) || 100;
           const offset = parseInt(req.query.offset as string, 10) || 0;
 
           const userFeeders = await postgresRepository
             .getDb()
             .any(
-              `SELECT feeder_id FROM feeders WHERE metadata->>'user_id' = $1`,
-              [userId.toString()]
+              'SELECT feeder_id FROM feeders WHERE metadata->>\'user_id\' = $1',
+              [userId.toString()],
             );
 
           if (userFeeders.length === 0) {
@@ -586,8 +586,8 @@ describe('Portal Routes', () => {
           await postgresRepository
             .getDb()
             .any(
-              `SELECT * FROM aircraft_states WHERE feeder_id = ANY($1) LIMIT $2 OFFSET $3`,
-              [feederIds, limit, offset]
+              'SELECT * FROM aircraft_states WHERE feeder_id = ANY($1) LIMIT $2 OFFSET $3',
+              [feederIds, limit, offset],
             );
         } catch (error) {
           return next(error);
@@ -598,7 +598,7 @@ describe('Portal Routes', () => {
 
       expect(mockDb.any).toHaveBeenCalledWith(
         expect.stringContaining('LIMIT'),
-        [['feeder_123'], 100, 0] // Default values
+        [['feeder_123'], 100, 0], // Default values
       );
     });
 
@@ -641,15 +641,15 @@ describe('Portal Routes', () => {
 
       const handler = async (req: AuthenticatedRequest, res: Response, next: jest.Mock) => {
         try {
-          const userId = req.user!.userId;
+          const { userId } = (req.user!);
           const limit = parseInt(req.query.limit as string, 10) || 100;
           const offset = parseInt(req.query.offset as string, 10) || 0;
 
           const userFeeders = await postgresRepository
             .getDb()
             .any(
-              `SELECT feeder_id FROM feeders WHERE metadata->>'user_id' = $1`,
-              [userId.toString()]
+              'SELECT feeder_id FROM feeders WHERE metadata->>\'user_id\' = $1',
+              [userId.toString()],
             );
 
           if (userFeeders.length === 0) {
@@ -664,15 +664,15 @@ describe('Portal Routes', () => {
           const aircraft = await postgresRepository
             .getDb()
             .any(
-              `SELECT * FROM aircraft_states WHERE feeder_id = ANY($1) LIMIT $2 OFFSET $3`,
-              [feederIds, limit, offset]
+              'SELECT * FROM aircraft_states WHERE feeder_id = ANY($1) LIMIT $2 OFFSET $3',
+              [feederIds, limit, offset],
             );
 
           const totalResult = await postgresRepository
             .getDb()
             .one(
-              `SELECT COUNT(*) as total FROM aircraft_states WHERE feeder_id = ANY($1)`,
-              [feederIds]
+              'SELECT COUNT(*) as total FROM aircraft_states WHERE feeder_id = ANY($1)',
+              [feederIds],
             );
 
           const transformedAircraft = aircraft.map((ac: any) => ({
@@ -714,13 +714,13 @@ describe('Portal Routes', () => {
 
       const handler = async (req: AuthenticatedRequest, _res: Response, next: jest.Mock) => {
         try {
-          const userId = req.user!.userId;
+          const { userId } = (req.user!);
 
           await postgresRepository
             .getDb()
             .any(
-              `SELECT feeder_id FROM feeders WHERE metadata->>'user_id' = $1`,
-              [userId.toString()]
+              'SELECT feeder_id FROM feeders WHERE metadata->>\'user_id\' = $1',
+              [userId.toString()],
             );
         } catch (error) {
           return next(error);
@@ -751,7 +751,7 @@ describe('Portal Routes', () => {
 
       const handler = async (req: AuthenticatedRequest, res: Response, next: jest.Mock) => {
         try {
-          const userId = req.user!.userId;
+          const { userId } = (req.user!);
 
           const feederCount = await postgresRepository
             .getDb()
@@ -759,14 +759,14 @@ describe('Portal Routes', () => {
               `SELECT COUNT(*) as count
               FROM feeders 
               WHERE metadata->>'user_id' = $1 AND status = 'active'`,
-              [userId.toString()]
+              [userId.toString()],
             );
 
           const userFeeders = await postgresRepository
             .getDb()
             .any(
-              `SELECT feeder_id FROM feeders WHERE metadata->>'user_id' = $1`,
-              [userId.toString()]
+              'SELECT feeder_id FROM feeders WHERE metadata->>\'user_id\' = $1',
+              [userId.toString()],
             );
 
           let aircraftCount = 0;
@@ -779,7 +779,7 @@ describe('Portal Routes', () => {
                 FROM aircraft_states
                 WHERE feeder_id = ANY($1)
                   AND last_contact >= EXTRACT(EPOCH FROM NOW() - INTERVAL '24 hours')`,
-                [feederIds]
+                [feederIds],
               );
             aircraftCount = parseInt(aircraftResult.count, 10);
           }
@@ -790,7 +790,7 @@ describe('Portal Routes', () => {
               `SELECT COUNT(*) as count
               FROM api_keys
               WHERE user_id = $1 AND status = 'active'`,
-              [userId]
+              [userId],
             );
 
           res.json({
@@ -829,7 +829,7 @@ describe('Portal Routes', () => {
 
       const handler = async (req: AuthenticatedRequest, res: Response, next: jest.Mock) => {
         try {
-          const userId = req.user!.userId;
+          const { userId } = (req.user!);
 
           const feederCount = await postgresRepository
             .getDb()
@@ -837,14 +837,14 @@ describe('Portal Routes', () => {
               `SELECT COUNT(*) as count
               FROM feeders 
               WHERE metadata->>'user_id' = $1 AND status = 'active'`,
-              [userId.toString()]
+              [userId.toString()],
             );
 
           const userFeeders = await postgresRepository
             .getDb()
             .any(
-              `SELECT feeder_id FROM feeders WHERE metadata->>'user_id' = $1`,
-              [userId.toString()]
+              'SELECT feeder_id FROM feeders WHERE metadata->>\'user_id\' = $1',
+              [userId.toString()],
             );
 
           let aircraftCount = 0;
@@ -857,7 +857,7 @@ describe('Portal Routes', () => {
                 FROM aircraft_states
                 WHERE feeder_id = ANY($1)
                   AND last_contact >= EXTRACT(EPOCH FROM NOW() - INTERVAL '24 hours')`,
-                [feederIds]
+                [feederIds],
               );
             aircraftCount = parseInt(aircraftResult.count, 10);
           }
@@ -868,7 +868,7 @@ describe('Portal Routes', () => {
               `SELECT COUNT(*) as count
               FROM api_keys
               WHERE user_id = $1 AND status = 'active'`,
-              [userId]
+              [userId],
             );
 
           res.json({
@@ -902,7 +902,7 @@ describe('Portal Routes', () => {
 
       const handler = async (req: AuthenticatedRequest, _res: Response, next: jest.Mock) => {
         try {
-          const userId = req.user!.userId;
+          const { userId } = (req.user!);
 
           await postgresRepository
             .getDb()
@@ -910,7 +910,7 @@ describe('Portal Routes', () => {
               `SELECT COUNT(*) as count
               FROM feeders 
               WHERE metadata->>'user_id' = $1 AND status = 'active'`,
-              [userId.toString()]
+              [userId.toString()],
             );
         } catch (error) {
           return next(error);

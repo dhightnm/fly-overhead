@@ -30,4 +30,3 @@ async function runMigration(): Promise<void> {
 
 // Run migration
 runMigration();
-

@@ -1,5 +1,7 @@
 import type { AircraftQueueMessage } from '../QueueService';
 
+import queueService from '../QueueService';
+
 // Create a shared mock instance that we can access in tests
 const mockRedisInstance = {
   lpush: jest.fn().mockResolvedValue(1),
@@ -35,8 +37,6 @@ jest.mock('../../config', () => ({
     },
   },
 }));
-
-import queueService from '../QueueService';
 
 describe('QueueService', () => {
   beforeEach(() => {

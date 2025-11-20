@@ -4,6 +4,11 @@ import {
   beforeEach, describe, expect, it, jest,
 } from '@jest/globals';
 
+// Import after mocks are set up
+import { FlightRouteService, shouldFilterAsLanded } from '../FlightRouteService';
+import aerodataboxService from '../AerodataboxService';
+import postgresRepository from '../../repositories/PostgresRepository';
+
 // Mock dependencies - define functions inside factory to avoid hoisting issues
 jest.mock('../AerodataboxService', () => ({
   __esModule: true,
@@ -21,11 +26,6 @@ jest.mock('../../repositories/PostgresRepository', () => ({
     getDb: jest.fn(() => ({ oneOrNone: jest.fn() })),
   },
 }));
-
-// Import after mocks are set up
-import { FlightRouteService, shouldFilterAsLanded } from '../FlightRouteService';
-import aerodataboxService from '../AerodataboxService';
-import postgresRepository from '../../repositories/PostgresRepository';
 
 // Type-safe mock accessors
 const aerodataboxMock = aerodataboxService as jest.Mocked<typeof aerodataboxService>;

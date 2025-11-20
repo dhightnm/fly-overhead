@@ -121,11 +121,21 @@ describe('aircraftIngestionWorker', () => {
 
     it('should process a full batch of messages', async () => {
       const messages = [
-        { state: ['1'], source: 'test', sourcePriority: 1, ingestionTimestamp: new Date().toISOString() },
-        { state: ['2'], source: 'test', sourcePriority: 1, ingestionTimestamp: new Date().toISOString() },
-        { state: ['3'], source: 'test', sourcePriority: 1, ingestionTimestamp: new Date().toISOString() },
-        { state: ['4'], source: 'test', sourcePriority: 1, ingestionTimestamp: new Date().toISOString() },
-        { state: ['5'], source: 'test', sourcePriority: 1, ingestionTimestamp: new Date().toISOString() },
+        {
+          state: ['1'], source: 'test', sourcePriority: 1, ingestionTimestamp: new Date().toISOString(),
+        },
+        {
+          state: ['2'], source: 'test', sourcePriority: 1, ingestionTimestamp: new Date().toISOString(),
+        },
+        {
+          state: ['3'], source: 'test', sourcePriority: 1, ingestionTimestamp: new Date().toISOString(),
+        },
+        {
+          state: ['4'], source: 'test', sourcePriority: 1, ingestionTimestamp: new Date().toISOString(),
+        },
+        {
+          state: ['5'], source: 'test', sourcePriority: 1, ingestionTimestamp: new Date().toISOString(),
+        },
       ];
 
       // Mock brpop to return messages

@@ -3,6 +3,9 @@ import aircraftService from '../AircraftService';
 import postgresRepository from '../../repositories/PostgresRepository';
 import rateLimitManager from '../RateLimitManager';
 
+// Import the mocked module to get type-safe access to mocks
+import openSkyService from '../OpenSkyService';
+
 jest.mock('../../config', () => {
   const mockConfig = {
     database: {
@@ -73,9 +76,6 @@ jest.mock('../../routes/aircraft.routes', () => ({
     flushAll: jest.fn(),
   },
 }));
-
-// Import the mocked module to get type-safe access to mocks
-import openSkyService from '../OpenSkyService';
 const mockOpenSkyService = openSkyService as jest.Mocked<typeof openSkyService>;
 const mockPostgresRepository = postgresRepository as jest.Mocked<typeof postgresRepository>;
 const mockRateLimitManager = rateLimitManager as jest.Mocked<typeof rateLimitManager>;

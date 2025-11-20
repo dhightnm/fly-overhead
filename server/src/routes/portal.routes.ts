@@ -16,7 +16,7 @@ const DEFAULT_OFFSET = 0;
  */
 router.get('/feeders', authenticateToken, async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
   try {
-    const userId = req.user!.userId;
+    const { userId } = (req.user!);
 
     // Validate userId is a number
     if (!userId || typeof userId !== 'number' || userId <= 0) {
@@ -38,7 +38,7 @@ router.get('/feeders', authenticateToken, async (req: AuthenticatedRequest, res:
         FROM feeders 
         WHERE metadata->>'user_id' = $1
         ORDER BY created_at DESC`,
-        [userId.toString()]
+        [userId.toString()],
       );
 
     res.json({
@@ -54,7 +54,7 @@ router.get('/feeders', authenticateToken, async (req: AuthenticatedRequest, res:
     });
   } catch (error) {
     const err = error as Error;
-    logger.error('Error fetching user feeders', { 
+    logger.error('Error fetching user feeders', {
       error: err.message,
       userId: req.user?.userId,
       stack: err.stack,
@@ -69,7 +69,7 @@ router.get('/feeders', authenticateToken, async (req: AuthenticatedRequest, res:
  */
 router.get('/aircraft', authenticateToken, async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
   try {
-    const userId = req.user!.userId;
+    const { userId } = (req.user!);
 
     // Validate userId
     if (!userId || typeof userId !== 'number' || userId <= 0) {
@@ -95,8 +95,8 @@ router.get('/aircraft', authenticateToken, async (req: AuthenticatedRequest, res
     const userFeeders = await postgresRepository
       .getDb()
       .any(
-        `SELECT feeder_id FROM feeders WHERE metadata->>'user_id' = $1`,
-        [userId.toString()]
+        'SELECT feeder_id FROM feeders WHERE metadata->>\'user_id\' = $1',
+        [userId.toString()],
       );
 
     if (userFeeders.length === 0) {
@@ -181,7 +181,7 @@ router.get('/aircraft', authenticateToken, async (req: AuthenticatedRequest, res
           AND a.last_contact >= EXTRACT(EPOCH FROM NOW() - INTERVAL '24 hours')
         ORDER BY a.last_contact DESC
         LIMIT $2 OFFSET $3`,
-        [feederIds, limit, offset]
+        [feederIds, limit, offset],
       );
 
     // Get total count
@@ -192,7 +192,7 @@ router.get('/aircraft', authenticateToken, async (req: AuthenticatedRequest, res
         FROM aircraft_states
         WHERE feeder_id = ANY($1)
           AND last_contact >= EXTRACT(EPOCH FROM NOW() - INTERVAL '24 hours')`,
-        [feederIds]
+        [feederIds],
       );
 
     // Transform aircraft data to match frontend format
@@ -239,7 +239,7 @@ router.get('/aircraft', authenticateToken, async (req: AuthenticatedRequest, res
     });
   } catch (error) {
     const err = error as Error;
-    logger.error('Error fetching user aircraft', { 
+    logger.error('Error fetching user aircraft', {
       error: err.message,
       userId: req.user?.userId,
       query: req.query,
@@ -255,7 +255,7 @@ router.get('/aircraft', authenticateToken, async (req: AuthenticatedRequest, res
  */
 router.get('/stats', authenticateToken, async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
   try {
-    const userId = req.user!.userId;
+    const { userId } = (req.user!);
 
     // Validate userId
     if (!userId || typeof userId !== 'number' || userId <= 0) {
@@ -269,15 +269,15 @@ router.get('/stats', authenticateToken, async (req: AuthenticatedRequest, res: R
         `SELECT COUNT(*) as count
         FROM feeders 
         WHERE metadata->>'user_id' = $1 AND status = 'active'`,
-        [userId.toString()]
+        [userId.toString()],
       );
 
     // Get aircraft count from user's feeders
     const userFeeders = await postgresRepository
       .getDb()
       .any(
-        `SELECT feeder_id FROM feeders WHERE metadata->>'user_id' = $1`,
-        [userId.toString()]
+        'SELECT feeder_id FROM feeders WHERE metadata->>\'user_id\' = $1',
+        [userId.toString()],
       );
 
     let aircraftCount = 0;
@@ -290,7 +290,7 @@ router.get('/stats', authenticateToken, async (req: AuthenticatedRequest, res: R
           FROM aircraft_states
           WHERE feeder_id = ANY($1)
             AND last_contact >= EXTRACT(EPOCH FROM NOW() - INTERVAL '24 hours')`,
-          [feederIds]
+          [feederIds],
         );
       aircraftCount = parseInt(aircraftResult.count, 10);
     }
@@ -302,7 +302,7 @@ router.get('/stats', authenticateToken, async (req: AuthenticatedRequest, res: R
         `SELECT COUNT(*) as count
         FROM api_keys
         WHERE user_id = $1 AND status = 'active'`,
-        [userId]
+        [userId],
       );
 
     res.json({
@@ -315,7 +315,7 @@ router.get('/stats', authenticateToken, async (req: AuthenticatedRequest, res: R
     });
   } catch (error) {
     const err = error as Error;
-    logger.error('Error fetching portal stats', { 
+    logger.error('Error fetching portal stats', {
       error: err.message,
       userId: req.user?.userId,
       stack: err.stack,
@@ -325,4 +325,3 @@ router.get('/stats', authenticateToken, async (req: AuthenticatedRequest, res: R
 });
 
 export default router;
-
