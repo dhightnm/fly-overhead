@@ -2,6 +2,9 @@ import { Router, Request, Response } from 'express';
 import postgresRepository from '../repositories/PostgresRepository';
 import rateLimitManager from '../services/RateLimitManager';
 import webSocketService from '../services/WebSocketService';
+import liveStateStore from '../services/LiveStateStore';
+import queueService from '../services/QueueService';
+import config from '../config';
 import logger from '../utils/logger';
 
 const router = Router();
@@ -131,6 +134,35 @@ router.get('/opensky-status', (_req: Request, res: Response) => {
     connectedClients,
     willFetchOnNextInterval: connectedClients > 0 && !rateLimitStatus.isRateLimited,
   });
+});
+
+/**
+ * Cache status endpoint - shows LiveStateStore cache statistics
+ */
+router.get('/cache-status', (_req: Request, res: Response) => {
+  try {
+    res.json({
+      timestamp: new Date().toISOString(),
+      liveStateStore: {
+        enabled: config.liveState.enabled,
+        cacheSize: liveStateStore.getSize(),
+        maxEntries: config.liveState.maxEntries,
+        ttlSeconds: config.liveState.ttlSeconds,
+        minResultsBeforeDbFallback: liveStateStore.getMinResultsBeforeFallback(),
+      },
+      queue: {
+        enabled: queueService.isEnabled(),
+        queueKey: queueService.getQueueKey(),
+      },
+    });
+  } catch (error) {
+    const err = error as Error;
+    logger.error('Cache status check failed', { error: err.message });
+    res.status(500).json({
+      error: 'Failed to get cache status',
+      message: err.message,
+    });
+  }
 });
 
 export default router;
