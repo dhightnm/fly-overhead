@@ -214,11 +214,12 @@ jobs:
             --output text)
 
           echo "✅ Deployment initiated (version: $NEW_VERSION)"
-          echo "⏳ Waiting for deployment to complete (timeout: 5 minutes)..."
+          echo "⏳ Waiting for deployment to complete (timeout: 15 minutes)..."
           echo ""
 
           # Wait for deployment to be active (with timeout)
-          TIMEOUT=300
+          # Lightsail deployments can take 5-15 minutes depending on image size and health checks
+          TIMEOUT=900
           ELAPSED=0
           LAST_STATE=""
 
@@ -275,10 +276,12 @@ jobs:
                 break
               fi
             
-            # Show progress only when state changes
+            # Show progress periodically (every 30 seconds) or when state changes
             if [ "$NEXT_STATE" != "$LAST_STATE" ] && [ "$NEXT_STATE" != "None" ]; then
               echo "⏳ Service: $SERVICE_STATE | Next deployment: $NEXT_STATE"
               LAST_STATE="$NEXT_STATE"
+            elif [ $((ELAPSED % 30)) -eq 0 ] && [ $ELAPSED -gt 0 ]; then
+              echo "⏳ Still waiting... ($((ELAPSED / 60))m ${ELAPSED}s elapsed) | Service: $SERVICE_STATE | Next: $NEXT_STATE"
             fi
             
             sleep 10
@@ -288,13 +291,33 @@ jobs:
           # Handle timeout
           if [ $ELAPSED -ge $TIMEOUT ]; then
             echo ""
-            echo "❌ Deployment timeout after 5 minutes"
+            echo "❌ Deployment timeout after 15 minutes"
             echo "Service state: $SERVICE_STATE"
             echo "Next deployment state: $NEXT_STATE"
             echo "Current deployment: version $CURRENT_VERSION ($CURRENT_STATE)"
             echo ""
-            echo "The deployment may still be in progress. Check Lightsail console:"
-            echo "https://lightsail.aws.amazon.com/ls/webapp/us-east-2/container-services/$LIGHTSAIL_SERVICE_NAME"
+            
+            # Check if deployment actually failed
+            FINAL_STATE=$(aws lightsail get-container-services \
+              --service-name $LIGHTSAIL_SERVICE_NAME \
+              --region us-east-2 \
+              --query 'containerServices[0].nextDeployment.state' \
+              --output text 2>/dev/null || echo "None")
+            
+            if [ "$FINAL_STATE" = "FAILED" ]; then
+              echo "❌ Deployment FAILED!"
+              echo ""
+              echo "Recent container logs:"
+              aws lightsail get-container-log \
+                --service-name $LIGHTSAIL_SERVICE_NAME \
+                --region us-east-2 \
+                --container-name flyoverheadapp \
+                --start-time $(date -u -d '15 minutes ago' +%s) 2>/dev/null | \
+                jq -r '.logEvents[-50:] | .[] | .message' || echo "Could not fetch logs"
+            else
+              echo "The deployment may still be in progress. Check Lightsail console:"
+              echo "https://lightsail.aws.amazon.com/ls/webapp/us-east-2/container-services/$LIGHTSAIL_SERVICE_NAME"
+            fi
             exit 1
           fi
 
