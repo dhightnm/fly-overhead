@@ -184,7 +184,9 @@ router.get('/db-pool-status', async (_req: Request, res: Response) => {
         count(*) FILTER (WHERE state = 'idle')::int as idle,
         count(*) FILTER (WHERE state = 'idle in transaction')::int as idle_in_transaction,
         count(*) FILTER (WHERE wait_event_type = 'Lock')::int as waiting_for_lock,
-        count(*) FILTER (WHERE state = 'active' AND query_start < NOW() - INTERVAL '5 seconds')::int as long_running_queries
+        count(*) FILTER (
+          WHERE state = 'active' AND query_start < NOW() - INTERVAL '5 seconds'
+        )::int as long_running_queries
       FROM pg_stat_activity 
       WHERE datname = current_database()
         AND pid != pg_backend_pid()

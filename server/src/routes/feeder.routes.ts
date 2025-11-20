@@ -155,7 +155,7 @@ router.post(
     const BATCH_SIZE = 10;
     for (let i = 0; i < validStates.length; i += BATCH_SIZE) {
       const batch = validStates.slice(i, i + BATCH_SIZE);
-      
+
       // Log progress for first item in batch or every 10th batch
       if (i === 0 || i % (BATCH_SIZE * 10) === 0) {
         logger.debug('Processing aircraft batch from feeder', {
@@ -185,21 +185,24 @@ router.post(
               icao24,
               error: err.message,
             });
-            throw { icao24, error: err.message };
+            const batchError = new Error(err.message);
+            (batchError as any).icao24 = icao24;
+            throw batchError;
           }
         }),
       );
 
       // Collect errors from batch
+      const batchProcessed = batchResults.filter((result) => result.status === 'fulfilled').length;
+      processed += batchProcessed;
+
       batchResults.forEach((result, index) => {
         if (result.status === 'rejected') {
-          const rejection = result.reason as { icao24: string; error: string };
+          const rejection = result.reason as Error & { icao24?: string };
           errors.push({
             icao24: rejection.icao24 || batch[index]?.icao24 || 'unknown',
-            error: rejection.error || 'Unknown error',
+            error: rejection.message || 'Unknown error',
           });
-        } else if (result.status === 'fulfilled') {
-          processed++;
         }
       });
     }
