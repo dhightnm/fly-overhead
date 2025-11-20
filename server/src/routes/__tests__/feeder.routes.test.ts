@@ -1024,15 +1024,14 @@ describe('Feeder Registration Endpoint', () => {
             icao24: (state?.[0] as string) || 'unknown',
             error: 'Invalid state array length (expected 19 items)',
           });
-          return;
-        }
-        const icao24 = state[0] as string;
-        if (!icao24 || typeof icao24 !== 'string' || icao24.length !== 6) {
-          errors.push({
-            icao24: icao24 || 'unknown',
-            error: 'Invalid icao24 (must be 6-character hex string)',
-          });
-          return;
+        } else {
+          const icao24 = state[0] as string;
+          if (!icao24 || typeof icao24 !== 'string' || icao24.length !== 6) {
+            errors.push({
+              icao24: icao24 || 'unknown',
+              error: 'Invalid icao24 (must be 6-character hex string)',
+            });
+          }
         }
       });
 
