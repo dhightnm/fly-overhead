@@ -72,11 +72,11 @@ describe('aircraftIngestionWorker', () => {
     it('should create Redis client when enabled', async () => {
       // Since the module is already loaded, we might need to reload it or trust the mock config
       // For this test, we'll just call initializeWorker which uses the config
-      
+
       // Re-import to ensure clean state
       jest.isolateModules(() => {
-        const { initializeWorker } = require('../aircraftIngestionWorker');
-        initializeWorker();
+        const { initializeWorker: initWorker } = require('../aircraftIngestionWorker');
+        initWorker();
         expect(MockedRedis).toHaveBeenCalled();
       });
     });
@@ -86,7 +86,7 @@ describe('aircraftIngestionWorker', () => {
     beforeEach(() => {
       // Ensure worker is initialized with mock redis
       initializeWorker();
-      
+
       // We need to make sure the exported redis variable in the worker is set to our mock
       // Since we mocked the Redis constructor, calling initializeWorker() sets it up
     });
@@ -114,7 +114,7 @@ describe('aircraftIngestionWorker', () => {
         expect.any(Date),
         message.source,
         message.sourcePriority,
-        false
+        false,
       );
       expect(mockedLiveStateStore.upsertState).toHaveBeenCalledWith(message.state);
     });
@@ -129,7 +129,7 @@ describe('aircraftIngestionWorker', () => {
       ];
 
       // Mock brpop to return messages
-      messages.forEach(msg => {
+      messages.forEach((msg) => {
         mockRedisInstance.brpop.mockResolvedValueOnce(['flyoverhead:aircraft_ingest', JSON.stringify(msg)]);
       });
       // Sixth call returns null (though loop should stop at batchSize=5)
@@ -158,7 +158,7 @@ describe('aircraftIngestionWorker', () => {
         source: 'test',
         sourcePriority: 1,
         ingestionTimestamp: new Date().toISOString(),
-        retries: 0
+        retries: 0,
       };
 
       mockRedisInstance.brpop
@@ -171,8 +171,8 @@ describe('aircraftIngestionWorker', () => {
 
       expect(count).toBe(1); // Processed (attempted) 1 message
       expect(mockRedisInstance.rpush).toHaveBeenCalledWith(
-        'flyoverhead:aircraft_ingest', 
-        expect.stringContaining('"retries":1')
+        'flyoverhead:aircraft_ingest',
+        expect.stringContaining('"retries":1'),
       );
     });
 
@@ -182,7 +182,7 @@ describe('aircraftIngestionWorker', () => {
         source: 'test',
         sourcePriority: 1,
         ingestionTimestamp: new Date().toISOString(),
-        retries: 3
+        retries: 3,
       };
 
       mockRedisInstance.brpop
@@ -198,10 +198,10 @@ describe('aircraftIngestionWorker', () => {
 
     it('should handle Redis errors gracefully', async () => {
       mockRedisInstance.brpop.mockRejectedValueOnce(new Error('Redis Error'));
-      
+
       // Should catch error and return 0
       const count = await processQueueIteration();
-      
+
       expect(count).toBe(0);
     });
   });
