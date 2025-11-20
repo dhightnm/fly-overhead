@@ -929,10 +929,10 @@ describe('Feeder Registration Endpoint', () => {
           );
           batchResults.forEach((result, index) => {
             if (result.status === 'rejected') {
-              const rejection = result.reason as { icao24: string; error: string };
+              const rejection = result.reason as Error & { icao24?: string };
               errors.push({
                 icao24: rejection.icao24 || (batch[index]?.icao24 as string) || 'unknown',
-                error: rejection.error || 'Unknown error',
+                error: rejection.message || 'Unknown error',
               });
             } else if (result.status === 'fulfilled') {
               processed++;
