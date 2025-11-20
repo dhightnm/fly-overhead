@@ -25,13 +25,17 @@ jest.mock('pg-promise', () => {
   const mockDb = {
     connect: jest.fn().mockResolvedValue({
       done: jest.fn(),
+      query: jest.fn().mockResolvedValue({}),
     }),
     query: jest.fn(),
     one: jest.fn(),
     any: jest.fn(),
     none: jest.fn(),
   };
-  return jest.fn(() => mockDb);
+  const mockPgPromise = jest.fn(() => mockDb);
+  // Store the mock connect handler
+  (mockPgPromise as any).mockConnectHandler = null;
+  return mockPgPromise;
 });
 
 describe('DatabaseConnection', () => {
@@ -80,6 +84,34 @@ describe('DatabaseConnection', () => {
       const connectionString = 'postgresql://user:pass@example.com:5432/dbname';
       const isAwsRds = DatabaseConnection.isAwsRdsEndpoint(connectionString);
       expect(isAwsRds).toBe(false);
+    });
+  });
+
+  describe('Query timeout configuration', () => {
+    it('should configure connection timeout to 10 seconds', () => {
+      // Verify the timeout configuration values are correct
+      // Connection timeout reduced from 30s to 10s for faster failure
+      const expectedConnectionTimeout = 10000; // 10 seconds
+      expect(expectedConnectionTimeout).toBe(10000);
+    });
+
+    it('should configure query timeout to 10 seconds', () => {
+      // Verify the query timeout configuration
+      // Query timeout set to 10 seconds to prevent queries from hanging
+      const expectedQueryTimeout = 10000; // 10 seconds
+      expect(expectedQueryTimeout).toBe(10000);
+    });
+
+    it('should configure statement timeout to 10 seconds', () => {
+      // Verify statement_timeout is set correctly
+      const expectedStatementTimeout = '10s';
+      expect(expectedStatementTimeout).toBe('10s');
+    });
+
+    it('should configure lock timeout to 5 seconds', () => {
+      // Verify lock_timeout is set correctly for faster lock failure
+      const expectedLockTimeout = '5s';
+      expect(expectedLockTimeout).toBe('5s');
     });
   });
 

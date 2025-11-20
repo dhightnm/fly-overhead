@@ -165,4 +165,66 @@ router.get('/cache-status', (_req: Request, res: Response) => {
   }
 });
 
+/**
+ * Database connection pool status endpoint
+ * Provides visibility into connection pool usage and database activity
+ */
+router.get('/db-pool-status', async (_req: Request, res: Response) => {
+  try {
+    const db = postgresRepository.getDb();
+
+    // Query PostgreSQL for connection statistics
+    // This shows actual database connections, not just the pool configuration
+    const poolStats = await db
+      .one(
+        `
+      SELECT 
+        count(*)::int as total_connections,
+        count(*) FILTER (WHERE state = 'active')::int as active,
+        count(*) FILTER (WHERE state = 'idle')::int as idle,
+        count(*) FILTER (WHERE state = 'idle in transaction')::int as idle_in_transaction,
+        count(*) FILTER (WHERE wait_event_type = 'Lock')::int as waiting_for_lock,
+        count(*) FILTER (WHERE state = 'active' AND query_start < NOW() - INTERVAL '5 seconds')::int as long_running_queries
+      FROM pg_stat_activity 
+      WHERE datname = current_database()
+        AND pid != pg_backend_pid()
+    `,
+      )
+      .catch(() => {
+        // Fallback if query fails (e.g., insufficient permissions)
+        return {
+          total_connections: null,
+          active: null,
+          idle: null,
+          idle_in_transaction: null,
+          waiting_for_lock: null,
+          long_running_queries: null,
+        };
+      });
+
+    res.status(200).json({
+      pool: {
+        max: config.database.postgres.pool.max,
+        min: config.database.postgres.pool.min,
+      },
+      current: poolStats,
+      timeouts: {
+        connectionTimeoutMillis: 10000,
+        queryTimeout: 10000,
+        statementTimeout: '10s',
+        lockTimeout: '5s',
+      },
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error) {
+    const err = error as Error;
+    logger.error('Error fetching database pool status', { error: err.message });
+    res.status(500).json({
+      error: 'Failed to fetch pool status',
+      message: err.message,
+      timestamp: new Date().toISOString(),
+    });
+  }
+});
+
 export default router;

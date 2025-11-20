@@ -13,14 +13,25 @@ const errorThrottle = {
 
 // Configure pg-promise with connection pool monitoring
 const pgp = pgPromise({
-  // Log connection pool events for debugging
-  connect: (e: any) => {
+  // Log connection pool events for debugging and set query timeouts
+  connect: async (e: any) => {
     const { client } = e;
     logger.debug('New database connection established', {
       totalCount: client?.totalCount,
       idleCount: client?.idleCount,
       waitingCount: client?.waitingCount,
     });
+
+    // Set query timeouts on each new connection to prevent queries from hanging
+    // This applies to all queries on this connection
+    try {
+      await client.query('SET statement_timeout = 10000'); // 10 seconds
+      await client.query('SET lock_timeout = 5000'); // 5 seconds for lock waits
+    } catch (timeoutError) {
+      logger.warn('Failed to set query timeouts on new connection', {
+        error: (timeoutError as Error).message,
+      });
+    }
   },
   disconnect: (e: any) => {
     const err = e.client?.error;
@@ -115,9 +126,12 @@ class DatabaseConnection {
           max: config.database.postgres.pool.max || 10,
           min: config.database.postgres.pool.min || 2, // Minimum number of clients in the pool
           idleTimeoutMillis: 30000, // Close idle clients after 30 seconds (reduced to free up connections faster)
-          connectionTimeoutMillis: 30000, // Return an error after 30 seconds if connection could not be established
+          connectionTimeoutMillis: 10000, // Return an error after 10 seconds if connection could not be established (reduced for faster failure)
           keepAlive: true, // Keep TCP connection alive
           keepAliveInitialDelayMillis: 10000, // Start keepalive after 10 seconds
+          // Query timeout: Set statement_timeout at connection level to prevent queries from hanging
+          // This is applied via SET statement_timeout after connection is established
+          query_timeout: 10000, // pg-promise query timeout (10 seconds)
         };
 
         this.db = pgp(connectionConfig);
@@ -131,9 +145,10 @@ class DatabaseConnection {
           max: config.database.postgres.pool.max || 10,
           min: config.database.postgres.pool.min || 2,
           idleTimeoutMillis: 30000,
-          connectionTimeoutMillis: 30000,
+          connectionTimeoutMillis: 10000, // Reduced for faster failure
           keepAlive: true,
           keepAliveInitialDelayMillis: 10000,
+          query_timeout: 10000, // pg-promise query timeout (10 seconds)
         };
         this.db = pgp(fallbackConfig);
       }
@@ -145,9 +160,10 @@ class DatabaseConnection {
         max: config.database.postgres.pool.max || 10,
         min: config.database.postgres.pool.min || 2,
         idleTimeoutMillis: 30000,
-        connectionTimeoutMillis: 30000,
+        connectionTimeoutMillis: 10000, // Reduced for faster failure
         keepAlive: true,
         keepAliveInitialDelayMillis: 10000,
+        query_timeout: 10000, // pg-promise query timeout (10 seconds)
       };
       this.db = pgp(connectionConfig);
     }
@@ -171,9 +187,9 @@ class DatabaseConnection {
     // - .lightsail.aws
     // - ls- prefix (Lightsail)
     return (
-      connectionString.includes('.rds.amazonaws.com')
-      || connectionString.includes('.lightsail.aws')
-      || connectionString.includes('ls-')
+      connectionString.includes('.rds.amazonaws.com') ||
+      connectionString.includes('.lightsail.aws') ||
+      connectionString.includes('ls-')
     );
   }
 
@@ -181,6 +197,8 @@ class DatabaseConnection {
     try {
       const obj = await this.db.connect();
       logger.info('Database connection established');
+      // Note: Query timeouts are now set in the connect event handler above
+      // so they apply to all connections in the pool automatically
       obj.done();
 
       // Initialize PostGIS asynchronously (non-blocking) after connection is established

@@ -51,6 +51,13 @@ router.post(
     let processed = 0;
     const ingestionTimestamp = new Date();
 
+    // Validate all states first and collect valid ones for batch processing
+    const validStates: Array<{
+      state: any[];
+      feeder_id: string | null;
+      icao24: string;
+    }> = [];
+
     for (const { state, feeder_id: stateFeederId } of states) {
       try {
         if (!Array.isArray(state) || state.length !== 19) {
@@ -129,40 +136,10 @@ router.post(
         }
 
         const finalFeederId = stateFeederId || feeder_id;
-
-        let createdAt: Date;
-        if (state[18]) {
-          createdAt = new Date(state[18]);
-          if (isNaN(createdAt.getTime())) {
-            createdAt = new Date();
-          }
-        } else {
-          createdAt = new Date();
-        }
-
-        if (processed % 10 === 0 || processed === 1 || !state[1]) {
-          logger.debug('Processing aircraft state from feeder', {
-            icao24,
-            callsign: state[1] || null,
-            hasCallsign: !!state[1],
-            processed,
-            last_contact: state[4] ? new Date(state[4] * 1000).toISOString() : null,
-            feeder_id: finalFeederId,
-          });
-        }
-
-        await postgresRepository.upsertAircraftStateWithPriority(
-          state,
-          finalFeederId,
-          ingestionTimestamp,
-          'feeder',
-          10,
-        );
-
-        processed++;
+        validStates.push({ state, feeder_id: finalFeederId, icao24 });
       } catch (error) {
         const err = error as Error;
-        logger.error('Error processing aircraft state', {
+        logger.error('Error validating aircraft state', {
           icao24: state?.[0] || 'unknown',
           error: err.message,
         });
@@ -171,6 +148,60 @@ router.post(
           error: err.message,
         });
       }
+    }
+
+    // Process valid states in batches to reduce connection pool usage
+    // Batch size of 10 allows parallel processing while keeping connection usage reasonable
+    const BATCH_SIZE = 10;
+    for (let i = 0; i < validStates.length; i += BATCH_SIZE) {
+      const batch = validStates.slice(i, i + BATCH_SIZE);
+      
+      // Log progress for first item in batch or every 10th batch
+      if (i === 0 || i % (BATCH_SIZE * 10) === 0) {
+        logger.debug('Processing aircraft batch from feeder', {
+          batchStart: i,
+          batchSize: batch.length,
+          totalValid: validStates.length,
+          processed,
+        });
+      }
+
+      // Process batch in parallel - each upsert uses a connection from the pool
+      // Using Promise.allSettled to ensure all items in batch are attempted even if some fail
+      const batchResults = await Promise.allSettled(
+        batch.map(async ({ state, feeder_id: finalFeederId, icao24 }) => {
+          try {
+            await postgresRepository.upsertAircraftStateWithPriority(
+              state,
+              finalFeederId,
+              ingestionTimestamp,
+              'feeder',
+              10,
+            );
+            return { icao24, success: true };
+          } catch (error) {
+            const err = error as Error;
+            logger.error('Error processing aircraft state in batch', {
+              icao24,
+              error: err.message,
+            });
+            throw { icao24, error: err.message };
+          }
+        }),
+      );
+
+      // Collect errors from batch
+      batchResults.forEach((result, index) => {
+        if (result.status === 'rejected') {
+          const rejection = result.reason as { icao24: string; error: string };
+          errors.push({
+            icao24: rejection.icao24 || batch[index]?.icao24 || 'unknown',
+            error: rejection.error || 'Unknown error',
+          });
+        } else if (result.status === 'fulfilled') {
+          processed++;
+        }
+      });
     }
 
     postgresRepository.updateFeederLastSeen(feeder_id).catch((err: Error) => {
