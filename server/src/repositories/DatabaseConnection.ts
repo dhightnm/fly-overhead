@@ -126,7 +126,8 @@ class DatabaseConnection {
           max: config.database.postgres.pool.max || 10,
           min: config.database.postgres.pool.min || 2, // Minimum number of clients in the pool
           idleTimeoutMillis: 30000, // Close idle clients after 30 seconds (reduced to free up connections faster)
-          connectionTimeoutMillis: 10000, // Return an error after 10 seconds if connection could not be established (reduced for faster failure)
+          // Return an error after 10 seconds if connection could not be established (reduced for faster failure)
+          connectionTimeoutMillis: 10000,
           keepAlive: true, // Keep TCP connection alive
           keepAliveInitialDelayMillis: 10000, // Start keepalive after 10 seconds
           // Query timeout: Set statement_timeout at connection level to prevent queries from hanging
@@ -187,9 +188,9 @@ class DatabaseConnection {
     // - .lightsail.aws
     // - ls- prefix (Lightsail)
     return (
-      connectionString.includes('.rds.amazonaws.com') ||
-      connectionString.includes('.lightsail.aws') ||
-      connectionString.includes('ls-')
+      connectionString.includes('.rds.amazonaws.com')
+      || connectionString.includes('.lightsail.aws')
+      || connectionString.includes('ls-')
     );
   }
 

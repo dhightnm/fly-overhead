@@ -703,7 +703,6 @@ describe('Feeder Registration Endpoint', () => {
   });
 
   describe('POST /api/feeder/aircraft - Batch Processing', () => {
-
     beforeEach(() => {
       mockNext = jest.fn();
       jest.clearAllMocks();
@@ -769,32 +768,42 @@ describe('Feeder Registration Endpoint', () => {
       const validStates: Array<{ state: any[]; feeder_id: string | null; icao24: string }> = [];
 
       // Validation phase
-      for (const { state } of states) {
+      states.forEach(({ state }) => {
         if (Array.isArray(state) && state.length === 19 && typeof state[0] === 'string' && state[0].length === 6) {
           validStates.push({ state, feeder_id, icao24: state[0] as string });
         } else {
           errors.push({ icao24: (state?.[0] as string) || 'unknown', error: 'Invalid state' });
         }
-      }
+      });
 
       // Batch processing phase
       const BATCH_SIZE = 10;
+      const batches: Array<Array<{ state: any[]; feeder_id: string | null; icao24: string }>> = [];
       for (let i = 0; i < validStates.length; i += BATCH_SIZE) {
-        const batch = validStates.slice(i, i + BATCH_SIZE);
-        const batchResults = await Promise.allSettled(
-          batch.map(async ({ state, feeder_id: finalFeederId }) => {
-            await mockPostgresRepository.upsertAircraftStateWithPriority(
-              state, finalFeederId, ingestionTimestamp, 'feeder', 10,
-            );
-            return { success: true };
-          }),
-        );
-        batchResults.forEach((result) => {
-          if (result.status === 'fulfilled') {
-            processed++;
-          }
-        });
+        batches.push(validStates.slice(i, i + BATCH_SIZE));
       }
+
+      await Promise.all(
+        batches.map(async (batch) => {
+          const batchResults = await Promise.allSettled(
+            batch.map(async ({ state, feeder_id: finalFeederId }) => {
+              await mockPostgresRepository.upsertAircraftStateWithPriority(
+                state,
+                finalFeederId,
+                ingestionTimestamp,
+                'feeder',
+                10,
+              );
+              return { success: true };
+            }),
+          );
+          batchResults.forEach((result) => {
+            if (result.status === 'fulfilled') {
+              processed++;
+            }
+          });
+        }),
+      );
 
       // Should process all 25 valid states
       expect(mockPostgresRepository.upsertAircraftStateWithPriority).toHaveBeenCalledTimes(25);
@@ -889,36 +898,46 @@ describe('Feeder Registration Endpoint', () => {
       const validStates = states.map(({ state }) => ({
         state,
         feeder_id,
-        icao24: state[0],
+        icao24: state[0] as string,
       }));
 
       const BATCH_SIZE = 10;
+      const batches: Array<Array<{ state: any[]; feeder_id: string; icao24: string }>> = [];
       for (let i = 0; i < validStates.length; i += BATCH_SIZE) {
-        const batch = validStates.slice(i, i + BATCH_SIZE);
-        const batchResults = await Promise.allSettled(
-          batch.map(async ({ state, feeder_id: finalFeederId, icao24 }) => {
-            try {
-              await mockPostgresRepository.upsertAircraftStateWithPriority(
-                state, finalFeederId, ingestionTimestamp, 'feeder', 10,
-              );
-              return { icao24, success: true };
-            } catch (error) {
-              throw { icao24, error: (error as Error).message };
-            }
-          }),
-        );
-        batchResults.forEach((result, index) => {
-          if (result.status === 'rejected') {
-            const rejection = result.reason as { icao24: string; error: string };
-            errors.push({
-              icao24: rejection.icao24 || (batch[index]?.icao24 as string) || 'unknown',
-              error: rejection.error || 'Unknown error',
-            });
-          } else if (result.status === 'fulfilled') {
-            processed++;
-          }
-        });
+        batches.push(validStates.slice(i, i + BATCH_SIZE));
       }
+
+      await Promise.all(
+        batches.map(async (batch) => {
+          const batchResults = await Promise.allSettled(
+            batch.map(async ({ state, feeder_id: finalFeederId, icao24 }) => {
+              try {
+                await mockPostgresRepository.upsertAircraftStateWithPriority(
+                  state,
+                  finalFeederId,
+                  ingestionTimestamp,
+                  'feeder',
+                  10,
+                );
+                return { icao24, success: true };
+              } catch (error) {
+                throw { icao24, error: (error as Error).message };
+              }
+            }),
+          );
+          batchResults.forEach((result, index) => {
+            if (result.status === 'rejected') {
+              const rejection = result.reason as { icao24: string; error: string };
+              errors.push({
+                icao24: rejection.icao24 || (batch[index]?.icao24 as string) || 'unknown',
+                error: rejection.error || 'Unknown error',
+              });
+            } else if (result.status === 'fulfilled') {
+              processed++;
+            }
+          });
+        }),
+      );
 
       // Should process 1 successfully, 1 with error
       expect(mockPostgresRepository.upsertAircraftStateWithPriority).toHaveBeenCalledTimes(2);
