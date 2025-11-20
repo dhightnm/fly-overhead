@@ -191,16 +191,16 @@ async function startServer(): Promise<void> {
         // This prevents connection pool exhaustion during startup
         setTimeout(async () => {
           logger.info('Running initial backfill jobs (delayed)');
-          
+
           try {
             await backgroundRouteService.backfillFlightHistorySample();
-            
+
             const todayStr = new Date().toISOString().split('T')[0];
             // Use dynamic start date (3 weeks ago) instead of hardcoded
             const threeWeeksAgo = new Date();
             threeWeeksAgo.setDate(threeWeeksAgo.getDate() - 21);
             const startDateStr = threeWeeksAgo.toISOString().split('T')[0];
-            
+
             await backgroundRouteService.backfillFlightsInRange(startDateStr, todayStr, 50);
             await backgroundRouteService.backfillFlightsMissingAll(50, 100);
           } catch (err) {
