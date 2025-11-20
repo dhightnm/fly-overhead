@@ -30,8 +30,9 @@ export function createRedisClient(): Redis {
   return client;
 }
 
-// Export for testing but keep mutable
-export let redis: Redis;
+// Keep mutable for runtime assignment
+// eslint-disable-next-line prefer-const
+let redis: Redis;
 
 type QueueResult = null | AircraftQueueMessage;
 
@@ -107,7 +108,7 @@ export async function processQueueIteration(): Promise<number> {
       // Subsequent messages wait less since we already have one
       const timeout = messages.length > 0 ? 1 : 5;
       const message = await fetchMessage(timeout);
-      
+
       if (!message) {
         break;
       }
@@ -142,7 +143,7 @@ export function initializeWorker(): void {
 
 export default async function startAircraftIngestionWorker(): Promise<void> {
   initializeWorker();
-  
+
   if (!redis) return;
 
   logger.info('Starting aircraft ingestion worker', {
