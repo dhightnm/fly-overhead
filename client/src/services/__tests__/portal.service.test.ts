@@ -1,6 +1,7 @@
 import { portalService } from '../portal.service';
 import api from '../api';
 import type { Aircraft } from '../../types';
+import { createAircraft } from '../../test/fixtures/aircraft';
 
 // Mock the API service
 jest.mock('../api');
@@ -57,25 +58,22 @@ describe('PortalService', () => {
   describe('getUserAircraft', () => {
     it('should fetch aircraft without pagination', async () => {
       const mockAircraft: Aircraft[] = [
-        {
-          icao24: 'abc123',
+        createAircraft({
           callsign: 'UAL123',
           latitude: 40.7128,
-          longitude: -74.0060,
+          longitude: -74.006,
           baro_altitude: 35000,
           geo_altitude: 36000,
           velocity: 450,
           true_track: 90,
           vertical_rate: 0,
-          squawk: '1200',
           on_ground: false,
           category: 1,
           last_contact: 1705756800,
           feeder_id: 'feeder_123',
           data_source: 'feeder',
           source_priority: 10,
-          route: null,
-        },
+        }),
       ];
 
       mockApi.get = jest.fn().mockResolvedValue({
@@ -182,4 +180,3 @@ describe('PortalService', () => {
     });
   });
 });
-

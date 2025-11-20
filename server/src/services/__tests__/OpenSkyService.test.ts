@@ -1,6 +1,11 @@
 import axios from 'axios';
 import openSkyService from '../OpenSkyService';
 import rateLimitManager from '../RateLimitManager';
+import {
+  NORTHEAST_BOUNDING_BOX,
+  OPEN_SKY_SAMPLE_STATES,
+  buildOpenSkyResponse,
+} from '../../__tests__/fixtures/aircraftFixtures';
 
 // Mock dependencies
 jest.mock('axios');
@@ -31,18 +36,10 @@ describe('OpenSkyService', () => {
 
   describe('getAllStates', () => {
     it('should fetch all aircraft states successfully', async () => {
-      const mockResponse = {
-        data: {
-          time: Math.floor(Date.now() / 1000),
-          states: [
-            ['abc123', 'TEST01', null, null, Math.floor(Date.now() / 1000)],
-            ['def456', 'TEST02', null, null, Math.floor(Date.now() / 1000)],
-          ],
-        },
-      };
+      const mockResponse = buildOpenSkyResponse();
 
       mockRateLimitManager.isRateLimited.mockReturnValue(false);
-      mockAxios.get.mockResolvedValue(mockResponse);
+      mockAxios.get.mockResolvedValue({ data: mockResponse });
 
       const result = await openSkyService.getAllStates();
 
@@ -56,7 +53,7 @@ describe('OpenSkyService', () => {
           timeout: 30000,
         }),
       );
-      expect(result).toEqual(mockResponse.data);
+      expect(result).toEqual(mockResponse);
       expect(mockRateLimitManager.recordSuccess).toHaveBeenCalled();
     });
 
@@ -98,10 +95,7 @@ describe('OpenSkyService', () => {
 
       mockRateLimitManager.isRateLimited.mockReturnValue(false);
       mockAxios.get.mockRejectedValueOnce(timeoutError).mockResolvedValueOnce({
-        data: {
-          time: Math.floor(Date.now() / 1000),
-          states: [],
-        },
+        data: buildOpenSkyResponse([]),
       });
 
       const result = await openSkyService.getAllStates();
@@ -116,10 +110,7 @@ describe('OpenSkyService', () => {
 
       mockRateLimitManager.isRateLimited.mockReturnValue(false);
       mockAxios.get.mockRejectedValueOnce(resetError).mockResolvedValueOnce({
-        data: {
-          time: Math.floor(Date.now() / 1000),
-          states: [],
-        },
+        data: buildOpenSkyResponse([]),
       });
 
       const result = await openSkyService.getAllStates();
@@ -134,10 +125,7 @@ describe('OpenSkyService', () => {
 
       mockRateLimitManager.isRateLimited.mockReturnValue(false);
       mockAxios.get.mockRejectedValueOnce(dnsError).mockResolvedValueOnce({
-        data: {
-          time: Math.floor(Date.now() / 1000),
-          states: [],
-        },
+        data: buildOpenSkyResponse([]),
       });
 
       const result = await openSkyService.getAllStates();
@@ -161,10 +149,7 @@ describe('OpenSkyService', () => {
     it('should use correct authentication header', async () => {
       mockRateLimitManager.isRateLimited.mockReturnValue(false);
       mockAxios.get.mockResolvedValue({
-        data: {
-          time: Math.floor(Date.now() / 1000),
-          states: [],
-        },
+        data: buildOpenSkyResponse([]),
       });
 
       await openSkyService.getAllStates();
@@ -177,22 +162,12 @@ describe('OpenSkyService', () => {
 
   describe('getStatesInBounds', () => {
     it('should fetch states within bounding box', async () => {
-      const boundingBox = {
-        lamin: 39.0,
-        lomin: -75.0,
-        lamax: 41.0,
-        lomax: -73.0,
-      };
+      const boundingBox = { ...NORTHEAST_BOUNDING_BOX };
 
-      const mockResponse = {
-        data: {
-          time: Math.floor(Date.now() / 1000),
-          states: [['abc123', 'TEST01', null, null, Math.floor(Date.now() / 1000)]],
-        },
-      };
+      const mockResponse = buildOpenSkyResponse([OPEN_SKY_SAMPLE_STATES[0]]);
 
       mockRateLimitManager.isRateLimited.mockReturnValue(false);
-      mockAxios.get.mockResolvedValue(mockResponse);
+      mockAxios.get.mockResolvedValue({ data: mockResponse });
 
       const result = await openSkyService.getStatesInBounds(boundingBox);
 
@@ -208,7 +183,7 @@ describe('OpenSkyService', () => {
           },
         }),
       );
-      expect(result).toEqual(mockResponse.data);
+      expect(result).toEqual(mockResponse);
       expect(mockRateLimitManager.recordSuccess).toHaveBeenCalled();
     });
 

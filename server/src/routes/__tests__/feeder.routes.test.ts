@@ -2,6 +2,11 @@ import { Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import postgresRepository from '../../repositories/PostgresRepository';
 import type { ApiKey, Feeder } from '../../types/database.types';
+import {
+  FEEDER_TEST_DATA,
+  createMockApiKey,
+  createMockFeeder,
+} from '../../__tests__/fixtures/aircraftFixtures';
 
 // Mock dependencies
 jest.mock('../../repositories/PostgresRepository');
@@ -44,58 +49,28 @@ describe('Feeder Registration Endpoint', () => {
 
   describe('POST /api/feeder/register', () => {
     it('should successfully register a feeder with fd_ prefix', async () => {
-      const feederId = 'feeder_test_123';
-      const apiKey = `fd_${'a'.repeat(32)}`;
+      const {
+        feederId, apiKey, name, latitude, longitude, metadata,
+      } = FEEDER_TEST_DATA;
       const apiKeyHash = await bcrypt.hash(apiKey, 10);
 
       mockRequest.body = {
         feeder_id: feederId,
         api_key_hash: apiKeyHash,
         key_prefix: 'fd_',
-        name: 'Test Feeder',
-        latitude: 40.7128,
-        longitude: -74.0060,
-        metadata: { location: 'New York' },
+        name,
+        latitude,
+        longitude,
+        metadata,
       };
 
-      const mockApiKey: ApiKey = {
-        id: 1,
-        key_id: 'key_feeder_123',
-        key_hash: apiKeyHash,
-        key_prefix: 'fd_',
-        name: 'Feeder: Test Feeder',
-        description: `Auto-generated API key for feeder ${feederId}`,
-        user_id: null,
-        scopes: ['feeder:write', 'feeder:read', 'aircraft:write'],
-        status: 'active',
-        last_used_at: null,
-        usage_count: 0,
-        created_at: new Date(),
-        updated_at: new Date(),
-        expires_at: null,
-        created_by: null,
-        revoked_at: null,
-        revoked_by: null,
-        revoked_reason: null,
-      };
+      const mockApiKey: ApiKey = createMockApiKey({ key_hash: apiKeyHash });
 
-      const mockFeeder: Feeder = {
-        id: 1,
-        feeder_id: feederId,
-        name: 'Test Feeder',
+      const mockFeeder: Feeder = createMockFeeder({
         api_key_hash: apiKeyHash,
-        location: null,
-        latitude: 40.7128,
-        longitude: -74.0060,
-        metadata: {
-          location: 'New York',
-          api_key_id: 'key_feeder_123',
-        },
-        created_at: new Date(),
-        updated_at: new Date(),
-        last_seen_at: null,
-        is_active: true,
-      };
+        latitude,
+        longitude,
+      });
 
       mockPostgresRepository.getFeederById = jest.fn().mockResolvedValue(null);
       mockPostgresRepository.getApiKeyByHash = jest.fn().mockResolvedValue(null);

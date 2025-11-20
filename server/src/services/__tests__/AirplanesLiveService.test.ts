@@ -1,5 +1,6 @@
 import axios from 'axios';
 import airplanesLiveService from '../AirplanesLiveService';
+import { createAirplanesLiveState } from '../../__tests__/fixtures/aircraftFixtures';
 
 // Mock dependencies
 jest.mock('axios');
@@ -41,29 +42,7 @@ describe('AirplanesLiveService', () => {
 
   describe('prepareStateForDatabase', () => {
     it('should transform airplanes.live format to database format with unit conversions', () => {
-      const aircraft = {
-        hex: 'a1b2c3',
-        flight: 'AAL123  ',
-        lat: 40.7128,
-        lon: -74.0060,
-        alt_baro: 35000, // feet
-        gs: 450, // knots
-        track: 180,
-        baro_rate: 2000, // ft/min
-        alt_geom: 35100, // feet
-        squawk: '1200',
-        category: 'A3',
-        t: 'B738',
-        desc: 'BOEING 737-800',
-        r: 'N12345',
-        emergency: 'none',
-        nav_qnh: 1013.2,
-        nav_altitude_mcp: 35000, // feet
-        nav_heading: 180,
-        mlat: [],
-        seen_pos: 1.5,
-        seen: 1.0,
-      };
+      const aircraft = createAirplanesLiveState();
 
       const result = airplanesLiveService.prepareStateForDatabase(aircraft as any);
 
@@ -94,12 +73,17 @@ describe('AirplanesLiveService', () => {
     });
 
     it('should handle missing optional fields', () => {
-      const aircraft = {
-        hex: 'a1b2c3',
+      const aircraft = createAirplanesLiveState({
+        flight: undefined,
         lat: 40.0,
         lon: -105.0,
-        seen: 1.0,
-      };
+        alt_baro: undefined,
+        alt_geom: undefined,
+        desc: undefined,
+        t: undefined,
+        r: undefined,
+        category: undefined,
+      });
 
       const result = airplanesLiveService.prepareStateForDatabase(aircraft);
 
@@ -110,14 +94,12 @@ describe('AirplanesLiveService', () => {
     });
 
     it('should handle "ground" altitude as null', () => {
-      const aircraft = {
-        hex: 'a1b2c3',
+      const aircraft = createAirplanesLiveState({
         lat: 40.0,
         lon: -105.0,
-        alt_baro: 'ground', // Sometimes sent as string
+        alt_baro: 'ground',
         gs: 10,
-        seen: 1.0,
-      };
+      });
 
       const result = airplanesLiveService.prepareStateForDatabase(aircraft);
 
@@ -135,13 +117,12 @@ describe('AirplanesLiveService', () => {
       ];
 
       testCases.forEach(({ category, expected }) => {
-        const aircraft = {
+        const aircraft = createAirplanesLiveState({
           hex: 'test',
           lat: 40.0,
           lon: -105.0,
           category,
-          seen: 1.0,
-        };
+        });
 
         const result = airplanesLiveService.prepareStateForDatabase(aircraft);
         expect(result[17]).toBe(expected); // category index
@@ -193,13 +174,12 @@ describe('AirplanesLiveService', () => {
       ];
 
       testCases.forEach(({ feet, expectedMeters }) => {
-        const aircraft = {
+        const aircraft = createAirplanesLiveState({
           hex: 'test',
           lat: 40.0,
           lon: -105.0,
           alt_baro: feet,
-          seen: 1.0,
-        };
+        });
 
         const result = airplanesLiveService.prepareStateForDatabase(aircraft);
         const actualMeters = result[7];
@@ -214,39 +194,36 @@ describe('AirplanesLiveService', () => {
     });
 
     it('should convert string altitude values to meters', () => {
-      const aircraft = {
+      const aircraft = createAirplanesLiveState({
         hex: 'test',
         lat: 40.0,
         lon: -105.0,
-        alt_baro: '35000', // Sometimes comes as string
-        seen: 1.0,
-      };
+        alt_baro: '35000',
+      });
 
       const result = airplanesLiveService.prepareStateForDatabase(aircraft);
       expect(result[7]).toBeCloseTo(10668, 0); // 35000 ft = 10668 m
     });
 
     it('should convert geo_altitude to meters', () => {
-      const aircraft = {
+      const aircraft = createAirplanesLiveState({
         hex: 'test',
         lat: 40.0,
         lon: -105.0,
-        alt_geom: 35100, // feet
-        seen: 1.0,
-      };
+        alt_geom: 35100,
+      });
 
       const result = airplanesLiveService.prepareStateForDatabase(aircraft);
       expect(result[13]).toBeCloseTo(10698.48, 1); // 35100 ft = 10698.48 m
     });
 
     it('should convert nav_altitude_mcp to meters', () => {
-      const aircraft = {
+      const aircraft = createAirplanesLiveState({
         hex: 'test',
         lat: 40.0,
         lon: -105.0,
-        nav_altitude_mcp: 36000, // feet
-        seen: 1.0,
-      };
+        nav_altitude_mcp: 36000,
+      });
 
       const result = airplanesLiveService.prepareStateForDatabase(aircraft);
       expect(result[24]).toBeCloseTo(10972.8, 1); // 36000 ft = 10972.8 m
@@ -261,13 +238,12 @@ describe('AirplanesLiveService', () => {
       ];
 
       testCases.forEach(({ knots }) => {
-        const aircraft = {
+        const aircraft = createAirplanesLiveState({
           hex: 'test',
           lat: 40.0,
           lon: -105.0,
           gs: knots,
-          seen: 1.0,
-        };
+        });
 
         const result = airplanesLiveService.prepareStateForDatabase(aircraft);
         const actualVelocity = result[9];
@@ -285,13 +261,12 @@ describe('AirplanesLiveService', () => {
       ];
 
       testCases.forEach(({ ftPerMin, expectedMPerS }) => {
-        const aircraft = {
+        const aircraft = createAirplanesLiveState({
           hex: 'test',
           lat: 40.0,
           lon: -105.0,
           baro_rate: ftPerMin,
-          seen: 1.0,
-        };
+        });
 
         const result = airplanesLiveService.prepareStateForDatabase(aircraft);
         expect(result[11]).toBeCloseTo(expectedMPerS, 2);
@@ -300,24 +275,23 @@ describe('AirplanesLiveService', () => {
 
     it('should handle zero and null vertical_rate', () => {
       // baro_rate: 0 is treated as falsy by || operator, returns null
-      const aircraftZero = {
+      const aircraftZero = createAirplanesLiveState({
         hex: 'test',
         lat: 40.0,
         lon: -105.0,
         baro_rate: 0,
-        seen: 1.0,
-      };
+      });
 
       const resultZero = airplanesLiveService.prepareStateForDatabase(aircraftZero);
       expect(resultZero[11]).toBeNull(); // || operator treats 0 as falsy
 
       // Missing baro_rate
-      const aircraftMissing = {
+      const aircraftMissing = createAirplanesLiveState({
         hex: 'test',
         lat: 40.0,
         lon: -105.0,
-        seen: 1.0,
-      };
+        baro_rate: undefined,
+      });
 
       const resultMissing = airplanesLiveService.prepareStateForDatabase(aircraftMissing);
       expect(resultMissing[11]).toBeNull();
@@ -332,13 +306,12 @@ describe('AirplanesLiveService', () => {
       ];
 
       testCases.forEach((altitudeCase) => {
-        const aircraft = {
+        const aircraft = createAirplanesLiveState({
           hex: 'test',
           lat: 40.0,
           lon: -105.0,
           ...altitudeCase,
-          seen: 1.0,
-        };
+        });
 
         const result = airplanesLiveService.prepareStateForDatabase(aircraft);
         expect(result[7]).toBeNull(); // Should be null, not 0 or unconverted
@@ -347,14 +320,13 @@ describe('AirplanesLiveService', () => {
 
     it('should produce database-ready values that convert correctly on frontend', () => {
       // Simulate the full round-trip: API -> DB -> Frontend
-      const aircraft = {
+      const aircraft = createAirplanesLiveState({
         hex: 'test',
         lat: 40.0,
         lon: -105.0,
-        alt_baro: 35000, // API gives feet
-        gs: 450, // API gives knots
-        seen: 1.0,
-      };
+        alt_baro: 35000,
+        gs: 450,
+      });
 
       const dbState = airplanesLiveService.prepareStateForDatabase(aircraft);
       const dbAltitude = dbState[7]; // Stored in meters
@@ -375,13 +347,12 @@ describe('AirplanesLiveService', () => {
 
     it('should handle edge case: extremely high altitude aircraft', () => {
       // U-2 spy plane or similar can fly at 70,000+ ft
-      const aircraft = {
+      const aircraft = createAirplanesLiveState({
         hex: 'test',
         lat: 40.0,
         lon: -105.0,
-        alt_baro: 70000, // feet
-        seen: 1.0,
-      };
+        alt_baro: 70000,
+      });
 
       const result = airplanesLiveService.prepareStateForDatabase(aircraft);
       const altitudeMeters = result[7];

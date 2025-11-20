@@ -1533,7 +1533,9 @@ export class FlightRouteService {
   async getBatchRoutes(
     aircraftList: Array<{ icao24: string; callsign?: string | null }>,
   ): Promise<Array<{ icao24: string; callsign?: string | null; route: Route | null }>> {
-    const results = await Promise.allSettled(
+    type BatchResult = { icao24: string; callsign?: string | null; route: Route | null };
+
+    const results = await Promise.allSettled<BatchResult>(
       aircraftList.map(async (aircraft) => {
         const route = await this.getFlightRoute(aircraft.icao24, aircraft.callsign);
         return {
@@ -1544,7 +1546,10 @@ export class FlightRouteService {
       }),
     );
 
-    return results.filter((r) => r.status === 'fulfilled').map((r) => r.value);
+    const fulfilledResults = results.filter(
+      (r): r is PromiseFulfilledResult<BatchResult> => r.status === 'fulfilled',
+    );
+    return fulfilledResults.map((r) => r.value);
   }
 }
 

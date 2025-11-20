@@ -353,6 +353,11 @@ class RateLimitService {
         concurrent: this.concurrentRequests.size,
       });
     }, 5 * 60 * 1000); // 5 minutes
+
+    // Allow Node to exit naturally even if the interval is active
+    if (typeof this.cleanupInterval.unref === 'function') {
+      this.cleanupInterval.unref();
+    }
   }
 
   /**

@@ -3,7 +3,7 @@ import NodeCache from 'node-cache';
 import config from '../config';
 import logger from '../utils/logger';
 
-interface AirplanesLiveAircraft {
+export interface AirplanesLiveAircraft {
   hex: string;
   type?: string;
   flight?: string;

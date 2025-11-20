@@ -10,6 +10,7 @@
  */
 
 import type { Aircraft, Route } from '../types';
+import { createAircraft } from '../test/fixtures/aircraft';
 
 /**
  * Merge two aircraft records, preserving highest priority data
@@ -87,21 +88,21 @@ function selectRouteWithPriority(
 describe('Aircraft Data Merging Priorities', () => {
   describe('Source Priority Hierarchy', () => {
     it('WebSocket data should override database data', () => {
-      const databasePlane: Partial<Aircraft> = {
+      const databasePlane = createAircraft({
         icao24: 'abc123',
         latitude: 40.0,
         longitude: -100.0,
         last_contact: 1000000,
         source: 'database',
-      };
+      });
 
-      const websocketPlane: Partial<Aircraft> = {
+      const websocketPlane = createAircraft({
         icao24: 'abc123',
         latitude: 40.5,
         longitude: -100.5,
-        last_contact: 1000010, // 10 seconds newer
+        last_contact: 1000010,
         source: 'websocket',
-      };
+      });
 
       const merged = mergePlaneRecords(databasePlane, websocketPlane);
       
@@ -111,21 +112,21 @@ describe('Aircraft Data Merging Priorities', () => {
     });
 
     it('Manual (searched) data should override automatic database data', () => {
-      const databasePlane: Partial<Aircraft> = {
+      const databasePlane = createAircraft({
         icao24: 'abc123',
         latitude: 40.0,
         longitude: -100.0,
         last_contact: 1000000,
         source: 'database',
-      };
+      });
 
-      const manualPlane: Partial<Aircraft> = {
+      const manualPlane = createAircraft({
         icao24: 'abc123',
         latitude: 40.2,
         longitude: -100.2,
         last_contact: 1000005,
         source: 'manual',
-      };
+      });
 
       const merged = mergePlaneRecords(databasePlane, manualPlane);
       
@@ -135,21 +136,21 @@ describe('Aircraft Data Merging Priorities', () => {
     });
 
     it('Feeder data should override OpenSky data', () => {
-      const openskyPlane: Partial<Aircraft> = {
+      const openskyPlane = createAircraft({
         icao24: 'abc123',
         latitude: 40.0,
         longitude: -100.0,
         last_contact: 1000000,
         source: 'opensky',
-      };
+      });
 
-      const feederPlane: Partial<Aircraft> = {
+      const feederPlane = createAircraft({
         icao24: 'abc123',
         latitude: 40.3,
         longitude: -100.3,
-        last_contact: 1000000, // Same timestamp
+        last_contact: 1000000,
         source: 'feeder',
-      };
+      });
 
       const merged = mergePlaneRecords(openskyPlane, feederPlane);
       
@@ -161,21 +162,21 @@ describe('Aircraft Data Merging Priorities', () => {
 
   describe('Timestamp-Based Priority (Same Source)', () => {
     it('newer data should override older data when source is same', () => {
-      const olderPlane: Partial<Aircraft> = {
+      const olderPlane = createAircraft({
         icao24: 'abc123',
         latitude: 40.0,
         longitude: -100.0,
         last_contact: 1000000,
         source: 'database',
-      };
+      });
 
-      const newerPlane: Partial<Aircraft> = {
+      const newerPlane = createAircraft({
         icao24: 'abc123',
         latitude: 40.5,
         longitude: -100.5,
-        last_contact: 1000600, // 10 minutes newer
+        last_contact: 1000600,
         source: 'database',
-      };
+      });
 
       const merged = mergePlaneRecords(olderPlane, newerPlane);
       
@@ -185,21 +186,21 @@ describe('Aircraft Data Merging Priorities', () => {
     });
 
     it('should NOT overwrite newer data with older data', () => {
-      const newerPlane: Partial<Aircraft> = {
+      const newerPlane = createAircraft({
         icao24: 'abc123',
         latitude: 40.5,
         longitude: -100.5,
         last_contact: 1000600,
         source: 'database',
-      };
+      });
 
-      const olderPlane: Partial<Aircraft> = {
+      const olderPlane = createAircraft({
         icao24: 'abc123',
         latitude: 40.0,
         longitude: -100.0,
-        last_contact: 1000000, // 10 minutes older
+        last_contact: 1000000,
         source: 'database',
-      };
+      });
 
       const merged = mergePlaneRecords(newerPlane, olderPlane);
       
@@ -253,24 +254,24 @@ describe('Aircraft Data Merging Priorities', () => {
   describe('Real-World Scenarios', () => {
     it('UAL143 scenario: stale database position vs. current database query', () => {
       // Initial state: 35-minute-old position from search
-      const searchResult: Partial<Aircraft> = {
+      const searchResult = createAircraft({
         icao24: 'a27c78',
         callsign: 'UAL143',
         latitude: 51.6721,
         longitude: -129.4366,
-        last_contact: 1762810547, // 35 minutes ago
+        last_contact: 1762810547,
         source: 'database',
-      };
+      });
 
       // Map load: Same plane, same position (no fresh OpenSky data)
-      const boundsResult: Partial<Aircraft> = {
+      const boundsResult = createAircraft({
         icao24: 'a27c78',
         callsign: 'UAL143',
-        latitude: 51.6721, // Same stale position
+        latitude: 51.6721,
         longitude: -129.4366,
-        last_contact: 1762810547, // Same timestamp
+        last_contact: 1762810547,
         source: 'database',
-      };
+      });
 
       const merged = mergePlaneRecords(searchResult, boundsResult);
       
@@ -281,24 +282,24 @@ describe('Aircraft Data Merging Priorities', () => {
 
     it('DAL409 scenario: manual search should preserve plane in state', () => {
       // User searches for plane
-      const manualPlane: Partial<Aircraft> = {
+      const manualPlane = createAircraft({
         icao24: 'a12c23',
         callsign: 'DAL409',
         latitude: 39.0308,
         longitude: -110.3106,
         last_contact: 1762811691,
         source: 'manual',
-      };
+      });
 
       // Bounds query returns same plane from database
-      const databasePlane: Partial<Aircraft> = {
+      const databasePlane = createAircraft({
         icao24: 'a12c23',
         callsign: 'DAL409',
         latitude: 39.0308,
         longitude: -110.3106,
         last_contact: 1762811691,
         source: 'database',
-      };
+      });
 
       const merged = mergePlaneRecords(manualPlane, databasePlane);
       
@@ -308,23 +309,23 @@ describe('Aircraft Data Merging Priorities', () => {
 
     it('WebSocket update scenario: real-time position overrides bounds query', () => {
       // Initial state: plane from bounds query
-      const boundsPlane: Partial<Aircraft> = {
+      const boundsPlane = createAircraft({
         icao24: 'abc123',
         callsign: 'TEST123',
         latitude: 40.0,
         longitude: -100.0,
         last_contact: 1000000,
         source: 'database',
-      };
+      });
 
       // WebSocket pushes updated position
-      const websocketUpdate: Partial<Aircraft> = {
+      const websocketUpdate = createAircraft({
         icao24: 'abc123',
-        latitude: 40.1, // Moved 0.1 degrees
+        latitude: 40.1,
         longitude: -100.1,
-        last_contact: 1000010, // 10 seconds later
+        last_contact: 1000010,
         source: 'websocket',
-      };
+      });
 
       const merged = mergePlaneRecords(boundsPlane, websocketUpdate);
       
@@ -337,21 +338,21 @@ describe('Aircraft Data Merging Priorities', () => {
 
   describe('Edge Cases', () => {
     it('should handle missing last_contact timestamps', () => {
-      const plane1: Partial<Aircraft> = {
+      const plane1 = createAircraft({
         icao24: 'abc123',
         latitude: 40.0,
         longitude: -100.0,
         last_contact: undefined,
         source: 'database',
-      };
+      });
 
-      const plane2: Partial<Aircraft> = {
+      const plane2 = createAircraft({
         icao24: 'abc123',
         latitude: 40.5,
         longitude: -100.5,
         last_contact: 1000000,
         source: 'database',
-      };
+      });
 
       const merged = mergePlaneRecords(plane1, plane2);
       
@@ -361,21 +362,21 @@ describe('Aircraft Data Merging Priorities', () => {
     });
 
     it('should handle null/undefined incoming data', () => {
-      const existing: Partial<Aircraft> = {
+      const existing = createAircraft({
         icao24: 'abc123',
         latitude: 40.0,
         longitude: -100.0,
         last_contact: 1000000,
         source: 'database',
-      };
+      });
 
-      const incoming: Partial<Aircraft> = {
+      const incoming = createAircraft({
         icao24: 'abc123',
         latitude: undefined,
         longitude: undefined,
         last_contact: 1000010,
         source: 'database',
-      };
+      });
 
       const merged = mergePlaneRecords(existing, incoming);
       
@@ -386,13 +387,13 @@ describe('Aircraft Data Merging Priorities', () => {
     });
 
     it('should merge first plane when no existing data', () => {
-      const incoming: Partial<Aircraft> = {
+      const incoming = createAircraft({
         icao24: 'abc123',
         latitude: 40.0,
         longitude: -100.0,
         last_contact: 1000000,
         source: 'database',
-      };
+      });
 
       const merged = mergePlaneRecords(undefined, incoming);
       
@@ -400,5 +401,3 @@ describe('Aircraft Data Merging Priorities', () => {
     });
   });
 });
-
-

@@ -5,6 +5,11 @@ import rateLimitManager from '../RateLimitManager';
 
 // Import the mocked module to get type-safe access to mocks
 import openSkyService from '../OpenSkyService';
+import {
+  OPEN_SKY_SAMPLE_STATES,
+  buildOpenSkyResponse,
+  createOpenSkyStates,
+} from '../../__tests__/fixtures/aircraftFixtures';
 
 jest.mock('../../config', () => {
   const mockConfig = {
@@ -98,15 +103,9 @@ describe('AircraftService', () => {
 
   describe('fetchAndUpdateAllAircraft', () => {
     it('should fetch and update all aircraft successfully', async () => {
-      const mockStates = [
-        ['abc123', 'TEST01', null, null, Math.floor(Date.now() / 1000)],
-        ['def456', 'TEST02', null, null, Math.floor(Date.now() / 1000)],
-      ];
+      const mockStates = OPEN_SKY_SAMPLE_STATES;
 
-      mockOpenSkyService.getAllStates.mockResolvedValue({
-        time: Math.floor(Date.now() / 1000),
-        states: mockStates,
-      });
+      mockOpenSkyService.getAllStates.mockResolvedValue(buildOpenSkyResponse(mockStates));
       mockOpenSkyService.prepareStateForDatabase.mockImplementation((state) => [...state, new Date()]);
       mockPostgresRepository.upsertAircraftStateWithPriority.mockResolvedValue(undefined);
 
@@ -131,10 +130,7 @@ describe('AircraftService', () => {
     });
 
     it('should return empty array when no states returned', async () => {
-      mockOpenSkyService.getAllStates.mockResolvedValue({
-        time: Math.floor(Date.now() / 1000),
-        states: [],
-      });
+      mockOpenSkyService.getAllStates.mockResolvedValue(buildOpenSkyResponse([]));
 
       const result = await aircraftService.fetchAndUpdateAllAircraft();
 
@@ -142,18 +138,9 @@ describe('AircraftService', () => {
     });
 
     it('should process aircraft in batches', async () => {
-      const mockStates = Array.from({ length: 150 }, (_, i) => [
-        `icao${i}`,
-        `TEST${i}`,
-        null,
-        null,
-        Math.floor(Date.now() / 1000),
-      ]);
+      const mockStates = createOpenSkyStates(150);
 
-      mockOpenSkyService.getAllStates.mockResolvedValue({
-        time: Math.floor(Date.now() / 1000),
-        states: mockStates,
-      });
+      mockOpenSkyService.getAllStates.mockResolvedValue(buildOpenSkyResponse(mockStates));
       mockOpenSkyService.prepareStateForDatabase.mockImplementation((state) => [...state, new Date()]);
       mockPostgresRepository.upsertAircraftStateWithPriority.mockResolvedValue(undefined);
 

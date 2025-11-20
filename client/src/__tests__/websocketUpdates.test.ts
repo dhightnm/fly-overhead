@@ -4,6 +4,7 @@
  */
 
 import type { Aircraft } from '../types';
+import { createAircraft, createAircraftList } from '../test/fixtures/aircraft';
 
 // Mock WebSocket update event types
 interface WebSocketUpdate {
@@ -73,15 +74,7 @@ function shouldTriggerRefresh(update: WebSocketUpdate): boolean {
 describe('WebSocket Update Handling', () => {
   describe('Update Type: refresh_required', () => {
     it('should trigger data refresh without modifying state', () => {
-      const currentPlanes: Aircraft[] = [
-        {
-          icao24: 'abc123',
-          callsign: 'TEST123',
-          latitude: 40.0,
-          longitude: -100.0,
-          last_contact: 1000000,
-        } as Aircraft,
-      ];
+      const currentPlanes: Aircraft[] = [createAircraft()];
 
       const update: WebSocketUpdate = {
         type: 'refresh_required',
@@ -118,30 +111,26 @@ describe('WebSocket Update Handling', () => {
   describe('Update Type: full', () => {
     it('should replace all aircraft with full dataset', () => {
       const currentPlanes: Aircraft[] = [
-        {
-          icao24: 'old123',
-          callsign: 'OLD123',
-          latitude: 40.0,
-          longitude: -100.0,
-          last_contact: 1000000,
-        } as Aircraft,
+        createAircraft({ icao24: 'old123', callsign: 'OLD123' }),
       ];
 
       const newPlanes = [
-        {
+        createAircraft({
           icao24: 'new123',
           callsign: 'NEW123',
           latitude: 41.0,
           longitude: -101.0,
           last_contact: 1000100,
-        },
-        {
+          source: undefined,
+        }),
+        createAircraft({
           icao24: 'new456',
           callsign: 'NEW456',
           latitude: 42.0,
           longitude: -102.0,
           last_contact: 1000100,
-        },
+          source: undefined,
+        }),
       ];
 
       const update: WebSocketUpdate = {
@@ -159,9 +148,7 @@ describe('WebSocket Update Handling', () => {
     });
 
     it('should handle empty full dataset', () => {
-      const currentPlanes: Aircraft[] = [
-        { icao24: 'abc123', callsign: 'TEST123' } as Aircraft,
-      ];
+      const currentPlanes: Aircraft[] = [createAircraft()];
 
       const update: WebSocketUpdate = {
         type: 'full',
@@ -178,31 +165,32 @@ describe('WebSocket Update Handling', () => {
   describe('Update Type: incremental', () => {
     it('should merge incremental updates with existing data', () => {
       const currentPlanes: Aircraft[] = [
-        {
+        createAircraft({
           icao24: 'abc123',
           callsign: 'TEST123',
           latitude: 40.0,
           longitude: -100.0,
           last_contact: 1000000,
           source: 'database',
-        } as Aircraft,
-        {
+        }),
+        createAircraft({
           icao24: 'def456',
           callsign: 'TEST456',
           latitude: 41.0,
           longitude: -101.0,
           last_contact: 1000000,
           source: 'database',
-        } as Aircraft,
+        }),
       ];
 
       const updates = [
-        {
+        createAircraft({
           icao24: 'abc123',
-          latitude: 40.5, // Position updated
+          latitude: 40.5,
           longitude: -100.5,
           last_contact: 1000010,
-        },
+          source: 'websocket',
+        }),
       ];
 
       const update: WebSocketUpdate = {
@@ -226,23 +214,23 @@ describe('WebSocket Update Handling', () => {
 
     it('should preserve newer timestamps when merging', () => {
       const currentPlanes: Aircraft[] = [
-        {
+        createAircraft({
           icao24: 'abc123',
           callsign: 'TEST123',
           latitude: 40.0,
           longitude: -100.0,
-          last_contact: 1000100, // Newer
+          last_contact: 1000100,
           source: 'database',
-        } as Aircraft,
+        }),
       ];
 
       const updates = [
-        {
+        createAircraft({
           icao24: 'abc123',
           latitude: 40.5,
           longitude: -100.5,
-          last_contact: 1000050, // Older
-        },
+          last_contact: 1000050,
+        }),
       ];
 
       const update: WebSocketUpdate = {
@@ -304,9 +292,7 @@ describe('WebSocket Update Handling', () => {
 
   describe('Error Handling', () => {
     it('should handle malformed update data gracefully', () => {
-      const currentPlanes: Aircraft[] = [
-        { icao24: 'abc123', callsign: 'TEST123' } as Aircraft,
-      ];
+      const currentPlanes: Aircraft[] = [createAircraft()];
 
       const update: WebSocketUpdate = {
         type: 'full',
@@ -321,9 +307,7 @@ describe('WebSocket Update Handling', () => {
     });
 
     it('should handle unknown update types', () => {
-      const currentPlanes: Aircraft[] = [
-        { icao24: 'abc123', callsign: 'TEST123' } as Aircraft,
-      ];
+      const currentPlanes: Aircraft[] = [createAircraft()];
 
       const update: any = {
         type: 'unknown_type',
@@ -350,18 +334,18 @@ describe('WebSocket Update Handling', () => {
 
   describe('Performance Considerations', () => {
     it('incremental updates should be more efficient than full for small changes', () => {
-      const largeDataset: Aircraft[] = Array.from({ length: 1000 }, (_, i) => ({
+      const largeDataset: Aircraft[] = createAircraftList(1000, (i) => ({
         icao24: `plane${i}`,
         callsign: `CALL${i}`,
         latitude: 40 + i * 0.01,
         longitude: -100 + i * 0.01,
         last_contact: 1000000,
-      })) as Aircraft[];
+      }));
 
       // Only 10 planes changed
-      const smallUpdate = Array.from({ length: 10 }, (_, i) => ({
+      const smallUpdate = createAircraftList(10, (i) => ({
         icao24: `plane${i}`,
-        latitude: 40 + i * 0.01 + 0.1, // Moved
+        latitude: 40 + i * 0.01 + 0.1,
         longitude: -100 + i * 0.01 + 0.1,
         last_contact: 1000010,
       }));
@@ -392,5 +376,3 @@ describe('WebSocket Update Handling', () => {
     });
   });
 });
-
-
