@@ -194,8 +194,8 @@ jobs:
                 \"containerPort\": 3005,
                 \"healthCheck\": {
                   \"healthyThreshold\": 2,
-                  \"unhealthyThreshold\": 2,
-                  \"timeoutSeconds\": 5,
+                  \"unhealthyThreshold\": 3,
+                  \"timeoutSeconds\": 10,
                   \"intervalSeconds\": 30,
                   \"path\": \"/health\",
                   \"successCodes\": \"200\"

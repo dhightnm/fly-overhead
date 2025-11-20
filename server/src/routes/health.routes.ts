@@ -8,12 +8,20 @@ const router = Router();
 
 /**
  * Health check endpoint for load balancers and monitoring
+ * Uses a timeout to prevent hanging on slow database connections
  */
 router.get('/health', async (_req: Request, res: Response) => {
   try {
-    // Check database connection
+    // Check database connection with timeout
     const db = postgresRepository.getDb();
-    await db.query('SELECT 1');
+    
+    // Use Promise.race to timeout after 3 seconds
+    const queryPromise = db.query('SELECT 1');
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => reject(new Error('Database health check timeout')), 3000);
+    });
+    
+    await Promise.race([queryPromise, timeoutPromise]);
 
     res.status(200).json({
       status: 'healthy',
