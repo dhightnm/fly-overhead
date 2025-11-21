@@ -23,7 +23,7 @@
   },
   "scripts": {
     "start": "react-scripts start",
-    "build": "node scripts/build.js",
+    "build": "NODE_OPTIONS=--openssl-legacy-provider react-scripts build",
     "test1": "react-scripts test",
     "eject": "react-scripts eject",
     "lint": "eslint src --ext .js,.jsx,.ts,.tsx",
