@@ -1,6 +1,7 @@
 import pgPromise from 'pg-promise';
 import postgresRepository from '../repositories/PostgresRepository';
 import logger from '../utils/logger';
+import { PlaneProfileValidationError } from './PlaneProfileValidationError';
 import type { UserAircraftProfile } from '../types';
 
 const AIRSPEED_UNITS = ['knots', 'mph'] as const;
@@ -115,16 +116,6 @@ type NumericField =
   | 'operating_cost_per_hour'
   | 'total_flight_hours';
 
-export class PlaneProfileValidationError extends Error {
-  statusCode: number;
-
-  constructor(message: string, statusCode = 400) {
-    super(message);
-    this.name = 'PlaneProfileValidationError';
-    this.statusCode = statusCode;
-  }
-}
-
 class UserAircraftProfileService {
   private db: pgPromise.IDatabase<any>;
 
@@ -161,7 +152,10 @@ class UserAircraftProfileService {
     return (allowed as readonly string[]).includes(normalized) ? normalized : null;
   }
 
-  private parseNullableNumber(value: unknown, { allowNegative = false }: { allowNegative?: boolean } = {}): number | null {
+  private parseNullableNumber(
+    value: unknown,
+    { allowNegative = false }: { allowNegative?: boolean } = {},
+  ): number | null {
     if (value === null || value === undefined || value === '') {
       return null;
     }
@@ -219,7 +213,10 @@ class UserAircraftProfileService {
         }
         return null;
       })
-      .filter((entry): entry is { manufacturer: string | null; model: string | null; name: string | null } => Boolean(entry));
+      .filter(
+        (entry): entry is { manufacturer: string | null; model: string | null; name: string | null } =>
+          Boolean(entry),
+      );
   }
 
   private normalizeInput(input: CreateUserAircraftProfileInput): NormalizedAircraftProfileData {

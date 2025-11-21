@@ -3,9 +3,9 @@ import postgresRepository from '../repositories/PostgresRepository';
 import logger from '../utils/logger';
 import { authenticateToken, type AuthenticatedRequest } from './auth.routes';
 import userAircraftProfileService, {
-  PlaneProfileValidationError,
   type CreateUserAircraftProfileInput,
 } from '../services/UserAircraftProfileService';
+import { PlaneProfileValidationError } from '../services/PlaneProfileValidationError';
 
 const router = Router();
 
@@ -29,7 +29,7 @@ const DEFAULT_OFFSET = 0;
  */
 router.get('/feeders', authenticateToken, async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
   try {
-    const { userId } = (req.user!);
+    const { userId } = req.user!;
 
     // Validate userId is a number
     if (!userId || typeof userId !== 'number' || userId <= 0) {
@@ -37,10 +37,8 @@ router.get('/feeders', authenticateToken, async (req: AuthenticatedRequest, res:
     }
 
     // Get feeders linked to this user via metadata
-    const feeders = await postgresRepository
-      .getDb()
-      .any(
-        `SELECT 
+    const feeders = await postgresRepository.getDb().any(
+      `SELECT 
           feeder_id,
           name,
           status,
@@ -51,8 +49,8 @@ router.get('/feeders', authenticateToken, async (req: AuthenticatedRequest, res:
         FROM feeders 
         WHERE metadata->>'user_id' = $1
         ORDER BY created_at DESC`,
-        [userId.toString()],
-      );
+      [userId.toString()],
+    );
 
     res.json({
       feeders: feeders.map((feeder) => ({
@@ -82,7 +80,7 @@ router.get('/feeders', authenticateToken, async (req: AuthenticatedRequest, res:
  */
 router.get('/planes', authenticateToken, async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
   try {
-    const { userId } = (req.user!);
+    const { userId } = req.user!;
 
     if (!userId || typeof userId !== 'number' || userId <= 0) {
       return res.status(400).json({ error: 'Invalid user ID' });
@@ -109,7 +107,7 @@ router.get('/planes', authenticateToken, async (req: AuthenticatedRequest, res: 
  * Create a new aircraft profile for the authenticated user
  */
 router.post('/planes', authenticateToken, async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
-  const { userId } = (req.user!);
+  const { userId } = req.user!;
 
   if (!userId || typeof userId !== 'number' || userId <= 0) {
     return res.status(400).json({ error: 'Invalid user ID' });
@@ -127,7 +125,8 @@ router.post('/planes', authenticateToken, async (req: AuthenticatedRequest, res:
     }
     if (err?.code === '23505') {
       try {
-        const existingPlane = await userAircraftProfileService.findProfileByTail(userId, (req.body as CreateUserAircraftProfileInput).tailNumber);
+        const tailNumber = (req.body as CreateUserAircraftProfileInput).tailNumber;
+        const existingPlane = await userAircraftProfileService.findProfileByTail(userId, tailNumber);
         if (existingPlane) {
           return res.status(200).json({ plane: existingPlane, duplicate: true });
         }
@@ -152,36 +151,40 @@ router.post('/planes', authenticateToken, async (req: AuthenticatedRequest, res:
  * PUT /api/portal/planes/:planeId
  * Update an aircraft profile belonging to the authenticated user
  */
-router.put('/planes/:planeId', authenticateToken, async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
-  try {
-    const { userId } = (req.user!);
-    const planeId = parseInt(req.params.planeId, 10);
+router.put(
+  '/planes/:planeId',
+  authenticateToken,
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const { userId } = req.user!;
+      const planeId = parseInt(req.params.planeId, 10);
 
-    if (!userId || typeof userId !== 'number' || userId <= 0) {
-      return res.status(400).json({ error: 'Invalid user ID' });
-    }
-    if (Number.isNaN(planeId) || planeId <= 0) {
-      return res.status(400).json({ error: 'Invalid plane ID' });
-    }
+      if (!userId || typeof userId !== 'number' || userId <= 0) {
+        return res.status(400).json({ error: 'Invalid user ID' });
+      }
+      if (Number.isNaN(planeId) || planeId <= 0) {
+        return res.status(400).json({ error: 'Invalid plane ID' });
+      }
 
-    const payload = req.body as CreateUserAircraftProfileInput;
-    const plane = await userAircraftProfileService.updateProfile(userId, planeId, payload);
+      const payload = req.body as CreateUserAircraftProfileInput;
+      const plane = await userAircraftProfileService.updateProfile(userId, planeId, payload);
 
-    return res.json({ plane });
-  } catch (error) {
-    const err = error as any;
-    if (error instanceof PlaneProfileValidationError) {
-      return res.status(error.statusCode).json({ error: err.message });
+      return res.json({ plane });
+    } catch (error) {
+      const err = error as any;
+      if (error instanceof PlaneProfileValidationError) {
+        return res.status(error.statusCode).json({ error: err.message });
+      }
+      logger.error('Error updating aircraft profile', {
+        error: err.message,
+        userId: req.user?.userId,
+        planeId: req.params.planeId,
+        stack: err.stack,
+      });
+      return next(error);
     }
-    logger.error('Error updating aircraft profile', {
-      error: err.message,
-      userId: req.user?.userId,
-      planeId: req.params.planeId,
-      stack: err.stack,
-    });
-    return next(error);
-  }
-});
+  },
+);
 
 /**
  * GET /api/portal/aircraft
@@ -189,7 +192,7 @@ router.put('/planes/:planeId', authenticateToken, async (req: AuthenticatedReque
  */
 router.get('/aircraft', authenticateToken, async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
   try {
-    const { userId } = (req.user!);
+    const { userId } = req.user!;
 
     // Validate userId
     if (!userId || typeof userId !== 'number' || userId <= 0) {
@@ -214,10 +217,7 @@ router.get('/aircraft', authenticateToken, async (req: AuthenticatedRequest, res
     // First, get all feeder IDs for this user
     const userFeeders = await postgresRepository
       .getDb()
-      .any(
-        'SELECT feeder_id FROM feeders WHERE metadata->>\'user_id\' = $1',
-        [userId.toString()],
-      );
+      .any("SELECT feeder_id FROM feeders WHERE metadata->>'user_id' = $1", [userId.toString()]);
 
     if (userFeeders.length === 0) {
       return res.json({
@@ -241,10 +241,8 @@ router.get('/aircraft', authenticateToken, async (req: AuthenticatedRequest, res
     }
 
     // Get aircraft from these feeders
-    const aircraft = await postgresRepository
-      .getDb()
-      .any(
-        `SELECT 
+    const aircraft = await postgresRepository.getDb().any(
+      `SELECT 
           a.icao24,
           a.callsign,
           a.latitude,
@@ -301,19 +299,17 @@ router.get('/aircraft', authenticateToken, async (req: AuthenticatedRequest, res
           AND a.last_contact >= EXTRACT(EPOCH FROM NOW() - INTERVAL '24 hours')
         ORDER BY a.last_contact DESC
         LIMIT $2 OFFSET $3`,
-        [feederIds, limit, offset],
-      );
+      [feederIds, limit, offset],
+    );
 
     // Get total count
-    const totalResult = await postgresRepository
-      .getDb()
-      .one(
-        `SELECT COUNT(*) as total
+    const totalResult = await postgresRepository.getDb().one(
+      `SELECT COUNT(*) as total
         FROM aircraft_states
         WHERE feeder_id = ANY($1)
           AND last_contact >= EXTRACT(EPOCH FROM NOW() - INTERVAL '24 hours')`,
-        [feederIds],
-      );
+      [feederIds],
+    );
 
     // Transform aircraft data to match frontend format
     const transformedAircraft = aircraft.map((ac) => ({
@@ -333,22 +329,25 @@ router.get('/aircraft', authenticateToken, async (req: AuthenticatedRequest, res
       feeder_id: ac.feeder_id,
       data_source: ac.data_source,
       source_priority: ac.source_priority,
-      route: ac.departure_icao || ac.departure_iata ? {
-        departureAirport: {
-          icao: ac.departure_icao,
-          iata: ac.departure_iata,
-          name: ac.departure_name,
-        },
-        arrivalAirport: {
-          icao: ac.arrival_icao,
-          iata: ac.arrival_iata,
-          name: ac.arrival_name,
-        },
-        aircraft: {
-          type: ac.aircraft_type,
-        },
-        source: ac.route_source,
-      } : null,
+      route:
+        ac.departure_icao || ac.departure_iata
+          ? {
+              departureAirport: {
+                icao: ac.departure_icao,
+                iata: ac.departure_iata,
+                name: ac.departure_name,
+              },
+              arrivalAirport: {
+                icao: ac.arrival_icao,
+                iata: ac.arrival_iata,
+                name: ac.arrival_name,
+              },
+              aircraft: {
+                type: ac.aircraft_type,
+              },
+              source: ac.route_source,
+            }
+          : null,
     }));
 
     res.json({
@@ -375,7 +374,7 @@ router.get('/aircraft', authenticateToken, async (req: AuthenticatedRequest, res
  */
 router.get('/stats', authenticateToken, async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
   try {
-    const { userId } = (req.user!);
+    const { userId } = req.user!;
 
     // Validate userId
     if (!userId || typeof userId !== 'number' || userId <= 0) {
@@ -383,47 +382,38 @@ router.get('/stats', authenticateToken, async (req: AuthenticatedRequest, res: R
     }
 
     // Get feeder count
-    const feederCount = await postgresRepository
-      .getDb()
-      .one(
-        `SELECT COUNT(*) as count
+    const feederCount = await postgresRepository.getDb().one(
+      `SELECT COUNT(*) as count
         FROM feeders 
         WHERE metadata->>'user_id' = $1 AND status = 'active'`,
-        [userId.toString()],
-      );
+      [userId.toString()],
+    );
 
     // Get aircraft count from user's feeders
     const userFeeders = await postgresRepository
       .getDb()
-      .any(
-        'SELECT feeder_id FROM feeders WHERE metadata->>\'user_id\' = $1',
-        [userId.toString()],
-      );
+      .any("SELECT feeder_id FROM feeders WHERE metadata->>'user_id' = $1", [userId.toString()]);
 
     let aircraftCount = 0;
     if (userFeeders.length > 0) {
       const feederIds = userFeeders.map((f) => f.feeder_id);
-      const aircraftResult = await postgresRepository
-        .getDb()
-        .one(
-          `SELECT COUNT(DISTINCT icao24) as count
+      const aircraftResult = await postgresRepository.getDb().one(
+        `SELECT COUNT(DISTINCT icao24) as count
           FROM aircraft_states
           WHERE feeder_id = ANY($1)
             AND last_contact >= EXTRACT(EPOCH FROM NOW() - INTERVAL '24 hours')`,
-          [feederIds],
-        );
+        [feederIds],
+      );
       aircraftCount = parseInt(aircraftResult.count, 10);
     }
 
     // Get API key count
-    const apiKeyCount = await postgresRepository
-      .getDb()
-      .one(
-        `SELECT COUNT(*) as count
+    const apiKeyCount = await postgresRepository.getDb().one(
+      `SELECT COUNT(*) as count
         FROM api_keys
         WHERE user_id = $1 AND status = 'active'`,
-        [userId],
-      );
+      [userId],
+    );
 
     res.json({
       stats: {
