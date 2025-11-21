@@ -117,6 +117,7 @@ const FeederStatus: React.FC<FeederStatusProps> = ({ feeders }) => {
           </div>
         )}
       </div>
+    </div>
   );
 };
 
