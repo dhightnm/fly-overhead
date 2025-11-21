@@ -1,7 +1,7 @@
 # ---------------------------------------
 # 1) Build the React front-end
 # ---------------------------------------
-FROM node:16 AS build-frontend
+FROM node:20 AS build-frontend
 
 # Accept build arguments for React environment variables
 ARG REACT_APP_API_URL
@@ -26,7 +26,7 @@ RUN npm run build
 # ---------------------------------------
 # 2) Run server + serve built static files
 # ---------------------------------------
-FROM node:16
+FROM node:20
 
 # Build argument for cache busting (optional, set via docker compose)
 ARG BUILD_DATE
