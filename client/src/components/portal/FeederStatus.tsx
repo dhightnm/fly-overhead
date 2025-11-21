@@ -71,52 +71,52 @@ const FeederStatus: React.FC<FeederStatusProps> = ({ feeders }) => {
           <span className="feeder-count">{feeders.length} feeder{feeders.length !== 1 ? 's' : ''}</span>
         </div>
 
-      {feeders.length === 0 ? (
-        <div className="empty-state">
-          <p>No feeders registered. Register a feeder to start tracking aircraft.</p>
-        </div>
-      ) : (
-        <div className="feeders-list">
-          {feeders.map((feeder) => (
-            <div key={feeder.feeder_id} className="feeder-card">
-              <div className="feeder-header">
-                <div className="feeder-info">
-                  <h3>{feeder.name || feeder.feeder_id}</h3>
-                  <code className="feeder-id">{feeder.feeder_id}</code>
+        {feeders.length === 0 ? (
+          <div className="empty-state">
+            <p>No feeders registered. Register a feeder to start tracking aircraft.</p>
+          </div>
+        ) : (
+          <div className="feeders-list">
+            {feeders.map((feeder) => (
+              <div key={feeder.feeder_id} className="feeder-card">
+                <div className="feeder-header">
+                  <div className="feeder-info">
+                    <h3>{feeder.name || feeder.feeder_id}</h3>
+                    <code className="feeder-id">{feeder.feeder_id}</code>
+                  </div>
+                  <div className="feeder-status">
+                    {getStatusBadge(feeder.status)}
+                    {isFeederHealthy(feeder) && (
+                      <span className="health-indicator healthy">✓ Healthy</span>
+                    )}
+                  </div>
                 </div>
-                <div className="feeder-status">
-                  {getStatusBadge(feeder.status)}
-                  {isFeederHealthy(feeder) && (
-                    <span className="health-indicator healthy">✓ Healthy</span>
-                  )}
-                </div>
-              </div>
 
-              <div className="feeder-details">
-                <div className="feeder-detail-row">
-                  <span className="feeder-label">Last Seen:</span>
-                  <span className="feeder-value">{getLastSeenText(feeder.last_seen_at)}</span>
-                </div>
-                {feeder.latitude && feeder.longitude && (
+                <div className="feeder-details">
                   <div className="feeder-detail-row">
-                    <span className="feeder-label">Location:</span>
+                    <span className="feeder-label">Last Seen:</span>
+                    <span className="feeder-value">{getLastSeenText(feeder.last_seen_at)}</span>
+                  </div>
+                  {feeder.latitude && feeder.longitude && (
+                    <div className="feeder-detail-row">
+                      <span className="feeder-label">Location:</span>
+                      <span className="feeder-value">
+                        {feeder.latitude.toFixed(4)}, {feeder.longitude.toFixed(4)}
+                      </span>
+                    </div>
+                  )}
+                  <div className="feeder-detail-row">
+                    <span className="feeder-label">Registered:</span>
                     <span className="feeder-value">
-                      {feeder.latitude.toFixed(4)}, {feeder.longitude.toFixed(4)}
+                      {new Date(feeder.created_at).toLocaleDateString()}
                     </span>
                   </div>
-                )}
-                <div className="feeder-detail-row">
-                  <span className="feeder-label">Registered:</span>
-                  <span className="feeder-value">
-                    {new Date(feeder.created_at).toLocaleDateString()}
-                  </span>
                 </div>
               </div>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
+            ))}
+          </div>
+        )}
+      </div>
   );
 };
 
