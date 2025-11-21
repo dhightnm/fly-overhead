@@ -90,7 +90,7 @@ describe('Feeder Registration Endpoint', () => {
           metadata: reqMetadata,
         } = req.body;
 
-        if (!feeder_id || !api_key_hash || !name) {
+        if (!reqFeederId || !reqApiKeyHash || !reqName) {
           return res.status(400).json({
             success: false,
             error: 'feeder_id, api_key_hash, and name are required',
@@ -99,16 +99,16 @@ describe('Feeder Registration Endpoint', () => {
         }
 
         try {
-          const existing = await postgresRepository.getFeederById(feeder_id);
+          const existing = await postgresRepository.getFeederById(reqFeederId);
           if (existing) {
             return res.status(400).json({
               success: false,
               error: 'Feeder already exists',
-              details: { feeder_id },
+              details: { feeder_id: reqFeederId },
             });
           }
 
-          const existingKey = await postgresRepository.getApiKeyByHash(api_key_hash);
+          const existingKey = await postgresRepository.getApiKeyByHash(reqApiKeyHash);
           if (existingKey) {
             return res.status(400).json({
               success: false,
@@ -117,13 +117,13 @@ describe('Feeder Registration Endpoint', () => {
             });
           }
 
-          const prefix = key_prefix || 'fd_';
+          const prefix = reqKeyPrefix || 'fd_';
 
           const apiKeyData = await postgresRepository.createApiKey({
-            keyHash: api_key_hash,
+            keyHash: reqApiKeyHash,
             prefix,
-            name: `Feeder: ${name}`,
-            description: `Auto-generated API key for feeder ${feeder_id}`,
+            name: `Feeder: ${reqName}`,
+            description: `Auto-generated API key for feeder ${reqFeederId}`,
             userId: null,
             scopes: ['feeder:write', 'feeder:read', 'aircraft:write'],
             createdBy: null,
@@ -131,13 +131,13 @@ describe('Feeder Registration Endpoint', () => {
           });
 
           const feeder = await postgresRepository.registerFeeder({
-            feeder_id,
-            api_key_hash,
-            name,
-            latitude,
-            longitude,
+            feeder_id: reqFeederId,
+            api_key_hash: reqApiKeyHash,
+            name: reqName,
+            latitude: reqLatitude,
+            longitude: reqLongitude,
             metadata: {
-              ...metadata,
+              ...reqMetadata,
               api_key_id: apiKeyData.key_id,
             },
           });
@@ -254,16 +254,16 @@ describe('Feeder Registration Endpoint', () => {
         }
 
         try {
-          const existing = await postgresRepository.getFeederById(feeder_id);
+          const existing = await postgresRepository.getFeederById(reqFeederId);
           if (existing) {
             return res.status(400).json({
               success: false,
               error: 'Feeder already exists',
-              details: { feeder_id },
+              details: { feeder_id: reqFeederId },
             });
           }
 
-          const existingKey = await postgresRepository.getApiKeyByHash(api_key_hash);
+          const existingKey = await postgresRepository.getApiKeyByHash(reqApiKeyHash);
           if (existingKey) {
             return res.status(400).json({
               success: false,
@@ -272,13 +272,13 @@ describe('Feeder Registration Endpoint', () => {
             });
           }
 
-          const prefix = key_prefix || 'fd_';
+          const prefix = reqKeyPrefix || 'fd_';
 
           const apiKeyData = await postgresRepository.createApiKey({
-            keyHash: api_key_hash,
+            keyHash: reqApiKeyHash,
             prefix,
-            name: `Feeder: ${name}`,
-            description: `Auto-generated API key for feeder ${feeder_id}`,
+            name: `Feeder: ${reqName}`,
+            description: `Auto-generated API key for feeder ${reqFeederId}`,
             userId: null,
             scopes: ['feeder:write', 'feeder:read', 'aircraft:write'],
             createdBy: null,
@@ -286,13 +286,13 @@ describe('Feeder Registration Endpoint', () => {
           });
 
           const feeder = await postgresRepository.registerFeeder({
-            feeder_id,
-            api_key_hash,
-            name,
-            latitude,
-            longitude,
+            feeder_id: reqFeederId,
+            api_key_hash: reqApiKeyHash,
+            name: reqName,
+            latitude: reqLatitude,
+            longitude: reqLongitude,
             metadata: {
-              ...metadata,
+              ...reqMetadata,
               api_key_id: apiKeyData.key_id,
             },
           });
@@ -390,12 +390,12 @@ describe('Feeder Registration Endpoint', () => {
         }
 
         try {
-          const existing = await postgresRepository.getFeederById(feeder_id);
+          const existing = await postgresRepository.getFeederById(reqFeederId);
           if (existing) {
             return res.status(400).json({
               success: false,
               error: 'Feeder already exists',
-              details: { feeder_id },
+              details: { feeder_id: reqFeederId },
             });
           }
         } catch (error) {
@@ -464,16 +464,16 @@ describe('Feeder Registration Endpoint', () => {
         }
 
         try {
-          const existing = await postgresRepository.getFeederById(feeder_id);
+          const existing = await postgresRepository.getFeederById(reqFeederId);
           if (existing) {
             return res.status(400).json({
               success: false,
               error: 'Feeder already exists',
-              details: { feeder_id },
+              details: { feeder_id: reqFeederId },
             });
           }
 
-          const existingKey = await postgresRepository.getApiKeyByHash(api_key_hash);
+          const existingKey = await postgresRepository.getApiKeyByHash(reqApiKeyHash);
           if (existingKey) {
             return res.status(400).json({
               success: false,
@@ -587,16 +587,16 @@ describe('Feeder Registration Endpoint', () => {
         }
 
         try {
-          const existing = await postgresRepository.getFeederById(feeder_id);
+          const existing = await postgresRepository.getFeederById(reqFeederId);
           if (existing) {
             return res.status(400).json({
               success: false,
               error: 'Feeder already exists',
-              details: { feeder_id },
+              details: { feeder_id: reqFeederId },
             });
           }
 
-          const existingKey = await postgresRepository.getApiKeyByHash(api_key_hash);
+          const existingKey = await postgresRepository.getApiKeyByHash(reqApiKeyHash);
           if (existingKey) {
             return res.status(400).json({
               success: false,
@@ -605,10 +605,10 @@ describe('Feeder Registration Endpoint', () => {
             });
           }
 
-          const prefix = key_prefix || 'fd_';
+          const prefix = reqKeyPrefix || 'fd_';
 
           const apiKeyData = await postgresRepository.createApiKey({
-            keyHash: api_key_hash,
+            keyHash: reqApiKeyHash,
             prefix,
             name: `Feeder: ${name}`,
             description: authenticatedUserId
@@ -621,13 +621,13 @@ describe('Feeder Registration Endpoint', () => {
           });
 
           const feeder = await postgresRepository.registerFeeder({
-            feeder_id,
-            api_key_hash,
-            name,
-            latitude,
-            longitude,
+            feeder_id: reqFeederId,
+            api_key_hash: reqApiKeyHash,
+            name: reqName,
+            latitude: reqLatitude,
+            longitude: reqLongitude,
             metadata: {
-              ...metadata,
+              ...reqMetadata,
               api_key_id: apiKeyData.key_id,
               user_id: authenticatedUserId,
             },
