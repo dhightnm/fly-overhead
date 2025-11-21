@@ -242,10 +242,16 @@ describe('Feeder Registration Endpoint', () => {
       // Same handler as above
       const handler = async (req: any, res: any, _next: any) => {
         const {
-          feeder_id, api_key_hash, key_prefix, name, latitude, longitude, metadata,
+          feeder_id: reqFeederId,
+          api_key_hash: reqApiKeyHash,
+          key_prefix: reqKeyPrefix,
+          name: reqName,
+          latitude: reqLatitude,
+          longitude: reqLongitude,
+          metadata: reqMetadata,
         } = req.body;
 
-        if (!feeder_id || !api_key_hash || !name) {
+        if (!reqFeederId || !reqApiKeyHash || !reqName) {
           return res.status(400).json({
             success: false,
             error: 'feeder_id, api_key_hash, and name are required',
@@ -330,9 +336,9 @@ describe('Feeder Registration Endpoint', () => {
       };
 
       const handler = async (req: any, res: any, _next: any) => {
-        const { feeder_id, api_key_hash, name } = req.body;
+        const { feeder_id: reqFeederId, api_key_hash: reqApiKeyHash, name: reqName } = req.body;
 
-        if (!feeder_id || !api_key_hash || !name) {
+        if (!reqFeederId || !reqApiKeyHash || !reqName) {
           return res.status(400).json({
             success: false,
             error: 'feeder_id, api_key_hash, and name are required',
@@ -572,13 +578,19 @@ describe('Feeder Registration Endpoint', () => {
 
       const handler = async (req: any, res: any, _next: any) => {
         const {
-          feeder_id, api_key_hash, key_prefix, name, latitude, longitude, metadata,
+          feeder_id: reqFeederId,
+          api_key_hash: reqApiKeyHash,
+          key_prefix: reqKeyPrefix,
+          name: reqName,
+          latitude: reqLatitude,
+          longitude: reqLongitude,
+          metadata: reqMetadata,
         } = req.body;
         const authenticatedUser = req.user;
         const authenticatedUserId = authenticatedUser?.userId || null;
         const createdBy = authenticatedUser?.userId || null;
 
-        if (!feeder_id || !api_key_hash || !name) {
+        if (!reqFeederId || !reqApiKeyHash || !reqName) {
           return res.status(400).json({
             success: false,
             error: 'feeder_id, api_key_hash, and name are required',
@@ -610,10 +622,10 @@ describe('Feeder Registration Endpoint', () => {
           const apiKeyData = await postgresRepository.createApiKey({
             keyHash: reqApiKeyHash,
             prefix,
-            name: `Feeder: ${name}`,
+            name: `Feeder: ${reqName}`,
             description: authenticatedUserId
-              ? `Auto-generated API key for feeder ${feeder_id} (linked to user account)`
-              : `Auto-generated API key for feeder ${feeder_id}`,
+              ? `Auto-generated API key for feeder ${reqFeederId} (linked to user account)`
+              : `Auto-generated API key for feeder ${reqFeederId}`,
             userId: authenticatedUserId,
             scopes: ['feeder:write', 'feeder:read', 'aircraft:write'],
             createdBy,
