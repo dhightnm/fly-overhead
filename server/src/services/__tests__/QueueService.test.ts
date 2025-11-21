@@ -1,31 +1,21 @@
 import type { AircraftQueueMessage } from '../QueueService';
 
-import queueService from '../QueueService';
-
-// Create an object container to hold the mock instance
-// Using var avoids Temporal Dead Zone issues in jest.mock factories
-// var is hoisted and initialized to undefined, allowing property assignment
-var mockContainer: { instance: any };
+// Create mock instance that will be shared
+// Using an object literal avoids TDZ issues - objects are created immediately
+const mockRedisInstance = {
+  lpush: jest.fn().mockResolvedValue(1),
+  rpop: jest.fn().mockResolvedValue(null),
+  brpop: jest.fn().mockResolvedValue(null),
+  rpush: jest.fn().mockResolvedValue(1),
+  llen: jest.fn().mockResolvedValue(0),
+  connect: jest.fn().mockResolvedValue(undefined),
+  on: jest.fn(),
+  disconnect: jest.fn(),
+};
 
 // Mock dependencies BEFORE importing the service
-jest.mock('ioredis', () => {
-  // Create the container object and mock instance inside the factory
-  // This avoids Temporal Dead Zone issues
-  mockContainer = {
-    instance: {
-      lpush: jest.fn().mockResolvedValue(1),
-      rpop: jest.fn().mockResolvedValue(null),
-      brpop: jest.fn().mockResolvedValue(null),
-      rpush: jest.fn().mockResolvedValue(1),
-      llen: jest.fn().mockResolvedValue(0),
-      connect: jest.fn().mockResolvedValue(undefined),
-      on: jest.fn(),
-      disconnect: jest.fn(),
-    },
-  };
-  // Return the factory function that creates the mock instance
-  return jest.fn(() => mockContainer.instance);
-});
+// QueueService is instantiated at module load, so mocks must be ready first
+jest.mock('ioredis', () => jest.fn(() => mockRedisInstance));
 
 jest.mock('../../utils/logger', () => ({
   info: jest.fn(),
@@ -48,12 +38,17 @@ jest.mock('../../config', () => ({
   },
 }));
 
+// Import QueueService AFTER mocks are set up
+// This ensures the mock is ready when QueueService constructor runs
+// eslint-disable-next-line import/first
+import queueService from '../QueueService';
+
 describe('QueueService', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    // Reset mock functions
-    mockContainer.instance.lpush.mockResolvedValue(1);
-    mockContainer.instance.connect.mockResolvedValue(undefined);
+    // Reset mock functions to default values
+    mockRedisInstance.lpush.mockResolvedValue(1);
+    mockRedisInstance.connect.mockResolvedValue(undefined);
   });
 
   describe('initialization', () => {
@@ -64,14 +59,14 @@ describe('QueueService', () => {
       expect(queueService.isEnabled()).toBe(true);
       expect(queueService.getQueueKey()).toBe('flyoverhead:aircraft_ingest');
       // Verify mock instance methods are available
-      expect(mockContainer.instance.connect).toBeDefined();
-      expect(mockContainer.instance.on).toBeDefined();
+      expect(mockRedisInstance.connect).toBeDefined();
+      expect(mockRedisInstance.on).toBeDefined();
     });
 
     it('should set up event handlers', () => {
       // Event handlers are set up during module initialization
       // Check that on was called (may have been called during module load)
-      const onCalls = mockContainer.instance.on.mock.calls;
+      const onCalls = mockRedisInstance.on.mock.calls;
       const hasConnectHandler = onCalls.some((call: any[]) => call[0] === 'connect');
       const hasErrorHandler = onCalls.some((call: any[]) => call[0] === 'error');
 
@@ -79,7 +74,7 @@ describe('QueueService', () => {
       // In that case, verify the mock is set up correctly
       if (onCalls.length === 0) {
         // Service may initialize lazily, so just verify mock is ready
-        expect(mockContainer.instance.on).toBeDefined();
+        expect(mockRedisInstance.on).toBeDefined();
       } else {
         expect(hasConnectHandler || hasErrorHandler).toBe(true);
       }
@@ -92,7 +87,7 @@ describe('QueueService', () => {
     });
 
     it('should return false when Redis connection fails', async () => {
-      mockContainer.instance.connect.mockRejectedValue(new Error('Connection failed'));
+      mockRedisInstance.connect.mockRejectedValue(new Error('Connection failed'));
 
       // Wait for connection attempt
       await new Promise((resolve) => setTimeout(resolve, 10));
@@ -128,7 +123,7 @@ describe('QueueService', () => {
 
       await queueService.enqueueAircraftStates(messages);
 
-      expect(mockContainer.instance.lpush).toHaveBeenCalledWith(
+      expect(mockRedisInstance.lpush).toHaveBeenCalledWith(
         'flyoverhead:aircraft_ingest',
         expect.stringContaining('a1b2c3'),
         expect.stringContaining('d4e5f6'),
@@ -137,11 +132,11 @@ describe('QueueService', () => {
 
     it('should not enqueue empty message array', async () => {
       await queueService.enqueueAircraftStates([]);
-      expect(mockContainer.instance.lpush).not.toHaveBeenCalled();
+      expect(mockRedisInstance.lpush).not.toHaveBeenCalled();
     });
 
     it('should handle Redis errors gracefully', async () => {
-      mockContainer.instance.lpush.mockRejectedValue(new Error('Redis error'));
+      mockRedisInstance.lpush.mockRejectedValue(new Error('Redis error'));
 
       const messages: AircraftQueueMessage[] = [
         {
@@ -168,7 +163,7 @@ describe('QueueService', () => {
 
       await queueService.enqueueAircraftStates(messages);
 
-      const callArgs = mockContainer.instance.lpush.mock.calls[0];
+      const callArgs = mockRedisInstance.lpush.mock.calls[0];
       expect(callArgs[0]).toBe('flyoverhead:aircraft_ingest');
 
       // Verify JSON serialization
