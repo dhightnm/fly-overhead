@@ -332,21 +332,21 @@ router.get('/aircraft', authenticateToken, async (req: AuthenticatedRequest, res
       route:
         ac.departure_icao || ac.departure_iata
           ? {
-              departureAirport: {
-                icao: ac.departure_icao,
-                iata: ac.departure_iata,
-                name: ac.departure_name,
-              },
-              arrivalAirport: {
-                icao: ac.arrival_icao,
-                iata: ac.arrival_iata,
-                name: ac.arrival_name,
-              },
-              aircraft: {
-                type: ac.aircraft_type,
-              },
-              source: ac.route_source,
-            }
+            departureAirport: {
+              icao: ac.departure_icao,
+              iata: ac.departure_iata,
+              name: ac.departure_name,
+            },
+            arrivalAirport: {
+              icao: ac.arrival_icao,
+              iata: ac.arrival_iata,
+              name: ac.arrival_name,
+            },
+            aircraft: {
+              type: ac.aircraft_type,
+            },
+            source: ac.route_source,
+          }
           : null,
     }));
 
