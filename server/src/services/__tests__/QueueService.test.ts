@@ -13,14 +13,14 @@ jest.mock('ioredis', () => {
   // This avoids Temporal Dead Zone issues
   mockContainer = {
     instance: {
-    lpush: jest.fn().mockResolvedValue(1),
-    rpop: jest.fn().mockResolvedValue(null),
-    brpop: jest.fn().mockResolvedValue(null),
-    rpush: jest.fn().mockResolvedValue(1),
-    llen: jest.fn().mockResolvedValue(0),
-    connect: jest.fn().mockResolvedValue(undefined),
-    on: jest.fn(),
-    disconnect: jest.fn(),
+      lpush: jest.fn().mockResolvedValue(1),
+      rpop: jest.fn().mockResolvedValue(null),
+      brpop: jest.fn().mockResolvedValue(null),
+      rpush: jest.fn().mockResolvedValue(1),
+      llen: jest.fn().mockResolvedValue(0),
+      connect: jest.fn().mockResolvedValue(undefined),
+      on: jest.fn(),
+      disconnect: jest.fn(),
     },
   };
   // Return the factory function that creates the mock instance
