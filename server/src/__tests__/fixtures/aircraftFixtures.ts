@@ -18,14 +18,13 @@ export const buildOpenSkyResponse = (
   states,
 });
 
-export const createOpenSkyStates = (count: number): OpenSkyState[] =>
-  Array.from({ length: count }, (_, index) => [
-    `icao${index}`,
-    `TEST${index}`,
-    null,
-    null,
-    unixNow(),
-  ]);
+export const createOpenSkyStates = (count: number): OpenSkyState[] => Array.from({ length: count }, (_, index) => [
+  `icao${index}`,
+  `TEST${index}`,
+  null,
+  null,
+  unixNow(),
+]);
 
 export const NORTHEAST_BOUNDING_BOX = {
   lamin: 39.0,

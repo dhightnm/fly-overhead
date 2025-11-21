@@ -1,5 +1,7 @@
 import type { AircraftQueueMessage } from '../QueueService';
 
+import queueService from '../QueueService';
+
 // Create a shared mock instance that we can access in tests
 // Define it as a variable that can be accessed after module load
 let mockRedisInstance: any;
@@ -20,8 +22,6 @@ jest.mock('ioredis', () => {
   // Return the factory function that creates the mock instance
   return jest.fn(() => mockRedisInstance);
 });
-
-import queueService from '../QueueService';
 
 jest.mock('../../utils/logger', () => ({
   info: jest.fn(),
