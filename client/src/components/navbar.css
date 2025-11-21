@@ -154,16 +154,39 @@ body {
 }
 
 .nav-button-portal {
-  background: rgba(255, 255, 255, 0.2);
+  background: linear-gradient(135deg, rgba(14, 165, 233, 0.25), rgba(59, 130, 246, 0.25));
   color: white;
-  border: 1px solid rgba(255, 255, 255, 0.3);
+  border: 1px solid rgba(56, 189, 248, 0.5);
   font-weight: 600;
+  backdrop-filter: blur(10px);
+  box-shadow: 0 4px 16px rgba(2, 132, 199, 0.2);
+  position: relative;
+  overflow: hidden;
+}
+
+.nav-button-portal::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 50% 0%, rgba(14, 165, 233, 0.3), transparent 70%);
+  opacity: 0;
+  transition: opacity 0.3s ease;
 }
 
 .nav-button-portal:hover {
-  background: rgba(255, 255, 255, 0.3);
-  border-color: rgba(255, 255, 255, 0.5);
-  transform: translateY(-1px);
+  background: linear-gradient(135deg, rgba(14, 165, 233, 0.35), rgba(59, 130, 246, 0.35));
+  border-color: rgba(56, 189, 248, 0.8);
+  box-shadow: 0 8px 24px rgba(2, 132, 199, 0.35);
+  transform: translateY(-2px);
+}
+
+.nav-button-portal:hover::before {
+  opacity: 1;
+}
+
+.nav-button-portal:active {
+  transform: translateY(0);
+  box-shadow: 0 4px 16px rgba(2, 132, 199, 0.25);
 }
 
 .nav-button-premium {

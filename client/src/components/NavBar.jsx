@@ -147,7 +147,7 @@ const NavBar = () => {
     <>
       <nav className="navbar">
         <a href="/" className="site-title">
-          ✈️ Fly Overhead
+          Fly Overhead
         </a>
         
         <div className="navbar-center">
@@ -193,7 +193,7 @@ const NavBar = () => {
                 className="nav-button nav-button-portal"
                 onClick={() => history.push('/portal')}
               >
-                🎛️ Portal
+                Portal
               </button>
               {!isPremium() && (
                 <button 

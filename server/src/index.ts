@@ -72,8 +72,24 @@ const buildPath = path.join(__dirname, '../client/build');
 const buildExists = fs.existsSync(buildPath);
 
 if (buildExists) {
-  app.use(express.static(buildPath));
-  logger.info('Serving static files from React build');
+  // In development, disable caching to see changes immediately
+  // In production, use default Express static caching (ETags, Last-Modified)
+  const staticOptions = process.env.NODE_ENV === 'development' ? {
+    etag: false, // Disable ETag generation in dev
+    lastModified: false, // Disable Last-Modified in dev
+    setHeaders: (res: Response) => {
+      // Disable all caching in development
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Expires', '0');
+    },
+  } : {};
+
+  app.use(express.static(buildPath, staticOptions));
+  logger.info('Serving static files from React build', {
+    path: buildPath,
+    cacheDisabled: process.env.NODE_ENV === 'development',
+  });
 } else {
   logger.warn('React build directory not found. Static file serving disabled.');
   logger.warn('Run "npm run build" in the client directory to create the build.');

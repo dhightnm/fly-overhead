@@ -43,12 +43,33 @@ const FeederStatus: React.FC<FeederStatusProps> = ({ feeders }) => {
     return diffHours < 24; // Healthy if seen in last 24 hours
   };
 
+  const onlineCount = feeders.filter((f) => f.status?.toLowerCase() === 'active' && isFeederHealthy(f)).length;
+  const totalCount = feeders.length;
+
   return (
-    <div className="feeder-status-card portal-card">
-      <div className="section-header">
-        <h2>Your Feeders</h2>
-        <span className="feeder-count">{feeders.length} feeder{feeders.length !== 1 ? 's' : ''}</span>
+    <div className="feeders-page">
+      <div className="feeders-header">
+        <div className="feeders-header-content">
+          <h1>My Feeders</h1>
+          <p className="feeders-subtitle">Manage and monitor your aircraft data feeders</p>
+        </div>
+        <div className="feeders-stats">
+          <div className="stat-box">
+            <span className="stat-value">{totalCount}</span>
+            <span className="stat-label">Total Feeders</span>
+          </div>
+          <div className="stat-box">
+            <span className="stat-value">{onlineCount}</span>
+            <span className="stat-label">Online</span>
+          </div>
+        </div>
       </div>
+
+      <div className="feeder-status-card portal-card">
+        <div className="section-header">
+          <h2>Feeders</h2>
+          <span className="feeder-count">{feeders.length} feeder{feeders.length !== 1 ? 's' : ''}</span>
+        </div>
 
       {feeders.length === 0 ? (
         <div className="empty-state">

@@ -37,17 +37,8 @@ const AccountOverview: React.FC<AccountOverviewProps> = ({ user, stats }) => {
 
       <div className="account-tier">
         <div className={`tier-badge ${isPremium() ? 'premium' : 'free'}`}>
-          {isPremium() ? (
-            <>
-              <span className="tier-icon">⭐</span>
-              <span>Premium Member</span>
-            </>
-          ) : (
-            <>
-              <span className="tier-icon">✈️</span>
-              <span>Free Tier</span>
-            </>
-          )}
+          <span className="tier-icon" aria-hidden="true" />
+          <span>{isPremium() ? 'Premium Member' : 'Free Tier'}</span>
         </div>
       </div>
 
@@ -72,23 +63,23 @@ const AccountOverview: React.FC<AccountOverviewProps> = ({ user, stats }) => {
         <h4>Account Features</h4>
         <ul className="features-list">
           <li className={isPremium() ? 'enabled' : 'disabled'}>
-            <span className="feature-icon">{isPremium() ? '✓' : '○'}</span>
+            <span className="feature-icon" aria-hidden="true" />
             Real-time Aircraft Tracking
           </li>
           <li className={isPremium() ? 'enabled' : 'disabled'}>
-            <span className="feature-icon">{isPremium() ? '✓' : '○'}</span>
+            <span className="feature-icon" aria-hidden="true" />
             Flight Plan Routes
           </li>
           <li className={isPremium() ? 'enabled' : 'disabled'}>
-            <span className="feature-icon">{isPremium() ? '✓' : '○'}</span>
+            <span className="feature-icon" aria-hidden="true" />
             Historical Flight Data
           </li>
           <li className="coming-soon">
-            <span className="feature-icon">○</span>
+            <span className="feature-icon" aria-hidden="true" />
             3D Flight Debriefs <span className="coming-soon-badge">Coming Soon</span>
           </li>
           <li className="coming-soon">
-            <span className="feature-icon">○</span>
+            <span className="feature-icon" aria-hidden="true" />
             RightSeat AI Copilot <span className="coming-soon-badge">Coming Soon</span>
           </li>
         </ul>
@@ -98,4 +89,3 @@ const AccountOverview: React.FC<AccountOverviewProps> = ({ user, stats }) => {
 };
 
 export default AccountOverview;
-

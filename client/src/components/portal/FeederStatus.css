@@ -1,7 +1,71 @@
+.feeders-page {
+  max-width: 1200px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+}
+
+.feeders-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 2rem;
+  flex-wrap: wrap;
+}
+
+.feeders-header-content h1 {
+  font-size: 2rem;
+  font-weight: 700;
+  color: var(--text-primary, #F8FAFC);
+  margin: 0 0 0.5rem;
+  letter-spacing: -0.02em;
+}
+
+.feeders-subtitle {
+  font-size: 1rem;
+  color: var(--text-muted, #94A3B8);
+  margin: 0;
+}
+
+.feeders-stats {
+  display: flex;
+  gap: 1rem;
+}
+
+.stat-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 1rem 1.5rem;
+  background: rgba(6, 12, 25, 0.6);
+  border: 1px solid rgba(56, 189, 248, 0.2);
+  border-radius: 12px;
+  min-width: 120px;
+}
+
+.stat-value {
+  font-size: 2rem;
+  font-weight: 700;
+  font-family: 'JetBrains Mono', monospace;
+  color: var(--accent, #38BDF8);
+  line-height: 1;
+}
+
+.stat-label {
+  font-size: 0.75rem;
+  color: var(--text-muted, #94A3B8);
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+  margin-top: 0.5rem;
+  font-weight: 600;
+}
+
 .feeder-status-card {
   display: flex;
   flex-direction: column;
   gap: 1.5rem;
+  color: var(--text-primary, #F8FAFC);
 }
 
 .section-header {
@@ -12,15 +76,17 @@
 
 .section-header h2 {
   font-size: 1.5rem;
-  font-weight: 700;
-  color: #0F172A;
+  font-weight: 600;
+  color: var(--text-primary, #F8FAFC);
   margin: 0;
 }
 
 .feeder-count {
   font-size: 0.875rem;
-  color: #64748B;
+  color: var(--text-muted, #94A3B8);
   font-weight: 500;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
 }
 
 .feeders-list {
@@ -30,16 +96,16 @@
 }
 
 .feeder-card {
-  background: #F8FAFC;
-  border: 1px solid #E2E8F0;
-  border-radius: 12px;
+  background: rgba(7, 13, 28, 0.85);
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  border-radius: 14px;
   padding: 1.5rem;
-  transition: all 0.2s;
+  transition: border-color 0.2s ease, transform 0.2s ease;
 }
 
 .feeder-card:hover {
-  border-color: #CBD5E1;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+  border-color: rgba(56, 189, 248, 0.35);
+  transform: translateY(-2px);
 }
 
 .feeder-header {
@@ -54,17 +120,18 @@
 .feeder-info h3 {
   font-size: 1.125rem;
   font-weight: 600;
-  color: #0F172A;
-  margin: 0 0 0.5rem 0;
+  color: var(--text-primary, #F8FAFC);
+  margin: 0 0 0.35rem;
 }
 
 .feeder-id {
   font-family: 'JetBrains Mono', monospace;
   font-size: 0.75rem;
-  color: #64748B;
-  background: #F1F5F9;
-  padding: 0.25rem 0.5rem;
-  border-radius: 4px;
+  color: var(--text-muted, #94A3B8);
+  background: rgba(15, 23, 42, 0.7);
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.2);
 }
 
 .feeder-status {
@@ -77,40 +144,40 @@
 .status-badge {
   display: inline-block;
   padding: 0.25rem 0.75rem;
-  border-radius: 12px;
-  font-size: 0.75rem;
+  border-radius: 999px;
+  font-size: 0.7rem;
   font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.18em;
 }
 
 .status-badge.active {
-  background: #D1FAE5;
-  color: #065F46;
+  background: rgba(16, 185, 129, 0.15);
+  color: #34D399;
+  border: 1px solid rgba(16, 185, 129, 0.5);
 }
 
 .status-badge.inactive {
-  background: #FEF3C7;
-  color: #92400E;
+  background: rgba(234, 179, 8, 0.12);
+  color: #FACC15;
+  border: 1px solid rgba(234, 179, 8, 0.4);
 }
 
-.status-badge.suspended {
-  background: #FEE2E2;
-  color: #991B1B;
-}
-
+.status-badge.suspended,
 .status-badge.unknown {
-  background: #F1F5F9;
-  color: #64748B;
+  background: rgba(248, 113, 113, 0.15);
+  color: #F87171;
+  border: 1px solid rgba(248, 113, 113, 0.4);
 }
 
 .health-indicator {
   font-size: 0.75rem;
   font-weight: 600;
+  color: var(--text-muted, #94A3B8);
 }
 
 .health-indicator.healthy {
-  color: #065F46;
+  color: #22C55E;
 }
 
 .feeder-details {
@@ -118,7 +185,7 @@
   flex-direction: column;
   gap: 0.75rem;
   padding-top: 1rem;
-  border-top: 1px solid #E2E8F0;
+  border-top: 1px solid rgba(148, 163, 184, 0.2);
 }
 
 .feeder-detail-row {
@@ -129,12 +196,13 @@
 }
 
 .feeder-label {
-  color: #64748B;
+  color: var(--text-muted, #94A3B8);
   font-weight: 500;
+  letter-spacing: 0.05em;
 }
 
 .feeder-value {
-  color: #0F172A;
+  color: var(--text-primary, #F8FAFC);
   font-weight: 500;
   font-family: 'JetBrains Mono', monospace;
 }
@@ -142,6 +210,5 @@
 .empty-state {
   text-align: center;
   padding: 3rem;
-  color: #94A3B8;
+  color: var(--text-muted, #94A3B8);
 }
-

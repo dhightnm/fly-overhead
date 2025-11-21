@@ -51,7 +51,11 @@ backups/
 # PM2
 .pm2/
 
-# Reports (temporary analysis files)
+# Markdown documentation files (never commit)
+*.md
+!README.md
+
+# Reports (temporary analysis files) - kept for reference but covered by *.md above
 *_PROJECTION_*.md
 *_REPORT_*.md
 BACKUP_RESTORE.md

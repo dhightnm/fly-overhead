@@ -1,10 +1,9 @@
 .aircraft-table-container {
-  background: rgba(255, 255, 255, 0.8);
-  backdrop-filter: blur(10px);
-  border: 1px solid rgba(255, 255, 255, 0.5);
-  border-radius: 16px;
+  background: rgba(7, 13, 28, 0.9);
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  border-radius: 18px;
   padding: 1.5rem;
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.06);
+  box-shadow: 0 20px 50px rgba(3, 7, 18, 0.55);
 }
 
 .aircraft-table-container.compact {
@@ -23,8 +22,8 @@
 
 .table-header h2 {
   font-size: 1.5rem;
-  font-weight: 700;
-  color: #0F172A;
+  font-weight: 600;
+  color: var(--text-primary, #F8FAFC);
   margin: 0;
 }
 
@@ -32,27 +31,35 @@
   display: flex;
   align-items: center;
   gap: 1rem;
+  flex-wrap: wrap;
 }
 
 .table-search {
-  padding: 0.5rem 1rem;
-  border: 1px solid #E2E8F0;
-  border-radius: 8px;
+  padding: 0.6rem 1rem;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  border-radius: 10px;
   font-size: 0.875rem;
-  width: 300px;
-  transition: all 0.2s;
+  width: 280px;
+  background: rgba(2, 6, 23, 0.8);
+  color: var(--text-primary, #F8FAFC);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.table-search::placeholder {
+  color: var(--text-muted, #94A3B8);
 }
 
 .table-search:focus {
   outline: none;
-  border-color: #3B82F6;
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+  border-color: rgba(56, 189, 248, 0.7);
+  box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.2);
 }
 
 .aircraft-count {
-  font-size: 0.875rem;
-  color: #64748B;
-  font-weight: 500;
+  font-size: 0.8rem;
+  color: var(--text-muted, #94A3B8);
+  text-transform: uppercase;
+  letter-spacing: 0.25em;
 }
 
 .table-wrapper {
@@ -67,7 +74,7 @@
 }
 
 .aircraft-table thead {
-  background: linear-gradient(135deg, #F8FAFC 0%, #F1F5F9 100%);
+  background: linear-gradient(135deg, rgba(15, 23, 42, 0.8), rgba(30, 64, 175, 0.3));
   position: sticky;
   top: 0;
   z-index: 10;
@@ -77,11 +84,11 @@
   padding: 1rem;
   text-align: left;
   font-weight: 600;
-  color: #475569;
-  font-size: 0.8125rem;
+  color: var(--text-muted, #94A3B8);
+  font-size: 0.75rem;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
-  border-bottom: 2px solid #E2E8F0;
+  letter-spacing: 0.25em;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.2);
 }
 
 .aircraft-table th.sortable {
@@ -91,85 +98,91 @@
 }
 
 .aircraft-table th.sortable:hover {
-  color: #1E40AF;
+  color: var(--text-primary, #F8FAFC);
 }
 
 .aircraft-table tbody tr {
-  border-bottom: 1px solid #F1F5F9;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.12);
   transition: background 0.15s;
 }
 
 .aircraft-table tbody tr:hover {
-  background: #F8FAFC;
+  background: rgba(15, 23, 42, 0.65);
 }
 
 .aircraft-table td {
-  padding: 1rem;
-  color: #334155;
+  padding: 0.9rem 1rem;
+  color: var(--text-primary, #F8FAFC);
 }
 
 .aircraft-table .callsign-cell {
   font-weight: 600;
-  color: #1E40AF;
+  color: var(--accent, #38BDF8);
+  letter-spacing: 0.08em;
 }
 
 .aircraft-table .icao-cell code {
   font-family: 'JetBrains Mono', monospace;
-  font-size: 0.8125rem;
-  background: #F1F5F9;
-  padding: 0.25rem 0.5rem;
-  border-radius: 4px;
-  color: #0F172A;
+  font-size: 0.8rem;
+  background: rgba(15, 23, 42, 0.8);
+  padding: 0.2rem 0.5rem;
+  border-radius: 6px;
+  color: var(--text-primary, #F8FAFC);
+  border: 1px solid rgba(148, 163, 184, 0.25);
 }
 
 .aircraft-table .numeric {
   font-family: 'JetBrains Mono', monospace;
   text-align: right;
-  color: #475569;
+  color: var(--text-primary, #F8FAFC);
 }
 
 .aircraft-table .route-cell {
-  font-size: 0.8125rem;
+  font-size: 0.8rem;
 }
 
 .route-info {
-  color: #64748B;
+  color: var(--text-muted, #94A3B8);
+}
+
+.update-time {
+  font-family: 'JetBrains Mono', monospace;
+  color: var(--text-muted, #94A3B8);
 }
 
 .status-badge {
   display: inline-block;
   padding: 0.25rem 0.75rem;
-  border-radius: 12px;
-  font-size: 0.75rem;
+  border-radius: 999px;
+  font-size: 0.7rem;
   font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.2em;
 }
 
 .status-badge.active {
-  background: #D1FAE5;
-  color: #065F46;
+  background: rgba(16, 185, 129, 0.15);
+  color: #34D399;
+  border: 1px solid rgba(16, 185, 129, 0.4);
 }
 
 .status-badge.recent {
-  background: #FEF3C7;
-  color: #92400E;
+  background: rgba(250, 204, 21, 0.15);
+  color: #FACC15;
+  border: 1px solid rgba(250, 204, 21, 0.4);
 }
 
-.status-badge.stale {
-  background: #FEE2E2;
-  color: #991B1B;
-}
-
+.status-badge.stale,
 .status-badge.unknown {
-  background: #F1F5F9;
-  color: #64748B;
+  background: rgba(248, 113, 113, 0.15);
+  color: #F87171;
+  border: 1px solid rgba(248, 113, 113, 0.4);
 }
 
 .empty-state {
   text-align: center;
   padding: 3rem;
-  color: #94A3B8;
+  color: var(--text-muted, #94A3B8);
 }
 
 @media (max-width: 1024px) {
@@ -186,4 +199,3 @@
     width: 100%;
   }
 }
-
