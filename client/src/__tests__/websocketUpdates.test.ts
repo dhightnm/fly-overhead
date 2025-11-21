@@ -94,17 +94,18 @@ describe('WebSocket Update Handling', () => {
       const pollCompleted = true;
       const aircraftCount = 250;
 
-      if (pollCompleted) {
-        const update: WebSocketUpdate = {
-          type: 'refresh_required',
-          timestamp: new Date().toISOString(),
-          message: 'Aircraft positions updated - refresh your view',
-          count: aircraftCount,
-        };
+      // Create update when poll completes
+      const update: WebSocketUpdate = {
+        type: 'refresh_required',
+        timestamp: new Date().toISOString(),
+        message: 'Aircraft positions updated - refresh your view',
+        count: aircraftCount,
+      };
 
-        expect(update.type).toBe('refresh_required');
-        expect(update.count).toBe(250);
-      }
+      // Verify the update was created correctly
+      expect(update.type).toBe('refresh_required');
+      expect(update.count).toBe(250);
+      expect(pollCompleted).toBe(true);
     });
   });
 
@@ -283,10 +284,10 @@ describe('WebSocket Update Handling', () => {
       };
 
       // Simulate no WebSocket connection
-      if (!connected) {
-        // Frontend falls back to polling (15-30s interval)
-        expect(true).toBe(true); // Fallback mechanism active
-      }
+      // Frontend falls back to polling (15-30s interval)
+      // Verify fallback mechanism is active when not connected
+      expect(connected).toBe(false);
+      expect(update.type).toBe('refresh_required');
     });
   });
 
