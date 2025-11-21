@@ -115,6 +115,51 @@ export interface User {
   updated_at: Date;
 }
 
+export interface UserAircraftProfile {
+  id: number;
+  user_id: number;
+  tail_number: string;
+  display_name: string | null;
+  callsign: string | null;
+  serial_number: string | null;
+  manufacturer: string | null;
+  model: string | null;
+  year_of_manufacture: number | null;
+  aircraft_type: string | null;
+  category: string | null;
+  primary_color: string | null;
+  secondary_color: string | null;
+  home_airport_code: string | null;
+  airspeed_unit: 'knots' | 'mph';
+  length_unit: 'feet' | 'meters' | 'inches' | 'centimeters';
+  weight_unit: 'pounds' | 'kilograms';
+  fuel_unit: 'gallons' | 'liters' | 'pounds' | 'kilograms';
+  fuel_type: string | null;
+  engine_type: string | null;
+  engine_count: number | null;
+  prop_configuration: string | null;
+  avionics: any[];
+  default_cruise_altitude: number | null;
+  service_ceiling: number | null;
+  cruise_speed: number | null;
+  max_speed: number | null;
+  stall_speed: number | null;
+  best_glide_speed: number | null;
+  best_glide_ratio: number | null;
+  empty_weight: number | null;
+  max_takeoff_weight: number | null;
+  max_landing_weight: number | null;
+  fuel_capacity_total: number | null;
+  fuel_capacity_usable: number | null;
+  start_taxi_fuel: number | null;
+  fuel_burn_per_hour: number | null;
+  operating_cost_per_hour: number | null;
+  total_flight_hours: number | null;
+  notes: string | null;
+  created_at: Date;
+  updated_at: Date;
+}
+
 export interface Feeder {
   id: number;
   feeder_id: string;

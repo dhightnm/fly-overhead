@@ -6,4 +6,4 @@ export * from './aircraft.types';
 export * from './auth.types';
 export * from './history.types';
 export * from './api.types';
-
+export * from './planes.types';

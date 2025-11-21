@@ -1,7 +1,8 @@
 import { portalService } from '../portal.service';
 import api from '../api';
-import type { Aircraft } from '../../types';
+import type { Aircraft, UserPlane } from '../../types';
 import { createAircraft } from '../../test/fixtures/aircraft';
+import { createPlane } from '../../test/fixtures/plane';
 
 // Mock the API service
 jest.mock('../api');
@@ -177,6 +178,92 @@ describe('PortalService', () => {
       const result = await portalService.getPortalStats();
 
       expect(result).toEqual(mockStats);
+    });
+  });
+
+  describe('user planes', () => {
+    const buildApiPlane = (plane: UserPlane) => ({
+      id: plane.id,
+      user_id: 1,
+      tail_number: plane.tailNumber,
+      display_name: plane.displayName,
+      callsign: plane.callsign,
+      serial_number: plane.serialNumber,
+      manufacturer: plane.manufacturer,
+      model: plane.model,
+      year_of_manufacture: plane.yearOfManufacture,
+      aircraft_type: plane.aircraftType,
+      category: plane.category,
+      primary_color: plane.primaryColor,
+      secondary_color: plane.secondaryColor,
+      home_airport_code: plane.homeAirportCode,
+      airspeed_unit: plane.airspeedUnit,
+      length_unit: plane.lengthUnit,
+      weight_unit: plane.weightUnit,
+      fuel_unit: plane.fuelUnit,
+      fuel_type: plane.fuelType,
+      engine_type: plane.engineType,
+      engine_count: plane.engineCount,
+      prop_configuration: plane.propConfiguration,
+      avionics: plane.avionics,
+      default_cruise_altitude: plane.defaultCruiseAltitude,
+      service_ceiling: plane.serviceCeiling,
+      cruise_speed: plane.cruiseSpeed,
+      max_speed: plane.maxSpeed,
+      stall_speed: plane.stallSpeed,
+      best_glide_speed: plane.bestGlideSpeed,
+      best_glide_ratio: plane.bestGlideRatio,
+      empty_weight: plane.emptyWeight,
+      max_takeoff_weight: plane.maxTakeoffWeight,
+      max_landing_weight: plane.maxLandingWeight,
+      fuel_capacity_total: plane.fuelCapacityTotal,
+      fuel_capacity_usable: plane.fuelCapacityUsable,
+      start_taxi_fuel: plane.startTaxiFuel,
+      fuel_burn_per_hour: plane.fuelBurnPerHour,
+      operating_cost_per_hour: plane.operatingCostPerHour,
+      total_flight_hours: plane.totalFlightHours,
+      notes: plane.notes,
+      created_at: plane.createdAt,
+      updated_at: plane.updatedAt,
+    });
+
+    it('fetches and maps user planes', async () => {
+      const plane = createPlane();
+      mockApi.get = jest.fn().mockResolvedValue({
+        data: { planes: [buildApiPlane(plane)] },
+      });
+
+      const result = await portalService.getUserPlanes();
+
+      expect(mockApi.get).toHaveBeenCalledWith('/api/portal/planes');
+      expect(result).toEqual([plane]);
+    });
+
+    it('creates a user plane', async () => {
+      const plane = createPlane({ id: 5, tailNumber: 'N90000' });
+      mockApi.post = jest.fn().mockResolvedValue({
+        data: { plane: buildApiPlane(plane) },
+      });
+
+      const payload = { tailNumber: 'N90000', manufacturer: 'Cirrus' };
+
+      const result = await portalService.createUserPlane(payload);
+
+      expect(mockApi.post).toHaveBeenCalledWith('/api/portal/planes', payload);
+      expect(result).toEqual(plane);
+    });
+
+    it('updates a user plane', async () => {
+      const plane = createPlane({ id: 7, tailNumber: 'N160RA', manufacturer: 'Cessna' });
+      mockApi.put = jest.fn().mockResolvedValue({
+        data: { plane: buildApiPlane(plane) },
+      });
+
+      const payload = { tailNumber: 'N160RA', manufacturer: 'Cessna' };
+      const result = await portalService.updateUserPlane(7, payload);
+
+      expect(mockApi.put).toHaveBeenCalledWith('/api/portal/planes/7', payload);
+      expect(result).toEqual(plane);
     });
   });
 });

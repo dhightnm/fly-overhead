@@ -2,8 +2,21 @@ import { Router, Response, NextFunction } from 'express';
 import postgresRepository from '../repositories/PostgresRepository';
 import logger from '../utils/logger';
 import { authenticateToken, type AuthenticatedRequest } from './auth.routes';
+import userAircraftProfileService, {
+  PlaneProfileValidationError,
+  type CreateUserAircraftProfileInput,
+} from '../services/UserAircraftProfileService';
 
 const router = Router();
+
+// Portal data should never be cached client-side; always return fresh data
+router.use((_req, res, next) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+  res.setHeader('Surrogate-Control', 'no-store');
+  next();
+});
 
 // Input validation constants
 const MAX_LIMIT = 1000;
@@ -57,6 +70,113 @@ router.get('/feeders', authenticateToken, async (req: AuthenticatedRequest, res:
     logger.error('Error fetching user feeders', {
       error: err.message,
       userId: req.user?.userId,
+      stack: err.stack,
+    });
+    return next(error);
+  }
+});
+
+/**
+ * GET /api/portal/planes
+ * Get aircraft profiles created by the authenticated user
+ */
+router.get('/planes', authenticateToken, async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+  try {
+    const { userId } = (req.user!);
+
+    if (!userId || typeof userId !== 'number' || userId <= 0) {
+      return res.status(400).json({ error: 'Invalid user ID' });
+    }
+
+    const planes = await userAircraftProfileService.listProfilesForUser(userId);
+    return res.json({ planes });
+  } catch (error) {
+    const err = error as Error;
+    if (error instanceof PlaneProfileValidationError) {
+      return res.status(error.statusCode).json({ error: err.message });
+    }
+    logger.error('Error fetching user aircraft profiles', {
+      error: err.message,
+      userId: req.user?.userId,
+      stack: err.stack,
+    });
+    return next(error);
+  }
+});
+
+/**
+ * POST /api/portal/planes
+ * Create a new aircraft profile for the authenticated user
+ */
+router.post('/planes', authenticateToken, async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+  try {
+    const { userId } = (req.user!);
+
+    if (!userId || typeof userId !== 'number' || userId <= 0) {
+      return res.status(400).json({ error: 'Invalid user ID' });
+    }
+
+    const payload = req.body as CreateUserAircraftProfileInput;
+    const plane = await userAircraftProfileService.createProfile(userId, payload);
+
+    return res.status(201).json({ plane });
+  } catch (error) {
+    const err = error as any;
+    if (error instanceof PlaneProfileValidationError) {
+      return res.status(error.statusCode).json({ error: err.message });
+    }
+    if (err?.code === '23505') {
+      try {
+        const existingPlane = await userAircraftProfileService.findProfileByTail(userId, (req.body as CreateUserAircraftProfileInput).tailNumber);
+        if (existingPlane) {
+          return res.status(200).json({ plane: existingPlane, duplicate: true });
+        }
+      } catch (lookupError) {
+        logger.warn('Failed to fetch existing plane after duplicate insert', {
+          error: (lookupError as Error).message,
+          userId: req.user?.userId,
+        });
+      }
+      return res.status(409).json({ error: 'Tail number already exists for this user' });
+    }
+    logger.error('Error creating aircraft profile', {
+      error: err.message,
+      userId: req.user?.userId,
+      stack: err.stack,
+    });
+    return next(error);
+  }
+});
+
+/**
+ * PUT /api/portal/planes/:planeId
+ * Update an aircraft profile belonging to the authenticated user
+ */
+router.put('/planes/:planeId', authenticateToken, async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+  try {
+    const { userId } = (req.user!);
+    const planeId = parseInt(req.params.planeId, 10);
+
+    if (!userId || typeof userId !== 'number' || userId <= 0) {
+      return res.status(400).json({ error: 'Invalid user ID' });
+    }
+    if (Number.isNaN(planeId) || planeId <= 0) {
+      return res.status(400).json({ error: 'Invalid plane ID' });
+    }
+
+    const payload = req.body as CreateUserAircraftProfileInput;
+    const plane = await userAircraftProfileService.updateProfile(userId, planeId, payload);
+
+    return res.json({ plane });
+  } catch (error) {
+    const err = error as any;
+    if (error instanceof PlaneProfileValidationError) {
+      return res.status(error.statusCode).json({ error: err.message });
+    }
+    logger.error('Error updating aircraft profile', {
+      error: err.message,
+      userId: req.user?.userId,
+      planeId: req.params.planeId,
       stack: err.stack,
     });
     return next(error);

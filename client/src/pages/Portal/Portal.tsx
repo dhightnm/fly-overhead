@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import Sidebar, { type SidebarSection } from '../../components/portal/Sidebar';
 import AccountOverview from '../../components/portal/AccountOverview';
@@ -6,14 +6,46 @@ import AircraftTable from '../../components/portal/AircraftTable';
 import ApiKeysSection from '../../components/portal/ApiKeysSection';
 import FeederStatus from '../../components/portal/FeederStatus';
 import { portalService } from '../../services/portal.service';
-import type { Aircraft } from '../../types';
+import type { Aircraft, UserPlane, CreatePlaneRequest } from '../../types';
 import type { Feeder } from '../../services/portal.service';
 import './Portal.css';
+import YourPlanesCard from '../../components/portal/YourPlanesCard';
+
+const sortPlanes = (list: UserPlane[]): UserPlane[] => {
+  return [...list].sort((a, b) => {
+    const nameA = (a.displayName || a.tailNumber).toLowerCase();
+    const nameB = (b.displayName || b.tailNumber).toLowerCase();
+    return nameA.localeCompare(nameB);
+  });
+};
+
+const PLANES_CACHE_KEY = 'portalPlanes';
+
+const getCachedPlanes = (): UserPlane[] => {
+  if (typeof window === 'undefined') {
+    return [];
+  }
+  try {
+    const raw = localStorage.getItem(PLANES_CACHE_KEY);
+    if (!raw) {
+      return [];
+    }
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+    return parsed;
+  } catch (error) {
+    console.warn('Failed to parse cached planes', error);
+    return [];
+  }
+};
 
 const Portal: React.FC = () => {
   const { user, isAuthenticated } = useAuth();
   const [activeSection, setActiveSection] = useState<SidebarSection>('dashboard');
   const [aircraft, setAircraft] = useState<Aircraft[]>([]);
+  const [planes, setPlanes] = useState<UserPlane[]>(getCachedPlanes);
   const [feeders, setFeeders] = useState<Feeder[]>([]);
   const [stats, setStats] = useState<{
     totalAircraft: number;
@@ -24,38 +56,105 @@ const Portal: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null);
 
-  useEffect(() => {
-    if (isAuthenticated) {
-      fetchPortalData();
-    }
-  }, [isAuthenticated]);
+  const previousSection = useRef<SidebarSection>('dashboard');
+  const hasFetchedOnce = useRef<boolean>(false);
 
-  const fetchPortalData = async () => {
+  const fetchPortalData = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
       
-      const [feedersData, aircraftData, statsData] = await Promise.all([
+      const [feedersResult, aircraftResult, statsResult, planesResult] = await Promise.allSettled([
         portalService.getUserFeeders(),
         portalService.getUserAircraft(),
         portalService.getPortalStats(),
+        portalService.getUserPlanes(),
       ]);
 
-      setFeeders(feedersData);
-      setAircraft(aircraftData.aircraft || []);
-      const nextStats = {
-        totalAircraft: statsData.totalAircraft,
-        activeFeeders: statsData.activeFeeders,
-        totalApiKeys: statsData.totalApiKeys,
-      };
-      setStats(nextStats);
+      if (feedersResult.status === 'fulfilled') {
+        setFeeders(feedersResult.value);
+      } else {
+        console.warn('Failed to load feeders', feedersResult.reason);
+      }
+
+      if (aircraftResult.status === 'fulfilled') {
+        setAircraft(aircraftResult.value.aircraft || []);
+      } else {
+        console.warn('Failed to load aircraft', aircraftResult.reason);
+      }
+
+      if (statsResult.status === 'fulfilled') {
+        setStats({
+          totalAircraft: statsResult.value.totalAircraft,
+          activeFeeders: statsResult.value.activeFeeders,
+          totalApiKeys: statsResult.value.totalApiKeys,
+        });
+      } else {
+        console.warn('Failed to load stats', statsResult.reason);
+      }
+
+      if (planesResult.status === 'fulfilled') {
+        const sortedPlanes = sortPlanes(planesResult.value);
+        setPlanes(sortedPlanes);
+        if (typeof window !== 'undefined') {
+          localStorage.setItem(PLANES_CACHE_KEY, JSON.stringify(sortedPlanes));
+        }
+      } else {
+        console.warn('Failed to load planes', planesResult.reason);
+      }
+
       setLastSyncedAt(new Date());
+      hasFetchedOnce.current = true;
     } catch (err) {
       console.error('Error fetching portal data:', err);
       setError('Failed to load portal data. Please try again later.');
     } finally {
       setLoading(false);
     }
+  }, [isAuthenticated]);
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      fetchPortalData();
+    }
+  }, [isAuthenticated, fetchPortalData]);
+
+  useEffect(() => {
+    if (!isAuthenticated) {
+      return;
+    }
+    if (
+      previousSection.current !== activeSection &&
+      activeSection === 'dashboard' &&
+      hasFetchedOnce.current
+    ) {
+      fetchPortalData();
+    }
+    previousSection.current = activeSection;
+  }, [activeSection, isAuthenticated, fetchPortalData]);
+
+  const handleCreatePlane = async (payload: CreatePlaneRequest): Promise<UserPlane> => {
+    const newPlane = await portalService.createUserPlane(payload);
+    setPlanes((prev) => {
+      const next = sortPlanes([...prev.filter((existing) => existing.id !== newPlane.id), newPlane]);
+      if (typeof window !== 'undefined') {
+        localStorage.setItem(PLANES_CACHE_KEY, JSON.stringify(next));
+      }
+      return next;
+    });
+    return newPlane;
+  };
+
+  const handleUpdatePlane = async (planeId: number, payload: CreatePlaneRequest): Promise<UserPlane> => {
+    const updatedPlane = await portalService.updateUserPlane(planeId, payload);
+    setPlanes((prev) => {
+      const next = sortPlanes(prev.map((plane) => (plane.id === planeId ? updatedPlane : plane)));
+      if (typeof window !== 'undefined') {
+        localStorage.setItem(PLANES_CACHE_KEY, JSON.stringify(next));
+      }
+      return next;
+    });
+    return updatedPlane;
   };
 
   if (!isAuthenticated) {
@@ -96,6 +195,11 @@ const Portal: React.FC = () => {
         return (
           <div className="dashboard-grid">
             <AccountOverview user={user} stats={stats || undefined} />
+            <YourPlanesCard
+              planes={planes}
+              onCreatePlane={handleCreatePlane}
+              onUpdatePlane={handleUpdatePlane}
+            />
             <div className="aircraft-preview">
               <AircraftTable aircraft={aircraft} compact={true} />
             </div>
