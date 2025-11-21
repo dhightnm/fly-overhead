@@ -385,9 +385,9 @@ describe('Feeder Registration Endpoint', () => {
       mockPostgresRepository.getFeederById = jest.fn().mockResolvedValue(existingFeeder);
 
       const handler = async (req: any, res: any, _next: any) => {
-        const { feeder_id, api_key_hash, name } = req.body;
+        const { feeder_id: reqFeederId, api_key_hash: reqApiKeyHash, name: reqName } = req.body;
 
-        if (!feeder_id || !api_key_hash || !name) {
+        if (!reqFeederId || !reqApiKeyHash || !reqName) {
           return res.status(400).json({
             success: false,
             error: 'feeder_id, api_key_hash, and name are required',
