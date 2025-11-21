@@ -1,7 +1,7 @@
 import pgPromise from 'pg-promise';
 import postgresRepository from '../repositories/PostgresRepository';
 import logger from '../utils/logger';
-import { PlaneProfileValidationError } from './PlaneProfileValidationError';
+import PlaneProfileValidationError from './PlaneProfileValidationError';
 import type { UserAircraftProfile } from '../types';
 
 const AIRSPEED_UNITS = ['knots', 'mph'] as const;
@@ -214,8 +214,7 @@ class UserAircraftProfileService {
         return null;
       })
       .filter(
-        (entry): entry is { manufacturer: string | null; model: string | null; name: string | null } =>
-          Boolean(entry),
+        (entry): entry is { manufacturer: string | null; model: string | null; name: string | null } => Boolean(entry),
       );
   }
 

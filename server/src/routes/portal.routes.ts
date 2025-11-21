@@ -5,7 +5,7 @@ import { authenticateToken, type AuthenticatedRequest } from './auth.routes';
 import userAircraftProfileService, {
   type CreateUserAircraftProfileInput,
 } from '../services/UserAircraftProfileService';
-import { PlaneProfileValidationError } from '../services/PlaneProfileValidationError';
+import PlaneProfileValidationError from '../services/PlaneProfileValidationError';
 
 const router = Router();
 
@@ -125,7 +125,7 @@ router.post('/planes', authenticateToken, async (req: AuthenticatedRequest, res:
     }
     if (err?.code === '23505') {
       try {
-        const tailNumber = (req.body as CreateUserAircraftProfileInput).tailNumber;
+        const { tailNumber } = req.body as CreateUserAircraftProfileInput;
         const existingPlane = await userAircraftProfileService.findProfileByTail(userId, tailNumber);
         if (existingPlane) {
           return res.status(200).json({ plane: existingPlane, duplicate: true });
@@ -332,21 +332,21 @@ router.get('/aircraft', authenticateToken, async (req: AuthenticatedRequest, res
       route:
         ac.departure_icao || ac.departure_iata
           ? {
-              departureAirport: {
-                icao: ac.departure_icao,
-                iata: ac.departure_iata,
-                name: ac.departure_name,
-              },
-              arrivalAirport: {
-                icao: ac.arrival_icao,
-                iata: ac.arrival_iata,
-                name: ac.arrival_name,
-              },
-              aircraft: {
-                type: ac.aircraft_type,
-              },
-              source: ac.route_source,
-            }
+            departureAirport: {
+              icao: ac.departure_icao,
+              iata: ac.departure_iata,
+              name: ac.departure_name,
+            },
+            arrivalAirport: {
+              icao: ac.arrival_icao,
+              iata: ac.arrival_iata,
+              name: ac.arrival_name,
+            },
+            aircraft: {
+              type: ac.aircraft_type,
+            },
+            source: ac.route_source,
+          }
           : null,
     }));
 

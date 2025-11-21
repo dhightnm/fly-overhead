@@ -1,6 +1,6 @@
 import type { UserAircraftProfile } from '../../types';
 import { UserAircraftProfileService } from '../UserAircraftProfileService';
-import { PlaneProfileValidationError } from '../PlaneProfileValidationError';
+import PlaneProfileValidationError from '../PlaneProfileValidationError';
 
 describe('UserAircraftProfileService', () => {
   const createMockDb = () => ({

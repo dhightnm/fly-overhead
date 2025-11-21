@@ -1,4 +1,4 @@
-export class PlaneProfileValidationError extends Error {
+class PlaneProfileValidationError extends Error {
   public readonly statusCode: number;
 
   constructor(message: string, statusCode: number = 400) {
@@ -9,3 +9,4 @@ export class PlaneProfileValidationError extends Error {
   }
 }
 
+export default PlaneProfileValidationError;
