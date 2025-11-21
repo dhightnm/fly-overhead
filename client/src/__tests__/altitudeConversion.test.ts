@@ -11,7 +11,8 @@
  * - Velocity was being incorrectly converted from knots to knots
  */
 
-import type { Aircraft } from '../types';
+// Make this file a module
+export {};
 
 describe('Altitude and Velocity Conversion (Frontend)', () => {
   // Conversion constants from Home.tsx

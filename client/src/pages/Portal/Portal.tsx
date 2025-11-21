@@ -1,15 +1,15 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { useAuth } from '../../contexts/AuthContext';
-import Sidebar, { type SidebarSection } from '../../components/portal/Sidebar';
-import AccountOverview from '../../components/portal/AccountOverview';
-import AircraftTable from '../../components/portal/AircraftTable';
-import ApiKeysSection from '../../components/portal/ApiKeysSection';
-import FeederStatus from '../../components/portal/FeederStatus';
-import { portalService } from '../../services/portal.service';
-import type { Aircraft, UserPlane, CreatePlaneRequest } from '../../types';
-import type { Feeder } from '../../services/portal.service';
-import './Portal.css';
-import YourPlanesCard from '../../components/portal/YourPlanesCard';
+import React, { useState, useEffect, useCallback, useRef } from "react";
+import { useAuth } from "../../contexts/AuthContext";
+import Sidebar, { type SidebarSection } from "../../components/portal/Sidebar";
+import AccountOverview from "../../components/portal/AccountOverview";
+import AircraftTable from "../../components/portal/AircraftTable";
+import ApiKeysSection from "../../components/portal/ApiKeysSection";
+import FeederStatus from "../../components/portal/FeederStatus";
+import { portalService } from "../../services/portal.service";
+import type { Aircraft, UserPlane, CreatePlaneRequest } from "../../types";
+import type { Feeder } from "../../services/portal.service";
+import "./Portal.css";
+import YourPlanesCard from "../../components/portal/YourPlanesCard";
 
 const sortPlanes = (list: UserPlane[]): UserPlane[] => {
   return [...list].sort((a, b) => {
@@ -19,10 +19,10 @@ const sortPlanes = (list: UserPlane[]): UserPlane[] => {
   });
 };
 
-const PLANES_CACHE_KEY = 'portalPlanes';
+const PLANES_CACHE_KEY = "portalPlanes";
 
 const getCachedPlanes = (): UserPlane[] => {
-  if (typeof window === 'undefined') {
+  if (typeof window === "undefined") {
     return [];
   }
   try {
@@ -36,14 +36,15 @@ const getCachedPlanes = (): UserPlane[] => {
     }
     return parsed;
   } catch (error) {
-    console.warn('Failed to parse cached planes', error);
+    console.warn("Failed to parse cached planes", error);
     return [];
   }
 };
 
 const Portal: React.FC = () => {
   const { user, isAuthenticated } = useAuth();
-  const [activeSection, setActiveSection] = useState<SidebarSection>('dashboard');
+  const [activeSection, setActiveSection] =
+    useState<SidebarSection>("dashboard");
   const [aircraft, setAircraft] = useState<Aircraft[]>([]);
   const [planes, setPlanes] = useState<UserPlane[]>(getCachedPlanes);
   const [feeders, setFeeders] = useState<Feeder[]>([]);
@@ -56,62 +57,63 @@ const Portal: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null);
 
-  const previousSection = useRef<SidebarSection>('dashboard');
+  const previousSection = useRef<SidebarSection>("dashboard");
   const hasFetchedOnce = useRef<boolean>(false);
 
   const fetchPortalData = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
-      
-      const [feedersResult, aircraftResult, statsResult, planesResult] = await Promise.allSettled([
-        portalService.getUserFeeders(),
-        portalService.getUserAircraft(),
-        portalService.getPortalStats(),
-        portalService.getUserPlanes(),
-      ]);
 
-      if (feedersResult.status === 'fulfilled') {
+      const [feedersResult, aircraftResult, statsResult, planesResult] =
+        await Promise.allSettled([
+          portalService.getUserFeeders(),
+          portalService.getUserAircraft(),
+          portalService.getPortalStats(),
+          portalService.getUserPlanes(),
+        ]);
+
+      if (feedersResult.status === "fulfilled") {
         setFeeders(feedersResult.value);
       } else {
-        console.warn('Failed to load feeders', feedersResult.reason);
+        console.warn("Failed to load feeders", feedersResult.reason);
       }
 
-      if (aircraftResult.status === 'fulfilled') {
+      if (aircraftResult.status === "fulfilled") {
         setAircraft(aircraftResult.value.aircraft || []);
       } else {
-        console.warn('Failed to load aircraft', aircraftResult.reason);
+        console.warn("Failed to load aircraft", aircraftResult.reason);
       }
 
-      if (statsResult.status === 'fulfilled') {
+      if (statsResult.status === "fulfilled") {
         setStats({
           totalAircraft: statsResult.value.totalAircraft,
           activeFeeders: statsResult.value.activeFeeders,
           totalApiKeys: statsResult.value.totalApiKeys,
         });
       } else {
-        console.warn('Failed to load stats', statsResult.reason);
+        console.warn("Failed to load stats", statsResult.reason);
       }
 
-      if (planesResult.status === 'fulfilled') {
+      if (planesResult.status === "fulfilled") {
         const sortedPlanes = sortPlanes(planesResult.value);
         setPlanes(sortedPlanes);
-        if (typeof window !== 'undefined') {
+        if (typeof window !== "undefined") {
           localStorage.setItem(PLANES_CACHE_KEY, JSON.stringify(sortedPlanes));
         }
       } else {
-        console.warn('Failed to load planes', planesResult.reason);
+        console.warn("Failed to load planes", planesResult.reason);
       }
 
       setLastSyncedAt(new Date());
       hasFetchedOnce.current = true;
     } catch (err) {
-      console.error('Error fetching portal data:', err);
-      setError('Failed to load portal data. Please try again later.');
+      console.error("Error fetching portal data:", err);
+      setError("Failed to load portal data. Please try again later.");
     } finally {
       setLoading(false);
     }
-  }, [isAuthenticated]);
+  }, []);
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -125,7 +127,7 @@ const Portal: React.FC = () => {
     }
     if (
       previousSection.current !== activeSection &&
-      activeSection === 'dashboard' &&
+      activeSection === "dashboard" &&
       hasFetchedOnce.current
     ) {
       fetchPortalData();
@@ -133,11 +135,16 @@ const Portal: React.FC = () => {
     previousSection.current = activeSection;
   }, [activeSection, isAuthenticated, fetchPortalData]);
 
-  const handleCreatePlane = async (payload: CreatePlaneRequest): Promise<UserPlane> => {
+  const handleCreatePlane = async (
+    payload: CreatePlaneRequest
+  ): Promise<UserPlane> => {
     const newPlane = await portalService.createUserPlane(payload);
     setPlanes((prev) => {
-      const next = sortPlanes([...prev.filter((existing) => existing.id !== newPlane.id), newPlane]);
-      if (typeof window !== 'undefined') {
+      const next = sortPlanes([
+        ...prev.filter((existing) => existing.id !== newPlane.id),
+        newPlane,
+      ]);
+      if (typeof window !== "undefined") {
         localStorage.setItem(PLANES_CACHE_KEY, JSON.stringify(next));
       }
       return next;
@@ -145,11 +152,16 @@ const Portal: React.FC = () => {
     return newPlane;
   };
 
-  const handleUpdatePlane = async (planeId: number, payload: CreatePlaneRequest): Promise<UserPlane> => {
+  const handleUpdatePlane = async (
+    planeId: number,
+    payload: CreatePlaneRequest
+  ): Promise<UserPlane> => {
     const updatedPlane = await portalService.updateUserPlane(planeId, payload);
     setPlanes((prev) => {
-      const next = sortPlanes(prev.map((plane) => (plane.id === planeId ? updatedPlane : plane)));
-      if (typeof window !== 'undefined') {
+      const next = sortPlanes(
+        prev.map((plane) => (plane.id === planeId ? updatedPlane : plane))
+      );
+      if (typeof window !== "undefined") {
         localStorage.setItem(PLANES_CACHE_KEY, JSON.stringify(next));
       }
       return next;
@@ -183,15 +195,25 @@ const Portal: React.FC = () => {
   }
 
   const lastSyncDisplay = lastSyncedAt
-    ? lastSyncedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-    : 'initializing';
+    ? lastSyncedAt.toLocaleTimeString([], {
+        hour: "2-digit",
+        minute: "2-digit",
+      })
+    : "initializing";
 
-  const currentTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  const currentDate = new Date().toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
+  const currentTime = new Date().toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+  const currentDate = new Date().toLocaleDateString([], {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+  });
 
   const renderContent = () => {
     switch (activeSection) {
-      case 'dashboard':
+      case "dashboard":
         return (
           <div className="dashboard-grid">
             <AccountOverview user={user} stats={stats || undefined} />
@@ -205,18 +227,20 @@ const Portal: React.FC = () => {
             </div>
           </div>
         );
-      case 'feeders':
+      case "feeders":
         return <FeederStatus feeders={feeders} />;
-      case 'aircraft':
+      case "aircraft":
         return <AircraftTable aircraft={aircraft} compact={false} />;
-      case 'api-keys':
+      case "api-keys":
         return <ApiKeysSection />;
-      case 'flight-plan':
+      case "flight-plan":
         return (
           <div className="efb-placeholder portal-card">
             <div className="placeholder-header">
               <h2>Flight Plan</h2>
-              <p className="placeholder-subtitle">Plan and manage your flight routes</p>
+              <p className="placeholder-subtitle">
+                Plan and manage your flight routes
+              </p>
             </div>
             <div className="placeholder-content">
               <p>Flight planning features coming soon:</p>
@@ -231,12 +255,14 @@ const Portal: React.FC = () => {
             </div>
           </div>
         );
-      case 'flights':
+      case "flights":
         return (
           <div className="efb-placeholder portal-card">
             <div className="placeholder-header">
               <h2>Flights</h2>
-              <p className="placeholder-subtitle">View and manage your flight history</p>
+              <p className="placeholder-subtitle">
+                View and manage your flight history
+              </p>
             </div>
             <div className="placeholder-content">
               <p>Flight tracking features coming soon:</p>
@@ -250,12 +276,14 @@ const Portal: React.FC = () => {
             </div>
           </div>
         );
-      case 'maps':
+      case "maps":
         return (
           <div className="efb-placeholder portal-card">
             <div className="placeholder-header">
               <h2>Maps & Sectional Charts</h2>
-              <p className="placeholder-subtitle">Interactive aeronautical charts</p>
+              <p className="placeholder-subtitle">
+                Interactive aeronautical charts
+              </p>
             </div>
             <div className="placeholder-content">
               <p>Aviation mapping features coming soon:</p>
@@ -270,7 +298,7 @@ const Portal: React.FC = () => {
             </div>
           </div>
         );
-      case 'logbook':
+      case "logbook":
         return (
           <div className="efb-placeholder portal-card">
             <div className="placeholder-header">
@@ -290,12 +318,14 @@ const Portal: React.FC = () => {
             </div>
           </div>
         );
-      case 'debriefs':
+      case "debriefs":
         return (
           <div className="efb-placeholder portal-card">
             <div className="placeholder-header">
               <h2>3D Flight Debriefs</h2>
-              <p className="placeholder-subtitle">Interactive 3D flight analysis</p>
+              <p className="placeholder-subtitle">
+                Interactive 3D flight analysis
+              </p>
             </div>
             <div className="placeholder-content">
               <p>3D debrief features coming soon:</p>
@@ -310,12 +340,14 @@ const Portal: React.FC = () => {
             </div>
           </div>
         );
-      case 'checklist':
+      case "checklist":
         return (
           <div className="efb-placeholder portal-card">
             <div className="placeholder-header">
               <h2>Checklists</h2>
-              <p className="placeholder-subtitle">Customizable aircraft checklists</p>
+              <p className="placeholder-subtitle">
+                Customizable aircraft checklists
+              </p>
             </div>
             <div className="placeholder-content">
               <p>Checklist features coming soon:</p>
@@ -330,12 +362,14 @@ const Portal: React.FC = () => {
             </div>
           </div>
         );
-      case 'settings':
+      case "settings":
         return (
           <div className="efb-placeholder portal-card">
             <div className="placeholder-header">
               <h2>Settings</h2>
-              <p className="placeholder-subtitle">Account and application preferences</p>
+              <p className="placeholder-subtitle">
+                Account and application preferences
+              </p>
             </div>
             <div className="placeholder-content">
               <p>Settings features:</p>
@@ -357,8 +391,11 @@ const Portal: React.FC = () => {
 
   return (
     <div className="efb-container">
-      <Sidebar activeSection={activeSection} onSectionChange={setActiveSection} />
-      
+      <Sidebar
+        activeSection={activeSection}
+        onSectionChange={setActiveSection}
+      />
+
       <div className="efb-main">
         <div className="efb-topbar">
           <div className="topbar-left">
@@ -367,23 +404,23 @@ const Portal: React.FC = () => {
               <span className="date">{currentDate}</span>
             </div>
           </div>
-          
+
           <div className="topbar-center">
             <div className="section-title">
-              {activeSection === 'dashboard' && 'Command Deck'}
-              {activeSection === 'feeders' && 'My Feeders'}
-              {activeSection === 'flight-plan' && 'Flight Plan'}
-              {activeSection === 'flights' && 'Flights'}
-              {activeSection === 'maps' && 'Maps & Charts'}
-              {activeSection === 'logbook' && 'Logbook'}
-              {activeSection === 'debriefs' && '3D Debriefs'}
-              {activeSection === 'checklist' && 'Checklists'}
-              {activeSection === 'aircraft' && 'Aircraft Fleet'}
-              {activeSection === 'api-keys' && 'API Keys'}
-              {activeSection === 'settings' && 'Settings'}
+              {activeSection === "dashboard" && "Command Deck"}
+              {activeSection === "feeders" && "My Feeders"}
+              {activeSection === "flight-plan" && "Flight Plan"}
+              {activeSection === "flights" && "Flights"}
+              {activeSection === "maps" && "Maps & Charts"}
+              {activeSection === "logbook" && "Logbook"}
+              {activeSection === "debriefs" && "3D Debriefs"}
+              {activeSection === "checklist" && "Checklists"}
+              {activeSection === "aircraft" && "Aircraft Fleet"}
+              {activeSection === "api-keys" && "API Keys"}
+              {activeSection === "settings" && "Settings"}
             </div>
           </div>
-          
+
           <div className="topbar-right">
             <div className="status-badge">
               <span className="status-dot"></span>
@@ -399,13 +436,13 @@ const Portal: React.FC = () => {
               <p className="error-title">Unable to sync data</p>
               <p className="error-message">{error}</p>
             </div>
-            <button type="button" onClick={fetchPortalData}>Retry Sync</button>
+            <button type="button" onClick={fetchPortalData}>
+              Retry Sync
+            </button>
           </div>
         )}
 
-        <div className="efb-content">
-          {renderContent()}
-        </div>
+        <div className="efb-content">{renderContent()}</div>
       </div>
     </div>
   );

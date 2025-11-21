@@ -51,7 +51,7 @@ function mergePlaneRecords(
   // - Existing is undefined/null for critical fields
   const shouldUseIncoming =
     incomingPriority > existingPriority ||
-    (incomingPriority === incomingPriority && incomingTime > existingTime);
+    (incomingPriority === existingPriority && incomingTime > existingTime);
 
   return {
     ...existing,
