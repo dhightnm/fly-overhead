@@ -109,13 +109,13 @@ router.get('/planes', authenticateToken, async (req: AuthenticatedRequest, res: 
  * Create a new aircraft profile for the authenticated user
  */
 router.post('/planes', authenticateToken, async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+  const { userId } = (req.user!);
+
+  if (!userId || typeof userId !== 'number' || userId <= 0) {
+    return res.status(400).json({ error: 'Invalid user ID' });
+  }
+
   try {
-    const { userId } = (req.user!);
-
-    if (!userId || typeof userId !== 'number' || userId <= 0) {
-      return res.status(400).json({ error: 'Invalid user ID' });
-    }
-
     const payload = req.body as CreateUserAircraftProfileInput;
     const plane = await userAircraftProfileService.createProfile(userId, payload);
 
