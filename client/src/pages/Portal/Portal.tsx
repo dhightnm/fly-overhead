@@ -83,8 +83,6 @@ const Portal: React.FC = () => {
     );
   }
 
-  const onlineFeeders = feeders.filter((feeder) => feeder.status?.toLowerCase() === 'online').length;
-
   const lastSyncDisplay = lastSyncedAt
     ? lastSyncedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     : 'initializing';
