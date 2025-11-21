@@ -22,7 +22,7 @@ const mockPostgresRepository = postgresRepository as jest.Mocked<typeof postgres
 beforeAll(async () => {
   // Dynamically import the router after mocks are set up
   // eslint-disable-next-line implicit-arrow-linebreak
-  await import('../feeder.routes');
+  await import('../feeder.routes'); // eslint-disable-line implicit-arrow-linebreak
 
   // We'll test the handler directly by importing the route logic
   // For now, we'll create a test that simulates the registration endpoint
