@@ -147,9 +147,11 @@ async function requeueMessage(message: WebhookQueueMessage): Promise<void> {
     return;
   }
 
-  const delayMs = (message.backoffMs || DEFAULT_BACKOFF_MS) * Math.pow(2, message.attempt);
+  const delayMs = (message.backoffMs || DEFAULT_BACKOFF_MS) * 2 ** message.attempt;
 
-  await new Promise<void>((resolve) => setTimeout(resolve, delayMs));
+  await new Promise<void>((resolve) => {
+    setTimeout(resolve, delayMs);
+  });
 
   const nextMessage: WebhookQueueMessage = {
     ...message,
@@ -199,7 +201,9 @@ async function pollQueue(): Promise<void> {
   while (true) {
     const processed = await processQueueIteration();
     if (processed === 0) {
-      await new Promise<void>((resolve) => setTimeout(resolve, pollIntervalMs));
+      await new Promise<void>((resolve) => {
+        setTimeout(resolve, pollIntervalMs);
+      });
     }
   }
 }
