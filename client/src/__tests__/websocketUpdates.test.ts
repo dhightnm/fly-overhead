@@ -11,7 +11,7 @@ interface WebSocketUpdate {
   type: 'full' | 'incremental' | 'refresh_required';
   timestamp: string;
   message?: string;
-  data?: any[];
+  data?: any[] | { updated?: Aircraft[] };
   count?: number;
 }
 
@@ -41,9 +41,17 @@ function handleWebSocketUpdate(
 
     case 'incremental':
       // Merge incremental updates (supports both old format and new format with data.updated)
-      const updatesArray = update.data?.updated || (Array.isArray(update.data) ? update.data : []);
+      let updatesArray: Aircraft[] = [];
+      if (update.data && typeof update.data === 'object' && 'updated' in update.data) {
+        // New format: data.updated
+        updatesArray = Array.isArray(update.data.updated) ? update.data.updated : [];
+      } else if (Array.isArray(update.data)) {
+        // Old format: data is array
+        updatesArray = update.data;
+      }
+      
       if (updatesArray.length > 0) {
-        const updatesMap = new Map(updatesArray.map((p) => [p.icao24, p]));
+        const updatesMap = new Map(updatesArray.map((p: Aircraft) => [p.icao24, p]));
         
         // Merge existing planes with updates
         const mergedPlanes = currentPlanes.map((plane) => {
@@ -53,7 +61,7 @@ function handleWebSocketUpdate(
               ...plane,
               ...update,
               source: 'websocket',
-              last_contact: Math.max(plane.last_contact || 0, update.last_contact || 0),
+              last_contact: Math.max(plane.last_contact || 0, (update as Aircraft).last_contact || 0),
             };
           }
           return plane;
