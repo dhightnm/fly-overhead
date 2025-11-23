@@ -242,3 +242,44 @@ export interface Navaid {
   geom: any; // PostGIS geometry
   distance_km?: number;
 }
+
+export interface WebhookSubscription {
+  id: number;
+  name: string;
+  subscriber_id: string;
+  callback_url: string;
+  event_types: string[];
+  signing_secret: string;
+  status: 'active' | 'paused' | 'disabled';
+  rate_limit_per_minute: number;
+  delivery_max_attempts: number;
+  delivery_backoff_ms: number;
+  metadata?: Record<string, any> | null;
+  last_success_at?: Date | null;
+  created_at: Date;
+  updated_at: Date;
+}
+
+export interface WebhookEvent {
+  event_id: string;
+  event_type: string;
+  payload: Record<string, any>;
+  occurred_at: Date;
+  version: string;
+  created_at: Date;
+}
+
+export interface WebhookDelivery {
+  delivery_id: string;
+  event_id: string;
+  subscription_id: number;
+  status: 'pending' | 'delivering' | 'success' | 'failed';
+  attempt_count: number;
+  next_attempt_at: Date | null;
+  last_attempt_at: Date | null;
+  last_error: string | null;
+  response_status: number | null;
+  response_body: string | null;
+  created_at: Date;
+  updated_at: Date;
+}

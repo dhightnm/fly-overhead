@@ -86,6 +86,23 @@ const liveStateCleanupSeconds = Math.max(15, parseNumber(process.env.LIVE_STATE_
 const liveStateMaxEntries = Math.max(1000, parseNumber(process.env.LIVE_STATE_MAX_ENTRIES, 50000));
 const liveStateMinResults = Math.max(0, parseNumber(process.env.LIVE_STATE_MIN_RESULTS_BEFORE_DB, 25));
 
+const webhooksEnabled = resolveBooleanFlag(
+  process.env.ENABLE_WEBHOOKS,
+  process.env.DISABLE_WEBHOOKS,
+  true,
+);
+const webhookQueueKey = process.env.WEBHOOK_QUEUE_KEY || 'flyoverhead:webhooks';
+const webhookBatchSize = Math.max(1, parseNumber(process.env.WEBHOOK_QUEUE_BATCH_SIZE, 50));
+const webhookPollIntervalMs = Math.max(250, parseNumber(process.env.WEBHOOK_QUEUE_POLL_INTERVAL_MS, 1000));
+const webhookMaxAttempts = Math.max(1, parseNumber(process.env.WEBHOOK_MAX_ATTEMPTS, 6));
+const webhookBackoffMs = Math.max(1000, parseNumber(process.env.WEBHOOK_BACKOFF_MS, 15000));
+const webhookTimeoutMs = Math.max(2000, parseNumber(process.env.WEBHOOK_TIMEOUT_MS, 10000));
+const spawnWebhookDispatcherInProcess = resolveBooleanFlag(
+  process.env.ENABLE_EMBEDDED_WEBHOOK_DISPATCHER,
+  process.env.DISABLE_EMBEDDED_WEBHOOK_DISPATCHER,
+  true,
+);
+
 /**
  * Centralized configuration management
  * All environment variables and config should live here
@@ -181,6 +198,19 @@ const config: AppConfig = {
     cleanupIntervalSeconds: liveStateCleanupSeconds,
     maxEntries: liveStateMaxEntries,
     minResultsBeforeDbFallback: liveStateMinResults,
+  },
+  webhooks: {
+    enabled: webhooksEnabled,
+    redisUrl,
+    queueKey: webhookQueueKey,
+    batchSize: webhookBatchSize,
+    pollIntervalMs: webhookPollIntervalMs,
+    maxAttempts: webhookMaxAttempts,
+    backoffMs: webhookBackoffMs,
+    deliveryTimeoutMs: webhookTimeoutMs,
+    signatureHeader: 'x-flyover-signature',
+    timestampHeader: 'x-flyover-timestamp',
+    spawnWorkerInProcess: spawnWebhookDispatcherInProcess,
   },
 };
 

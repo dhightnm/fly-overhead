@@ -1323,6 +1323,45 @@ const Home: React.FC = () => {
                   console.log(
                     "WebSocket: Applied full aircraft update (merged)"
                   );
+                } else if (update.type === "incremental" && update.data) {
+                  // Handle incremental updates - use upsertPlane for each updated aircraft
+                  const updatedAircraft = update.data.updated || [];
+                  const addedAircraft = update.data.added || [];
+                  
+                  // Process updated aircraft
+                  updatedAircraft.forEach((plane: Aircraft) => {
+                    const normalizedPlane: Aircraft = {
+                      ...plane,
+                      source: plane.source ?? "websocket",
+                      position_source: "websocket",
+                      predicted: plane.predicted === true,
+                    };
+                    upsertPlane(normalizedPlane);
+                  });
+
+                  // Process added aircraft
+                  addedAircraft.forEach((plane: Aircraft) => {
+                    const normalizedPlane: Aircraft = {
+                      ...plane,
+                      source: plane.source ?? "websocket",
+                      position_source: "websocket",
+                      predicted: plane.predicted === true,
+                    };
+                    upsertPlane(normalizedPlane);
+                  });
+
+                  // Handle removed aircraft
+                  if (update.data.removed && Array.isArray(update.data.removed)) {
+                    setPlanes((prevPlanes) =>
+                      prevPlanes.filter(
+                        (p) => !update.data.removed.includes(p.icao24)
+                      )
+                    );
+                  }
+
+                  console.log(
+                    `WebSocket: Applied incremental update (${updatedAircraft.length} updated, ${addedAircraft.length} added)`
+                  );
                 }
               }
             }}

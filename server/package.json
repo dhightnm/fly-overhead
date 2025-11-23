@@ -10,6 +10,8 @@
     "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
     "worker:ingest": "ts-node-dev --respawn --transpile-only src/workers/aircraftIngestionWorker.ts",
     "worker:ingest:prod": "node dist/workers/aircraftIngestionWorker.js",
+    "worker:webhooks": "ts-node-dev --respawn --transpile-only src/workers/webhookDispatcherWorker.ts",
+    "worker:webhooks:prod": "node dist/workers/webhookDispatcherWorker.js",
     "dev:js": "nodemon index.js",
     "type-check": "tsc --noEmit",
     "lint": "eslint . --ext .ts",

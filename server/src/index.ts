@@ -8,7 +8,9 @@ import aircraftService from './services/AircraftService';
 import backgroundRouteService from './services/BackgroundRouteService';
 import conusPollingService from './services/ConusPollingService';
 import startAircraftIngestionWorker from './workers/aircraftIngestionWorker';
+import startWebhookDispatcher from './workers/webhookDispatcherWorker';
 import webSocketService from './services/WebSocketService';
+import realTimeEventService from './services/RealTimeEventService';
 import errorHandler from './middlewares/errorHandler';
 import requestLogger from './middlewares/requestLogger';
 import logger from './utils/logger';
@@ -20,6 +22,7 @@ import aircraftRoutes from './routes/aircraft.routes';
 import healthRoutes from './routes/health.routes';
 import feederRoutes from './routes/feeder.routes';
 import portalRoutes from './routes/portal.routes';
+import webhookRoutes from './routes/webhook.routes';
 
 const app = express();
 const server = createServer(app);
@@ -101,6 +104,7 @@ app.use('/api', aircraftRoutes);
 app.use('/api', healthRoutes);
 app.use('/api', feederRoutes);
 app.use('/api/portal', portalRoutes);
+app.use('/api/webhooks', webhookRoutes);
 
 // Catch-all handler: send back React's index.html for client-side routing
 // This must be AFTER API routes and static file middleware, and BEFORE error handler
@@ -260,6 +264,21 @@ async function startServer(): Promise<void> {
       });
     } else if (config.queue.enabled) {
       logger.info('Queue ingestion worker disabled in-process (external worker expected)');
+    }
+
+    if (config.webhooks.enabled && config.webhooks.spawnWorkerInProcess) {
+      startWebhookDispatcher().catch((err: Error) => {
+        logger.error('Error starting embedded webhook dispatcher', { error: err.message });
+      });
+    } else if (config.webhooks.enabled) {
+      logger.info('Webhook dispatcher disabled in-process (external worker expected)');
+    }
+
+    // Start real-time event service to bridge webhook events to WebSocket
+    if (config.webhooks.enabled) {
+      realTimeEventService.start().catch((err: Error) => {
+        logger.error('Error starting real-time event service', { error: err.message });
+      });
     }
   } catch (err) {
     const error = err as Error;

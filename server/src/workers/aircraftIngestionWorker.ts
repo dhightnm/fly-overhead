@@ -4,6 +4,7 @@ import logger from '../utils/logger';
 import postgresRepository from '../repositories/PostgresRepository';
 import type { AircraftQueueMessage } from '../services/QueueService';
 import liveStateStore from '../services/LiveStateStore';
+import webhookService from '../services/WebhookService';
 
 const {
   queue: {
@@ -80,6 +81,17 @@ export async function processBatch(messages: AircraftQueueMessage[]): Promise<vo
         false,
       );
       liveStateStore.upsertState(message.state);
+      webhookService.publishAircraftPositionUpdate(
+        message.state,
+        message.source,
+        ingestionTimestamp,
+        message.sourcePriority,
+      ).catch((error: Error) => {
+        logger.warn('Failed to publish webhook for aircraft state', {
+          icao24: message.state?.[0],
+          error: error.message,
+        });
+      });
     } catch (error) {
       logger.error('Failed to ingest aircraft state', {
         error: (error as Error).message,

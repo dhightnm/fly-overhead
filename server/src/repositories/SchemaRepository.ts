@@ -938,6 +938,131 @@ class SchemaRepository {
   }
 
   /**
+   * Webhook subscription registry
+   */
+  async createWebhookSubscriptionsTable(): Promise<void> {
+    const query = `
+      CREATE TABLE IF NOT EXISTS webhook_subscriptions (
+        id SERIAL PRIMARY KEY,
+        name TEXT NOT NULL,
+        subscriber_id TEXT NOT NULL,
+        callback_url TEXT NOT NULL,
+        event_types TEXT[] NOT NULL,
+        signing_secret TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'active',
+        rate_limit_per_minute INT DEFAULT 120,
+        delivery_max_attempts INT DEFAULT 6,
+        delivery_backoff_ms INT DEFAULT 15000,
+        metadata JSONB,
+        last_success_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+      );
+
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_indexes WHERE tablename = 'webhook_subscriptions' AND indexname = 'idx_webhook_subscriptions_event_types'
+        ) THEN
+          CREATE INDEX idx_webhook_subscriptions_event_types ON webhook_subscriptions USING GIN (event_types);
+        END IF;
+
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_indexes WHERE tablename = 'webhook_subscriptions' AND indexname = 'idx_webhook_subscriptions_status'
+        ) THEN
+          CREATE INDEX idx_webhook_subscriptions_status ON webhook_subscriptions (status);
+        END IF;
+      END $$;
+    `;
+
+    await this.db.query(query);
+    logger.info('Webhook subscriptions table initialized');
+  }
+
+  /**
+   * Webhook events table (append-only)
+   */
+  async createWebhookEventsTable(): Promise<void> {
+    const query = `
+      CREATE TABLE IF NOT EXISTS webhook_events (
+        event_id TEXT PRIMARY KEY,
+        event_type TEXT NOT NULL,
+        payload JSONB NOT NULL,
+        occurred_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        version TEXT DEFAULT 'v1',
+        created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+      );
+
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_indexes WHERE tablename = 'webhook_events' AND indexname = 'idx_webhook_events_type'
+        ) THEN
+          CREATE INDEX idx_webhook_events_type ON webhook_events (event_type);
+        END IF;
+      END $$;
+    `;
+
+    await this.db.query(query);
+    logger.info('Webhook events table initialized');
+  }
+
+  /**
+   * Webhook deliveries table (per-subscriber delivery tracking)
+   */
+  async createWebhookDeliveriesTable(): Promise<void> {
+    const query = `
+      CREATE TABLE IF NOT EXISTS webhook_deliveries (
+        delivery_id TEXT PRIMARY KEY,
+        event_id TEXT NOT NULL REFERENCES webhook_events(event_id) ON DELETE CASCADE,
+        subscription_id INT NOT NULL REFERENCES webhook_subscriptions(id) ON DELETE CASCADE,
+        status TEXT NOT NULL DEFAULT 'pending',
+        attempt_count INT NOT NULL DEFAULT 0,
+        next_attempt_at TIMESTAMPTZ,
+        last_attempt_at TIMESTAMPTZ,
+        last_error TEXT,
+        response_status INT,
+        response_body TEXT,
+        created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+      );
+
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_indexes WHERE tablename = 'webhook_deliveries' AND indexname = 'idx_webhook_deliveries_status_next_attempt'
+        ) THEN
+          CREATE INDEX idx_webhook_deliveries_status_next_attempt ON webhook_deliveries (status, next_attempt_at);
+        END IF;
+
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_indexes WHERE tablename = 'webhook_deliveries' AND indexname = 'idx_webhook_deliveries_event'
+        ) THEN
+          CREATE INDEX idx_webhook_deliveries_event ON webhook_deliveries (event_id);
+        END IF;
+
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_indexes WHERE tablename = 'webhook_deliveries' AND indexname = 'idx_webhook_deliveries_subscription'
+        ) THEN
+          CREATE INDEX idx_webhook_deliveries_subscription ON webhook_deliveries (subscription_id);
+        END IF;
+      END $$;
+    `;
+
+    await this.db.query(query);
+    logger.info('Webhook deliveries table initialized');
+  }
+
+  /**
+   * Initialize webhook schema
+   */
+  async initializeWebhookSchema(): Promise<void> {
+    await this.createWebhookSubscriptionsTable();
+    await this.createWebhookEventsTable();
+    await this.createWebhookDeliveriesTable();
+  }
+
+  /**
    * Initialize all database schemas
    */
   async initializeAll(): Promise<void> {
@@ -965,6 +1090,8 @@ class SchemaRepository {
       });
       // Don't throw - allow server to continue
     }
+
+    await this.initializeWebhookSchema();
 
     logger.info('Database initialized successfully with performance indexes');
   }

@@ -771,6 +771,7 @@ class AircraftService {
       await postgresRepository.createFeederStatsTable();
       await postgresRepository.addFeederColumnsToAircraftStates();
       await postgresRepository.addFeederColumnsToAircraftStatesHistory();
+      await postgresRepository.initializeWebhookSchema();
       // Airport schema tables (airports, runways, frequencies, navaids)
       // Wrap in try-catch to allow server to start even if airport init fails
       try {

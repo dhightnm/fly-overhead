@@ -8,6 +8,12 @@ import FeederRepository from './FeederRepository';
 import ApiKeyRepository from './ApiKeyRepository';
 import AirportRepository from './AirportRepository';
 import PostGISService from '../services/PostGISService';
+import WebhookRepository, {
+  CreateDeliveryInput,
+  CreateEventInput,
+  CreateSubscriptionInput,
+} from './WebhookRepository';
+import type { WebhookDelivery, WebhookEvent, WebhookSubscription } from '../types/database.types';
 
 /**
  * Main PostgresRepository facade
@@ -33,6 +39,8 @@ class PostgresRepository {
   private _apiKey: ApiKeyRepository | null = null;
 
   private _airport: AirportRepository | null = null;
+
+  private _webhook: WebhookRepository | null = null;
 
   constructor() {
     this.connection = getConnection();
@@ -90,6 +98,22 @@ class PostgresRepository {
     return this.schema.addFeederProviderColumnToUsers();
   }
 
+  async createWebhookSubscriptionsTable(): Promise<void> {
+    return this.schema.createWebhookSubscriptionsTable();
+  }
+
+  async createWebhookEventsTable(): Promise<void> {
+    return this.schema.createWebhookEventsTable();
+  }
+
+  async createWebhookDeliveriesTable(): Promise<void> {
+    return this.schema.createWebhookDeliveriesTable();
+  }
+
+  async initializeWebhookSchema(): Promise<void> {
+    return this.schema.initializeWebhookSchema();
+  }
+
   async initializeAll(): Promise<void> {
     return this.schema.initializeAll();
   }
@@ -143,6 +167,13 @@ class PostgresRepository {
       this._airport = new AirportRepository(this.db, this.postgis);
     }
     return this._airport;
+  }
+
+  private get webhook(): WebhookRepository {
+    if (!this._webhook) {
+      this._webhook = new WebhookRepository();
+    }
+    return this._webhook;
   }
 
   // Delegate aircraft methods
@@ -337,6 +368,38 @@ class PostgresRepository {
 
   async updateApiKey(keyId: string, updates: any): Promise<any> {
     return this.apiKey.updateApiKey(keyId, updates);
+  }
+
+  // Webhook methods
+  async createWebhookSubscription(input: CreateSubscriptionInput): Promise<WebhookSubscription> {
+    return this.webhook.createSubscription(input);
+  }
+
+  async listWebhookSubscriptions(status?: string): Promise<WebhookSubscription[]> {
+    return this.webhook.listSubscriptions(status);
+  }
+
+  async findActiveWebhookSubscriptions(eventType: string): Promise<WebhookSubscription[]> {
+    return this.webhook.findActiveSubscriptionsForEvent(eventType);
+  }
+
+  async createWebhookEvent(input: CreateEventInput): Promise<WebhookEvent> {
+    return this.webhook.createEvent(input);
+  }
+
+  async createWebhookDelivery(input: CreateDeliveryInput): Promise<WebhookDelivery> {
+    return this.webhook.createDelivery(input);
+  }
+
+  async updateWebhookDelivery(
+    deliveryId: string,
+    fields: Partial<Pick<WebhookDelivery, 'status' | 'attempt_count' | 'next_attempt_at' | 'last_error' | 'response_status' | 'response_body' | 'last_attempt_at'>>,
+  ): Promise<void> {
+    return this.webhook.markDeliveryAttempt(deliveryId, fields);
+  }
+
+  async markWebhookSubscriptionSuccess(subscriptionId: number): Promise<void> {
+    return this.webhook.markSubscriptionSuccess(subscriptionId);
   }
 
   // Delegate airport methods

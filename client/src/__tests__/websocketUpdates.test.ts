@@ -40,11 +40,13 @@ function handleWebSocketUpdate(
       return currentPlanes;
 
     case 'incremental':
-      // Merge incremental updates
-      if (Array.isArray(update.data)) {
-        const updatesMap = new Map(update.data.map((p) => [p.icao24, p]));
+      // Merge incremental updates (supports both old format and new format with data.updated)
+      const updatesArray = update.data?.updated || (Array.isArray(update.data) ? update.data : []);
+      if (updatesArray.length > 0) {
+        const updatesMap = new Map(updatesArray.map((p) => [p.icao24, p]));
         
-        return currentPlanes.map((plane) => {
+        // Merge existing planes with updates
+        const mergedPlanes = currentPlanes.map((plane) => {
           const update = updatesMap.get(plane.icao24);
           if (update) {
             return {
@@ -56,6 +58,15 @@ function handleWebSocketUpdate(
           }
           return plane;
         });
+
+        // Add new aircraft that don't exist yet
+        const existingIcao24s = new Set(currentPlanes.map((p) => p.icao24));
+        const newAircraft = updatesArray.filter((p) => !existingIcao24s.has(p.icao24));
+        
+        return [...mergedPlanes, ...newAircraft.map((p) => ({
+          ...p,
+          source: 'websocket',
+        }))];
       }
       return currentPlanes;
 
@@ -244,6 +255,71 @@ describe('WebSocket Update Handling', () => {
       
       // Should keep newer timestamp
       expect(result[0].last_contact).toBe(1000100);
+    });
+
+    it('should handle new format with data.updated array', () => {
+      const currentPlanes: Aircraft[] = [
+        createAircraft({
+          icao24: 'abc123',
+          callsign: 'TEST123',
+          latitude: 40.0,
+          longitude: -100.0,
+          source: 'database',
+        }),
+      ];
+
+      const update: WebSocketUpdate = {
+        type: 'incremental',
+        timestamp: new Date().toISOString(),
+        data: {
+          updated: [
+            createAircraft({
+              icao24: 'abc123',
+              latitude: 40.5,
+              longitude: -100.5,
+              velocity: 250,
+            }),
+            createAircraft({
+              icao24: 'new456',
+              callsign: 'NEW456',
+              latitude: 41.0,
+              longitude: -101.0,
+            }),
+          ],
+        },
+      };
+
+      const result = handleWebSocketUpdate(currentPlanes, update);
+      
+      expect(result.length).toBe(2);
+      expect(result[0].icao24).toBe('abc123');
+      expect(result[0].latitude).toBe(40.5); // Updated
+      expect(result[0].velocity).toBe(250); // Updated
+      expect(result[1].icao24).toBe('new456'); // New aircraft added
+      expect(result[1].source).toBe('websocket');
+    });
+
+    it('should add new aircraft from incremental updates', () => {
+      const currentPlanes: Aircraft[] = [
+        createAircraft({ icao24: 'abc123' }),
+      ];
+
+      const update: WebSocketUpdate = {
+        type: 'incremental',
+        timestamp: new Date().toISOString(),
+        data: {
+          updated: [
+            createAircraft({ icao24: 'new456', callsign: 'NEW456' }),
+          ],
+        },
+      };
+
+      const result = handleWebSocketUpdate(currentPlanes, update);
+      
+      expect(result.length).toBe(2);
+      expect(result.find((p) => p.icao24 === 'abc123')).toBeDefined();
+      expect(result.find((p) => p.icao24 === 'new456')).toBeDefined();
+      expect(result.find((p) => p.icao24 === 'new456')?.source).toBe('websocket');
     });
   });
 

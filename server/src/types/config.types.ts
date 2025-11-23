@@ -81,6 +81,20 @@ export interface LiveStateConfig {
   minResultsBeforeDbFallback: number;
 }
 
+export interface WebhookConfig {
+  enabled: boolean;
+  redisUrl: string;
+  queueKey: string;
+  batchSize: number;
+  pollIntervalMs: number;
+  maxAttempts: number;
+  backoffMs: number;
+  deliveryTimeoutMs: number;
+  signatureHeader: string;
+  timestampHeader: string;
+  spawnWorkerInProcess: boolean;
+}
+
 export interface FeatureFlagsConfig {
   backgroundJobsEnabled: boolean;
   conusPollingEnabled: boolean;
@@ -97,4 +111,5 @@ export interface AppConfig {
   features: FeatureFlagsConfig;
   queue: QueueConfig;
   liveState: LiveStateConfig;
+  webhooks: WebhookConfig;
 }
