@@ -26,6 +26,27 @@ jest.mock('../../repositories/PostgresRepository');
 jest.mock('../../services/LiveStateStore', () => ({
   upsertState: jest.fn(),
 }));
+
+// Mock WebhookQueueService and WebhookService to prevent Redis instantiation during import
+jest.mock('../../services/WebhookQueueService', () => ({
+  __esModule: true,
+  default: {
+    isEnabled: jest.fn().mockReturnValue(true),
+    getQueueKey: jest.fn().mockReturnValue('flyoverhead:webhooks'),
+    enqueue: jest.fn().mockResolvedValue(undefined),
+  },
+}));
+
+jest.mock('../../services/WebhookService', () => ({
+  __esModule: true,
+  default: {
+    publishAircraftPositionUpdate: jest.fn().mockResolvedValue({
+      eventId: 'test-event',
+      deliveriesEnqueued: 0,
+    }),
+  },
+}));
+
 jest.mock('../../utils/logger', () => ({
   info: jest.fn(),
   error: jest.fn(),
@@ -47,13 +68,18 @@ describe('aircraftIngestionWorker', () => {
     jest.clearAllMocks();
     jest.useRealTimers();
 
-    // Create a mock Redis instance
+    // Create a mock Redis instance with all methods needed
     mockRedisInstance = {
       brpop: jest.fn().mockResolvedValue(null),
       rpush: jest.fn().mockResolvedValue(1),
+      lpush: jest.fn().mockResolvedValue(1),
       on: jest.fn(),
       connect: jest.fn().mockResolvedValue(undefined),
       disconnect: jest.fn(),
+      quit: jest.fn().mockResolvedValue(undefined),
+      subscribe: jest.fn().mockResolvedValue(undefined),
+      unsubscribe: jest.fn().mockResolvedValue(undefined),
+      publish: jest.fn().mockResolvedValue(1),
     };
 
     MockedRedis.mockImplementation(() => mockRedisInstance);
