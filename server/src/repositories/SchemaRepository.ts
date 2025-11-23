@@ -649,17 +649,63 @@ class SchemaRepository {
         id SERIAL PRIMARY KEY,
         feeder_id TEXT UNIQUE NOT NULL,
         name TEXT,
-        location TEXT,
+        location GEOGRAPHY,
         latitude FLOAT8,
         longitude FLOAT8,
         api_key_hash TEXT UNIQUE NOT NULL,
         created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-        last_seen TIMESTAMPTZ,
-        is_active BOOLEAN DEFAULT true
+        updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+        last_seen_at TIMESTAMPTZ,
+        status TEXT DEFAULT 'active',
+        metadata JSONB DEFAULT '{}'::jsonb
       );
       
       CREATE INDEX IF NOT EXISTS idx_feeders_feeder_id ON feeders(feeder_id);
       CREATE INDEX IF NOT EXISTS idx_feeders_api_key_hash ON feeders(api_key_hash);
+
+      DO $$
+      BEGIN
+        -- Add metadata column for user associations and extra info
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name = 'feeders' AND column_name = 'metadata'
+        ) THEN
+          ALTER TABLE feeders ADD COLUMN metadata JSONB DEFAULT '{}'::jsonb;
+        END IF;
+
+        -- Add status column to align with repository logic
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name = 'feeders' AND column_name = 'status'
+        ) THEN
+          ALTER TABLE feeders ADD COLUMN status TEXT DEFAULT 'active';
+        END IF;
+
+        -- Add last_seen_at column
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name = 'feeders' AND column_name = 'last_seen_at'
+        ) THEN
+          ALTER TABLE feeders ADD COLUMN last_seen_at TIMESTAMPTZ;
+        END IF;
+
+        -- Add updated_at column
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name = 'feeders' AND column_name = 'updated_at'
+        ) THEN
+          ALTER TABLE feeders ADD COLUMN updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP;
+        END IF;
+
+        -- Ensure location column is geography; if it was text, create a new geography column and migrate
+        IF EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name = 'feeders' AND column_name = 'location' AND udt_name = 'text'
+        ) THEN
+          -- Try to convert existing location text (lon,lat WKT) into geography if possible
+          ALTER TABLE feeders ALTER COLUMN location TYPE GEOGRAPHY USING NULLIF(location, '')::geography;
+        END IF;
+      END $$;
     `;
     await this.db.query(query);
     logger.info('Feeders table created or already exists');
