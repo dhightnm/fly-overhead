@@ -158,8 +158,12 @@ describe('WebhookService', () => {
       });
 
       mockRepository.findActiveWebhookSubscriptions.mockResolvedValue([
-        { id: 10, callback_url: 'https://a.com', signing_secret: 'secret-a', delivery_max_attempts: 4, delivery_backoff_ms: 2000 },
-        { id: 11, callback_url: 'https://b.com', signing_secret: 'secret-b', delivery_max_attempts: 0, delivery_backoff_ms: 0 },
+        {
+          id: 10, callback_url: 'https://a.com', signing_secret: 'secret-a', delivery_max_attempts: 4, delivery_backoff_ms: 2000,
+        },
+        {
+          id: 11, callback_url: 'https://b.com', signing_secret: 'secret-b', delivery_max_attempts: 0, delivery_backoff_ms: 0,
+        },
       ]);
 
       mockRepository.createWebhookDelivery.mockResolvedValue({ delivery_id: 'd-1' });
@@ -312,7 +316,9 @@ describe('WebhookService', () => {
         created_at: eventDate,
       });
       mockRepository.findActiveWebhookSubscriptions.mockResolvedValue([
-        { id: 10, callback_url: 'https://a.com', signing_secret: 'secret', delivery_max_attempts: 3, delivery_backoff_ms: 1000 },
+        {
+          id: 10, callback_url: 'https://a.com', signing_secret: 'secret', delivery_max_attempts: 3, delivery_backoff_ms: 1000,
+        },
       ]);
       mockRepository.createWebhookDelivery.mockResolvedValue({ delivery_id: 'd-1' });
       mockQueue.enqueue.mockResolvedValue(undefined);

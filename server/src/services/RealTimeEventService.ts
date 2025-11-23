@@ -77,8 +77,9 @@ class RealTimeEventService {
   private handleEvent(message: string): void {
     try {
       const event = JSON.parse(message);
-      if (event.eventType === 'aircraft.position.updated' && event.payload) {
-        const { icao24 } = event.payload;
+      const { payload } = event;
+      if (event.eventType === 'aircraft.position.updated' && payload) {
+        const { icao24 } = payload;
 
         if (!icao24) {
           return;
@@ -133,7 +134,7 @@ class RealTimeEventService {
       registration: update.registration || null,
       aircraft_type: update.aircraft_type || null,
       aircraft_description: update.aircraft_description || null,
-    })).filter((ac) => ac.latitude !== null && ac.longitude !== null);
+    })).filter((ac) => typeof ac.latitude === 'number' && typeof ac.longitude === 'number');
 
     if (aircraftData.length === 0) {
       return;
