@@ -51,11 +51,11 @@ describe('RealTimeEventService', () => {
   beforeEach(async () => {
     jest.resetModules();
     jest.clearAllMocks();
-    
+
     // Re-import the service to get a fresh singleton instance
     // eslint-disable-next-line import/first
     realTimeEventService = (await import('../RealTimeEventService')).default;
-    
+
     mockConfig.webhooks.enabled = true;
     mockRedisInstance.subscribe.mockClear();
     mockRedisInstance.unsubscribe.mockClear();
@@ -75,9 +75,7 @@ describe('RealTimeEventService', () => {
       // Ignore errors during cleanup
     }
   });
-
   describe('start', () => {
-
     it('should not start when webhooks are disabled', async () => {
       mockConfig.webhooks.enabled = false;
 
@@ -477,4 +475,3 @@ describe('RealTimeEventService', () => {
     });
   });
 });
-

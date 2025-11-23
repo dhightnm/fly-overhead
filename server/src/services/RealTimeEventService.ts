@@ -78,8 +78,7 @@ class RealTimeEventService {
     try {
       const event = JSON.parse(message);
       if (event.eventType === 'aircraft.position.updated' && event.payload) {
-        const { payload } = event;
-        const icao24 = payload.icao24;
+        const { payload: { icao24 } } = event;
 
         if (!icao24) {
           return;
@@ -182,4 +181,3 @@ class RealTimeEventService {
 
 const realTimeEventService = new RealTimeEventService();
 export default realTimeEventService;
-
