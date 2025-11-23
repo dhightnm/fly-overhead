@@ -962,13 +962,17 @@ class SchemaRepository {
       DO $$
       BEGIN
         IF NOT EXISTS (
-          SELECT 1 FROM pg_indexes WHERE tablename = 'webhook_subscriptions' AND indexname = 'idx_webhook_subscriptions_event_types'
+          SELECT 1 FROM pg_indexes
+          WHERE tablename = 'webhook_subscriptions'
+          AND indexname = 'idx_webhook_subscriptions_event_types'
         ) THEN
           CREATE INDEX idx_webhook_subscriptions_event_types ON webhook_subscriptions USING GIN (event_types);
         END IF;
 
         IF NOT EXISTS (
-          SELECT 1 FROM pg_indexes WHERE tablename = 'webhook_subscriptions' AND indexname = 'idx_webhook_subscriptions_status'
+          SELECT 1 FROM pg_indexes
+          WHERE tablename = 'webhook_subscriptions'
+          AND indexname = 'idx_webhook_subscriptions_status'
         ) THEN
           CREATE INDEX idx_webhook_subscriptions_status ON webhook_subscriptions (status);
         END IF;
@@ -1030,7 +1034,9 @@ class SchemaRepository {
       DO $$
       BEGIN
         IF NOT EXISTS (
-          SELECT 1 FROM pg_indexes WHERE tablename = 'webhook_deliveries' AND indexname = 'idx_webhook_deliveries_status_next_attempt'
+          SELECT 1 FROM pg_indexes
+          WHERE tablename = 'webhook_deliveries'
+          AND indexname = 'idx_webhook_deliveries_status_next_attempt'
         ) THEN
           CREATE INDEX idx_webhook_deliveries_status_next_attempt ON webhook_deliveries (status, next_attempt_at);
         END IF;
@@ -1042,7 +1048,9 @@ class SchemaRepository {
         END IF;
 
         IF NOT EXISTS (
-          SELECT 1 FROM pg_indexes WHERE tablename = 'webhook_deliveries' AND indexname = 'idx_webhook_deliveries_subscription'
+          SELECT 1 FROM pg_indexes
+          WHERE tablename = 'webhook_deliveries'
+          AND indexname = 'idx_webhook_deliveries_subscription'
         ) THEN
           CREATE INDEX idx_webhook_deliveries_subscription ON webhook_deliveries (subscription_id);
         END IF;
