@@ -83,7 +83,30 @@ function mergeLiveSamplesWithDb(
       return;
     }
     const existing = merged.get(icao24);
-    merged.set(icao24, applyStateToRecord(existing, state));
+
+    // If existing record has higher priority (lower number), preserve its data_source and source_priority
+    // Feeder data (priority 10) should not be overwritten by airplanes.live (priority 20)
+    const existingPriority = existing?.source_priority ?? 999;
+    const livePriority = 20; // airplanes.live priority
+
+    if (existingPriority <= livePriority && existing?.data_source) {
+      // Existing record has higher or equal priority and has a data_source, preserve it
+      const preservedDataSource = existing.data_source;
+      const preservedSourcePriority = existing.source_priority;
+      const preservedFeederId = existing.feeder_id;
+
+      // Apply live state but restore preserved fields
+      const updated = applyStateToRecord(existing, state);
+      updated.data_source = preservedDataSource;
+      updated.source_priority = preservedSourcePriority;
+      if (preservedFeederId) {
+        updated.feeder_id = preservedFeederId;
+      }
+      merged.set(icao24, updated);
+    } else {
+      // Live state has higher priority or no existing record, apply it normally
+      merged.set(icao24, applyStateToRecord(existing, state));
+    }
   });
 
   return Array.from(merged.values());

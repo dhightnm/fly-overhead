@@ -46,8 +46,14 @@ export function applyStateToRecord(record: DbAircraftRow | undefined, state: Air
   updated.spi = state[STATE_INDEX.SPI] ?? updated.spi ?? false;
   updated.position_source = state[STATE_INDEX.POSITION_SOURCE] ?? updated.position_source ?? null;
   updated.category = state[STATE_INDEX.CATEGORY] ?? updated.category ?? null;
-  updated.data_source = updated.data_source || 'airplanes.live';
-  updated.source_priority = updated.source_priority ?? 20;
+  // Preserve existing data_source if it exists (e.g., 'feeder'), otherwise default to 'airplanes.live'
+  if (!updated.data_source) {
+    updated.data_source = 'airplanes.live';
+  }
+  // Preserve existing source_priority if it exists (e.g., feeder priority 10), otherwise default to 20
+  if (updated.source_priority === undefined || updated.source_priority === null) {
+    updated.source_priority = 20;
+  }
 
   // Enriched fields (optional from airplanes.live)
   updated.aircraft_type = state[STATE_INDEX.AIRCRAFT_TYPE] ?? updated.aircraft_type ?? null;
