@@ -1,6 +1,6 @@
 import config from '../config';
 import logger from '../utils/logger';
-import redisClientManager from '../lib/redis/RedisClientManager';
+import redisClientManager, { type ConnectionMeta } from '../lib/redis/RedisClientManager';
 
 const { webhooks } = config;
 
@@ -48,7 +48,7 @@ export class WebhookQueueService {
     return this.queueKey;
   }
 
-  getHealth() {
+  getHealth(): ConnectionMeta | { status: 'disabled' } | { status: 'unknown' } {
     if (!this.enabled) {
       return { status: 'disabled' };
     }

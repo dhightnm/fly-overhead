@@ -1,7 +1,7 @@
 import Redis, { RedisOptions } from 'ioredis';
 import logger from '../../utils/logger';
 
-interface ConnectionMeta {
+export interface ConnectionMeta {
   status: 'connecting' | 'ready' | 'reconnecting' | 'error' | 'closed';
   lastError?: string;
   createdAt: Date;

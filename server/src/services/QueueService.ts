@@ -1,6 +1,6 @@
 import config from '../config';
 import logger from '../utils/logger';
-import redisClientManager from '../lib/redis/RedisClientManager';
+import redisClientManager, { type ConnectionMeta } from '../lib/redis/RedisClientManager';
 
 export interface AircraftQueueMessage {
   state: any[];
@@ -38,7 +38,7 @@ export class QueueService {
     return this.queueKey;
   }
 
-  getHealth() {
+  getHealth(): ConnectionMeta | { status: 'disabled' } | { status: 'unknown' } {
     if (!this.enabled) {
       return { status: 'disabled' };
     }
