@@ -1,3 +1,4 @@
+import fs from 'fs';
 import pgPromise from 'pg-promise';
 import config from '../config';
 import logger from '../utils/logger';
@@ -105,73 +106,25 @@ class DatabaseConnection {
     // Parse connection string to detect AWS RDS/Lightsail endpoints
     const isAwsRds = DatabaseConnection.isAwsRdsEndpoint(connectionString);
 
-    const rejectUnauthorized = process.env.POSTGRES_REJECT_UNAUTHORIZED !== 'false';
+    const connectionConfig: any = {
+      connectionString,
+      max: config.database.postgres.pool.max || 10,
+      min: config.database.postgres.pool.min || 2,
+      idleTimeoutMillis: 30000,
+      connectionTimeoutMillis: 10000,
+      keepAlive: true,
+      keepAliveInitialDelayMillis: 10000,
+      query_timeout: 10000,
+    };
 
-    // Configure SSL for AWS RDS/Lightsail connections
-    // Parse connection string and add SSL configuration
     if (isAwsRds) {
-      try {
-        // Parse the connection URL
-        const url = new URL(connectionString);
-        const connectionConfig: any = {
-          host: url.hostname,
-          port: parseInt(url.port || '5432', 10),
-          database: url.pathname.replace(/^\//, ''), // Remove leading slash
-          user: url.username,
-          password: decodeURIComponent(url.password), // Decode password
-          ssl: {
-            rejectUnauthorized,
-          },
-          // Connection pool settings
-          // Maximum number of clients in the pool (keep below database max_connections limit)
-          max: config.database.postgres.pool.max || 10,
-          min: config.database.postgres.pool.min || 2, // Minimum number of clients in the pool
-          idleTimeoutMillis: 30000, // Close idle clients after 30 seconds (reduced to free up connections faster)
-          // Return an error after 10 seconds if connection could not be established (reduced for faster failure)
-          connectionTimeoutMillis: 10000,
-          keepAlive: true, // Keep TCP connection alive
-          keepAliveInitialDelayMillis: 10000, // Start keepalive after 10 seconds
-          // Query timeout: Set statement_timeout at connection level to prevent queries from hanging
-          // This is applied via SET statement_timeout after connection is established
-          query_timeout: 10000, // pg-promise query timeout (10 seconds)
-        };
-
-        this.db = pgp(connectionConfig);
-      } catch (error) {
-        // Fallback to connection string if parsing fails, but still add timeout settings
-        logger.warn('Failed to parse connection string, using as-is with timeout settings', {
-          error: (error as Error).message,
-        });
-        const fallbackConfig: any = {
-          connectionString,
-          max: config.database.postgres.pool.max || 10,
-          min: config.database.postgres.pool.min || 2,
-          idleTimeoutMillis: 30000,
-          connectionTimeoutMillis: 10000, // Reduced for faster failure
-          keepAlive: true,
-          keepAliveInitialDelayMillis: 10000,
-          query_timeout: 10000, // pg-promise query timeout (10 seconds)
-          ssl: {
-            rejectUnauthorized,
-          },
-        };
-        this.db = pgp(fallbackConfig);
+      const sslConfig = DatabaseConnection.buildSslConfig(connectionString);
+      if (sslConfig) {
+        connectionConfig.ssl = sslConfig;
       }
-    } else {
-      // For local/non-AWS connections, add timeout and pool settings
-      const connectionConfig: any = {
-        connectionString,
-        // Connection pool settings
-        max: config.database.postgres.pool.max || 10,
-        min: config.database.postgres.pool.min || 2,
-        idleTimeoutMillis: 30000,
-        connectionTimeoutMillis: 10000, // Reduced for faster failure
-        keepAlive: true,
-        keepAliveInitialDelayMillis: 10000,
-        query_timeout: 10000, // pg-promise query timeout (10 seconds)
-      };
-      this.db = pgp(connectionConfig);
     }
+
+    this.db = pgp(connectionConfig);
 
     this.postgis = new PostGISService(this.db);
     // Initialize connection asynchronously - don't block constructor
@@ -196,6 +149,59 @@ class DatabaseConnection {
       || connectionString.includes('.lightsail.aws')
       || connectionString.includes('ls-')
     );
+  }
+
+  private static buildSslConfig(connectionString: string): false | Record<string, any> {
+    const url = new URL(connectionString);
+    const sslMode = url.searchParams.get('sslmode')?.toLowerCase();
+    const sslDisabled = sslMode === 'disable' || process.env.POSTGRES_SSL === 'disable';
+    if (sslDisabled) {
+      return false;
+    }
+
+    const explicitRejectUnauthorized = process.env.POSTGRES_REJECT_UNAUTHORIZED;
+    let rejectUnauthorized = true;
+    if (explicitRejectUnauthorized !== undefined) {
+      rejectUnauthorized = explicitRejectUnauthorized === 'true';
+    } else if (sslMode && ['require', 'prefer', 'allow'].includes(sslMode)) {
+      rejectUnauthorized = false;
+    }
+
+    const sslConfig: Record<string, any> = {
+      rejectUnauthorized,
+    };
+
+    const readFile = (filePath?: string): string | undefined => {
+      if (!filePath) {
+        return undefined;
+      }
+      if (!fs.existsSync(filePath)) {
+        logger.warn('Configured SSL file not found', { filePath });
+        return undefined;
+      }
+      return fs.readFileSync(filePath, 'utf8');
+    };
+
+    const ca = process.env.POSTGRES_SSL_CA
+      || readFile(process.env.POSTGRES_SSL_CA_PATH)
+      || readFile(process.env.POSTGRES_CA_CERT_PATH);
+    if (ca) {
+      sslConfig.ca = ca;
+    }
+
+    const key = process.env.POSTGRES_SSL_KEY
+      || readFile(process.env.POSTGRES_SSL_KEY_PATH);
+    if (key) {
+      sslConfig.key = key;
+    }
+
+    const cert = process.env.POSTGRES_SSL_CERT
+      || readFile(process.env.POSTGRES_SSL_CERT_PATH);
+    if (cert) {
+      sslConfig.cert = cert;
+    }
+
+    return sslConfig;
   }
 
   async initConnection(): Promise<void> {
