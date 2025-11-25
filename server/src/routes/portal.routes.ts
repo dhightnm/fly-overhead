@@ -6,6 +6,12 @@ import userAircraftProfileService, {
   type CreateUserAircraftProfileInput,
 } from '../services/UserAircraftProfileService';
 import PlaneProfileValidationError from '../services/PlaneProfileValidationError';
+import {
+  portalPaginationSchema,
+  portalUserSchema,
+  planeIdParamsSchema,
+  createPlaneSchema,
+} from '../schemas/portal.schemas';
 
 const router = Router();
 
@@ -18,23 +24,13 @@ router.use((_req, res, next) => {
   next();
 });
 
-// Input validation constants
-const MAX_LIMIT = 1000;
-const DEFAULT_LIMIT = 100;
-const DEFAULT_OFFSET = 0;
-
 /**
  * GET /api/portal/feeders
  * Get all feeders associated with the authenticated user
  */
 router.get('/feeders', authenticateToken, async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
   try {
-    const { userId } = req.user!;
-
-    // Validate userId is a number
-    if (!userId || typeof userId !== 'number' || userId <= 0) {
-      return res.status(400).json({ error: 'Invalid user ID' });
-    }
+    const { userId } = portalUserSchema.parse(req.user);
 
     // Get feeders linked to this user via metadata
     const feeders = await postgresRepository.getDb().any(
@@ -80,11 +76,7 @@ router.get('/feeders', authenticateToken, async (req: AuthenticatedRequest, res:
  */
 router.get('/planes', authenticateToken, async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
   try {
-    const { userId } = req.user!;
-
-    if (!userId || typeof userId !== 'number' || userId <= 0) {
-      return res.status(400).json({ error: 'Invalid user ID' });
-    }
+    const { userId } = portalUserSchema.parse(req.user);
 
     const planes = await userAircraftProfileService.listProfilesForUser(userId);
     return res.json({ planes });
@@ -107,14 +99,10 @@ router.get('/planes', authenticateToken, async (req: AuthenticatedRequest, res: 
  * Create a new aircraft profile for the authenticated user
  */
 router.post('/planes', authenticateToken, async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
-  const { userId } = req.user!;
-
-  if (!userId || typeof userId !== 'number' || userId <= 0) {
-    return res.status(400).json({ error: 'Invalid user ID' });
-  }
+  const { userId } = portalUserSchema.parse(req.user);
 
   try {
-    const payload = req.body as CreateUserAircraftProfileInput;
+    const payload = createPlaneSchema.parse(req.body) as CreateUserAircraftProfileInput;
     const plane = await userAircraftProfileService.createProfile(userId, payload);
 
     return res.status(201).json({ plane });
@@ -156,17 +144,9 @@ router.put(
   authenticateToken,
   async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
-      const { userId } = req.user!;
-      const planeId = parseInt(req.params.planeId, 10);
-
-      if (!userId || typeof userId !== 'number' || userId <= 0) {
-        return res.status(400).json({ error: 'Invalid user ID' });
-      }
-      if (Number.isNaN(planeId) || planeId <= 0) {
-        return res.status(400).json({ error: 'Invalid plane ID' });
-      }
-
-      const payload = req.body as CreateUserAircraftProfileInput;
+      const { userId } = portalUserSchema.parse(req.user);
+      const { planeId } = planeIdParamsSchema.parse(req.params);
+      const payload = createPlaneSchema.parse(req.body) as CreateUserAircraftProfileInput;
       const plane = await userAircraftProfileService.updateProfile(userId, planeId, payload);
 
       return res.json({ plane });
@@ -192,27 +172,8 @@ router.put(
  */
 router.get('/aircraft', authenticateToken, async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
   try {
-    const { userId } = req.user!;
-
-    // Validate userId
-    if (!userId || typeof userId !== 'number' || userId <= 0) {
-      return res.status(400).json({ error: 'Invalid user ID' });
-    }
-
-    // Validate and sanitize pagination parameters
-    let limit = parseInt(req.query.limit as string, 10) || DEFAULT_LIMIT;
-    let offset = parseInt(req.query.offset as string, 10) || DEFAULT_OFFSET;
-
-    // Enforce maximum limit to prevent resource exhaustion
-    if (limit > MAX_LIMIT) {
-      limit = MAX_LIMIT;
-    }
-    if (limit < 1) {
-      limit = DEFAULT_LIMIT;
-    }
-    if (offset < 0) {
-      offset = DEFAULT_OFFSET;
-    }
+    const { userId } = portalUserSchema.parse(req.user);
+    const { limit, offset } = portalPaginationSchema.parse(req.query);
 
     // First, get all feeder IDs for this user
     const userFeeders = await postgresRepository
@@ -374,12 +335,7 @@ router.get('/aircraft', authenticateToken, async (req: AuthenticatedRequest, res
  */
 router.get('/stats', authenticateToken, async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
   try {
-    const { userId } = req.user!;
-
-    // Validate userId
-    if (!userId || typeof userId !== 'number' || userId <= 0) {
-      return res.status(400).json({ error: 'Invalid user ID' });
-    }
+    const { userId } = portalUserSchema.parse(req.user);
 
     // Get feeder count
     const feederCount = await postgresRepository.getDb().one(

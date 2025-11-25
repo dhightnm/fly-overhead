@@ -1,4 +1,4 @@
-import type { AircraftStateArray } from '../types/aircraftState.types';
+import type { AircraftStateArray, AircraftStateRecord } from '../types/aircraftState.types';
 
 export const STATE_INDEX = {
   ICAO24: 0,
@@ -26,6 +26,85 @@ export const STATE_INDEX = {
 };
 
 export type DbAircraftRow = Record<string, any>;
+
+export function mapStateArrayToRecord(state: AircraftStateArray): AircraftStateRecord {
+  const safeNumber = (value: unknown): number | null => (typeof value === 'number' ? value : null);
+  const safeString = (value: unknown): string | null => (typeof value === 'string' && value.trim() !== '' ? value.trim() : null);
+  const safeBoolean = (value: unknown): boolean | null => (typeof value === 'boolean' ? value : null);
+
+  return {
+    icao24: String(state[STATE_INDEX.ICAO24] || '').trim(),
+    callsign: safeString(state[STATE_INDEX.CALLSIGN]),
+    origin_country: safeString(state[STATE_INDEX.ORIGIN_COUNTRY]),
+    time_position: safeNumber(state[STATE_INDEX.TIME_POSITION]),
+    last_contact: safeNumber(state[STATE_INDEX.LAST_CONTACT]),
+    longitude: safeNumber(state[STATE_INDEX.LONGITUDE]),
+    latitude: safeNumber(state[STATE_INDEX.LATITUDE]),
+    baro_altitude: safeNumber(state[STATE_INDEX.BARO_ALTITUDE]),
+    on_ground: safeBoolean(state[STATE_INDEX.ON_GROUND]),
+    velocity: safeNumber(state[STATE_INDEX.VELOCITY]),
+    true_track: safeNumber(state[STATE_INDEX.TRUE_TRACK]),
+    vertical_rate: safeNumber(state[STATE_INDEX.VERTICAL_RATE]),
+    geo_altitude: safeNumber(state[STATE_INDEX.GEO_ALTITUDE]),
+    squawk: safeString(state[STATE_INDEX.SQUAWK]),
+    spi: safeBoolean(state[STATE_INDEX.SPI]),
+    position_source: safeNumber(state[STATE_INDEX.POSITION_SOURCE]),
+    category: safeNumber(state[STATE_INDEX.CATEGORY]),
+    aircraft_type: safeString(state[STATE_INDEX.AIRCRAFT_TYPE]),
+    aircraft_description: safeString(state[STATE_INDEX.AIRCRAFT_DESCRIPTION]),
+    registration: safeString(state[STATE_INDEX.REGISTRATION]),
+    emergency_status: safeString(state[STATE_INDEX.EMERGENCY_STATUS]),
+  };
+}
+
+export function validateAircraftState(
+  state: unknown,
+): { valid: true; state: AircraftStateArray } | { valid: false; error: string } {
+  if (!Array.isArray(state)) {
+    return { valid: false, error: 'State must be an array' };
+  }
+
+  if (state.length < 18) {
+    return { valid: false, error: 'State array is missing required fields' };
+  }
+
+  const icao24 = state[STATE_INDEX.ICAO24];
+  if (typeof icao24 !== 'string' || icao24.length !== 6) {
+    return { valid: false, error: 'Invalid icao24 (must be 6-character hex string)' };
+  }
+
+  const lastContact = state[STATE_INDEX.LAST_CONTACT];
+  if (typeof lastContact !== 'number') {
+    return { valid: false, error: 'Missing or invalid last_contact value' };
+  }
+
+  const latitude = state[STATE_INDEX.LATITUDE];
+  if (typeof latitude === 'number' && (latitude < -90 || latitude > 90)) {
+    return { valid: false, error: 'Invalid latitude (must be between -90 and 90)' };
+  }
+
+  const longitude = state[STATE_INDEX.LONGITUDE];
+  if (typeof longitude === 'number' && (longitude < -180 || longitude > 180)) {
+    return { valid: false, error: 'Invalid longitude (must be between -180 and 180)' };
+  }
+
+  const baroAltitude = state[STATE_INDEX.BARO_ALTITUDE];
+  if (typeof baroAltitude === 'number' && (baroAltitude < -1500 || baroAltitude > 60000)) {
+    return { valid: false, error: 'Invalid baro_altitude (must be between -1500 and 60000 meters)' };
+  }
+
+  const velocity = state[STATE_INDEX.VELOCITY];
+  if (typeof velocity === 'number' && (velocity < 0 || velocity > 1500)) {
+    return { valid: false, error: 'Invalid velocity (must be between 0 and 1500 m/s)' };
+  }
+
+  const category = state[STATE_INDEX.CATEGORY];
+  if (typeof category === 'number' && (category < 0 || category > 19)) {
+    return { valid: false, error: 'Invalid category (must be between 0 and 19)' };
+  }
+
+  return { valid: true, state };
+}
 
 export function applyStateToRecord(record: DbAircraftRow | undefined, state: AircraftStateArray): DbAircraftRow {
   const updated: DbAircraftRow = { ...(record || {}) };

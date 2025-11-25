@@ -4,7 +4,7 @@ import config from '../config';
 import postgresRepository from '../repositories/PostgresRepository';
 import logger from '../utils/logger';
 import webhookQueueService, { type WebhookQueueMessage } from './WebhookQueueService';
-import { STATE_INDEX } from '../utils/aircraftState';
+import { mapStateArrayToRecord } from '../utils/aircraftState';
 import type { AircraftStateArray } from '../types/aircraftState.types';
 import type { WebhookSubscription } from '../types/database.types';
 
@@ -220,26 +220,27 @@ class WebhookService {
     ingestionTimestamp: Date | null,
     sourcePriority?: number,
   ): Record<string, any> {
+    const record = mapStateArrayToRecord(state);
     return {
-      icao24: state[STATE_INDEX.ICAO24],
-      callsign: state[STATE_INDEX.CALLSIGN] || null,
-      origin_country: state[STATE_INDEX.ORIGIN_COUNTRY] || null,
-      last_contact: state[STATE_INDEX.LAST_CONTACT] || null,
+      icao24: record.icao24,
+      callsign: record.callsign,
+      origin_country: record.origin_country,
+      last_contact: record.last_contact,
       position: {
-        latitude: state[STATE_INDEX.LATITUDE] || null,
-        longitude: state[STATE_INDEX.LONGITUDE] || null,
-        baro_altitude: state[STATE_INDEX.BARO_ALTITUDE] || null,
-        geo_altitude: state[STATE_INDEX.GEO_ALTITUDE] || null,
+        latitude: record.latitude,
+        longitude: record.longitude,
+        baro_altitude: record.baro_altitude,
+        geo_altitude: record.geo_altitude,
       },
-      velocity: state[STATE_INDEX.VELOCITY] || null,
-      true_track: state[STATE_INDEX.TRUE_TRACK] || null,
-      vertical_rate: state[STATE_INDEX.VERTICAL_RATE] || null,
-      on_ground: state[STATE_INDEX.ON_GROUND] || null,
-      squawk: state[STATE_INDEX.SQUAWK] || null,
-      registration: state[STATE_INDEX.REGISTRATION] || null,
-      aircraft_type: state[STATE_INDEX.AIRCRAFT_TYPE] || null,
-      aircraft_description: state[STATE_INDEX.AIRCRAFT_DESCRIPTION] || null,
-      emergency_status: state[STATE_INDEX.EMERGENCY_STATUS] || null,
+      velocity: record.velocity,
+      true_track: record.true_track,
+      vertical_rate: record.vertical_rate,
+      on_ground: record.on_ground,
+      squawk: record.squawk,
+      registration: record.registration,
+      aircraft_type: record.aircraft_type,
+      aircraft_description: record.aircraft_description,
+      emergency_status: record.emergency_status,
       source,
       source_priority: sourcePriority ?? null,
       ingestion_timestamp: ingestionTimestamp ? ingestionTimestamp.toISOString() : null,

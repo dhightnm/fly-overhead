@@ -3,6 +3,7 @@ import logger from '../utils/logger';
 import { validateApiKeyFormat, maskApiKey } from '../utils/apiKeyGenerator';
 import postgresRepository from '../repositories/PostgresRepository';
 import type { ApiKey } from '../types/database.types';
+import { DEFAULT_SCOPES, API_SCOPES } from '../config/scopes';
 
 /**
  * Extended Express Request with API key authentication
@@ -71,6 +72,20 @@ function getKeyTypeFromPrefix(prefix: string): 'development' | 'production' | 'f
     return 'feeder';
   }
   return 'production'; // Default for sk_live_ and any other prefix
+}
+const WEBAPP_SCOPES = ['webapp'];
+
+function resolveScopesForKey(
+  keyType: ReturnType<typeof getKeyTypeFromPrefix>,
+  scopes?: string[] | null,
+): string[] {
+  if (scopes && scopes.length > 0) {
+    return scopes;
+  }
+  if (DEFAULT_SCOPES[keyType]?.length) {
+    return DEFAULT_SCOPES[keyType];
+  }
+  return [API_SCOPES.READ];
 }
 
 /**
@@ -267,6 +282,7 @@ export async function optionalApiKeyAuth(req: AuthenticatedRequest, res: Respons
         authenticated: false,
         type: 'webapp',
         keyType: 'webapp',
+        scopes: WEBAPP_SCOPES,
       };
       logger.debug('Same-origin request (optional auth)', {
         path: req.path,
@@ -285,6 +301,7 @@ export async function optionalApiKeyAuth(req: AuthenticatedRequest, res: Respons
       req.auth = {
         authenticated: false,
         type: 'anonymous',
+        scopes: [],
       };
       next();
       return;
@@ -306,6 +323,8 @@ export async function optionalApiKeyAuth(req: AuthenticatedRequest, res: Respons
     }
 
     const { keyData } = validation;
+    const keyType = getKeyTypeFromPrefix(keyData.key_prefix);
+    const resolvedScopes = resolveScopesForKey(keyType, keyData.scopes);
 
     // API key is valid - attach to request
     req.apiKey = {
@@ -313,9 +332,9 @@ export async function optionalApiKeyAuth(req: AuthenticatedRequest, res: Respons
       keyId: keyData.key_id,
       name: keyData.name,
       prefix: keyData.key_prefix,
-      type: getKeyTypeFromPrefix(keyData.key_prefix),
+      type: keyType,
       userId: keyData.user_id,
-      scopes: keyData.scopes || ['read'],
+      scopes: resolvedScopes,
       keyHash: keyData.key_hash,
     };
 
@@ -323,7 +342,7 @@ export async function optionalApiKeyAuth(req: AuthenticatedRequest, res: Respons
       authenticated: true,
       type: 'api_key',
       keyType: req.apiKey.type,
-      scopes: req.apiKey.scopes,
+      scopes: resolvedScopes,
     };
 
     logger.debug('API key authenticated', {
@@ -367,6 +386,7 @@ export async function requireApiKeyAuth(req: AuthenticatedRequest, res: Response
         authenticated: false,
         type: 'webapp',
         keyType: 'webapp',
+        scopes: WEBAPP_SCOPES,
       };
       logger.debug('Same-origin request allowed without API key', {
         path: req.path,
@@ -417,6 +437,8 @@ export async function requireApiKeyAuth(req: AuthenticatedRequest, res: Response
     }
 
     const { keyData } = validation;
+    const keyType = getKeyTypeFromPrefix(keyData.key_prefix);
+    const resolvedScopes = resolveScopesForKey(keyType, keyData.scopes);
 
     // API key is valid - attach to request
     req.apiKey = {
@@ -424,9 +446,9 @@ export async function requireApiKeyAuth(req: AuthenticatedRequest, res: Response
       keyId: keyData.key_id,
       name: keyData.name,
       prefix: keyData.key_prefix,
-      type: getKeyTypeFromPrefix(keyData.key_prefix),
+      type: keyType,
       userId: keyData.user_id,
-      scopes: keyData.scopes || ['read'],
+      scopes: resolvedScopes,
       keyHash: keyData.key_hash,
     };
 
@@ -434,7 +456,7 @@ export async function requireApiKeyAuth(req: AuthenticatedRequest, res: Response
       authenticated: true,
       type: 'api_key',
       keyType: req.apiKey.type,
-      scopes: req.apiKey.scopes,
+      scopes: resolvedScopes,
     };
 
     logger.debug('API key authenticated', {
