@@ -165,6 +165,8 @@ class DatabaseConnection {
       rejectUnauthorized = explicitRejectUnauthorized === 'true';
     } else if (sslMode && ['require', 'prefer', 'allow'].includes(sslMode)) {
       rejectUnauthorized = false;
+    } else if (DatabaseConnection.isAwsRdsEndpoint(connectionString)) {
+      rejectUnauthorized = false;
     }
 
     const sslConfig: Record<string, any> = {

@@ -1,3 +1,4 @@
+import fs from 'fs';
 import Redis, { RedisOptions } from 'ioredis';
 import logger from '../../utils/logger';
 
@@ -18,6 +19,17 @@ const DEFAULT_OPTIONS: RedisOptions = {
   lazyConnect: true,
 };
 
+const readFile = (filePath?: string): string | undefined => {
+  if (!filePath) {
+    return undefined;
+  }
+  if (!fs.existsSync(filePath)) {
+    logger.warn('Configured Redis TLS file not found', { filePath });
+    return undefined;
+  }
+  return fs.readFileSync(filePath, 'utf8');
+};
+
 export class RedisClientManager {
   private connections = new Map<string, ManagedConnection>();
 
@@ -27,7 +39,42 @@ export class RedisClientManager {
       return existing.client;
     }
 
-    const client = new Redis(url, { ...DEFAULT_OPTIONS, ...overrides });
+    const options: RedisOptions = { ...DEFAULT_OPTIONS, ...overrides };
+
+    try {
+      const parsedUrl = new URL(url);
+      const isTls = parsedUrl.protocol === 'rediss:';
+      if (isTls) {
+        const explicitRejectUnauthorized = process.env.REDIS_REJECT_UNAUTHORIZED;
+        let rejectUnauthorized = false;
+        if (explicitRejectUnauthorized !== undefined) {
+          rejectUnauthorized = explicitRejectUnauthorized === 'true';
+        }
+
+        const ca = process.env.REDIS_TLS_CA || readFile(process.env.REDIS_TLS_CA_PATH);
+        const cert = process.env.REDIS_TLS_CERT || readFile(process.env.REDIS_TLS_CERT_PATH);
+        const key = process.env.REDIS_TLS_KEY || readFile(process.env.REDIS_TLS_KEY_PATH);
+
+        options.tls = {
+          rejectUnauthorized,
+          ...options.tls,
+        };
+
+        if (ca) {
+          options.tls = { ...options.tls, ca };
+        }
+        if (cert) {
+          options.tls = { ...options.tls, cert };
+        }
+        if (key) {
+          options.tls = { ...options.tls, key };
+        }
+      }
+    } catch (error) {
+      logger.warn('Failed to parse Redis URL for TLS configuration', { name, error: (error as Error).message });
+    }
+
+    const client = new Redis(url, options);
     const meta: ConnectionMeta = {
       status: 'connecting',
       createdAt: new Date(),

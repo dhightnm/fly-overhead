@@ -19,6 +19,30 @@ type InvalidState = Extract<ReturnType<typeof validateAircraftState>, { valid: f
 
 const router = Router();
 
+const ensureFeederWriteAccess = (allowLegacyFallback = false) => (
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction,
+) => {
+  const scopes = req.apiKey?.scopes || req.auth?.scopes || [];
+  if (scopes.includes(API_SCOPES.FEEDER_WRITE) || scopes.includes(API_SCOPES.AIRCRAFT_WRITE)) {
+    return next();
+  }
+
+  if (allowLegacyFallback && req.body?.feeder_id) {
+    logger.warn('Legacy feeder stats endpoint accessed without API key', {
+      feeder_id: req.body.feeder_id,
+      path: req.path,
+    });
+    return next();
+  }
+
+  return res.status(401).json({
+    success: false,
+    error: 'Feeder API key with feeder:write scope required',
+  });
+};
+
 const formatZodErrors = (error: ZodError) => error.issues.map((issue) => ({
   icao24: 'unknown',
   error: `${issue.path.join('.') || 'body'}: ${issue.message}`,
@@ -372,8 +396,8 @@ router.post(
  */
 router.post(
   '/feeder/stats',
-  requireApiKeyAuth,
-  requireScopes(API_SCOPES.FEEDER_WRITE),
+  optionalApiKeyAuth,
+  ensureFeederWriteAccess(true),
   rateLimitMiddleware,
   async (req: AuthenticatedRequest, res: Response, _next: NextFunction) => {
     const parsedBody = feederStatsSchema.safeParse(req.body);
@@ -419,8 +443,8 @@ router.post(
  */
 router.put(
   '/feeder/last-seen',
-  requireApiKeyAuth,
-  requireScopes(API_SCOPES.FEEDER_WRITE),
+  optionalApiKeyAuth,
+  ensureFeederWriteAccess(true),
   rateLimitMiddleware,
   async (req: AuthenticatedRequest, res: Response, _next: NextFunction) => {
     const parsedBody = feederLastSeenSchema.safeParse(req.body);
