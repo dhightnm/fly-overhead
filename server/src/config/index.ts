@@ -129,6 +129,7 @@ const parseListEnv = (value: string | undefined): string[] => (value || '')
   .filter(Boolean);
 const envAllowedOrigins = parseListEnv(process.env.CORS_ALLOWED_ORIGINS);
 const envAllowedIPs = parseListEnv(process.env.CORS_ALLOWED_IPS);
+const devKeyAllowedEmails = parseListEnv(process.env.DEV_KEY_ALLOWED_EMAILS);
 
 /**
  * Centralized configuration management
@@ -229,6 +230,9 @@ const config: AppConfig = {
     timestampHeader: 'x-flyover-timestamp',
     spawnWorkerInProcess: spawnWebhookDispatcherInProcess,
     enforceHttps: enforceWebhookHttps,
+  },
+  auth: {
+    devKeyAllowedEmails,
   },
 };
 

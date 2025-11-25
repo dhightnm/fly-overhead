@@ -3,6 +3,7 @@ import bcrypt from 'bcryptjs';
 import { extractApiKey, optionalApiKeyAuth, requireApiKeyAuth } from '../apiKeyAuth';
 import postgresRepository from '../../repositories/PostgresRepository';
 import type { ApiKey } from '../../types/database.types';
+import { DEFAULT_SCOPES } from '../../config/scopes';
 
 // Mock dependencies
 jest.mock('../../repositories/PostgresRepository');
@@ -132,6 +133,7 @@ describe('API Key Authentication', () => {
       await optionalApiKeyAuth(mockRequest as any, mockResponse as Response, mockNext);
 
       expect(mockNext).toHaveBeenCalled();
+      expect((mockRequest as any).auth?.scopes).toEqual([]);
       expect(mockResponse.status).not.toHaveBeenCalled();
     });
 
@@ -246,8 +248,42 @@ describe('API Key Authentication', () => {
       expect(mockNext).toHaveBeenCalled();
       expect((mockRequest as any).apiKey).toBeDefined();
       expect((mockRequest as any).apiKey.type).toBe('feeder');
-      expect((mockRequest as any).apiKey.prefix).toBe('fd_');
-      expect((mockRequest as any).apiKey.scopes).toEqual(['feeder:write', 'feeder:read', 'aircraft:write']);
+    });
+
+    it('should fall back to default scopes when none are stored', async () => {
+      const apiKey = `sk_dev_${'c'.repeat(32)}`;
+      const keyHash = await bcrypt.hash(apiKey, 10);
+      const mockApiKey: ApiKey = {
+        id: 3,
+        key_id: 'key_789',
+        key_hash: keyHash,
+        key_prefix: 'sk_dev_',
+        name: 'Dev Key Without Scopes',
+        description: null,
+        user_id: null,
+        scopes: null as any,
+        status: 'active',
+        last_used_at: null,
+        usage_count: 0,
+        created_at: new Date(),
+        updated_at: new Date(),
+        expires_at: null,
+        created_by: null,
+        revoked_at: null,
+        revoked_by: null,
+        revoked_reason: null,
+      };
+
+      mockRequest.headers = {
+        authorization: `Bearer ${apiKey}`,
+      };
+
+      mockPostgresRepository.validateApiKey = jest.fn().mockResolvedValue(mockApiKey);
+
+      await optionalApiKeyAuth(mockRequest as any, mockResponse as Response, mockNext);
+
+      expect((mockRequest as any).apiKey?.scopes).toEqual(DEFAULT_SCOPES.development);
+      expect((mockRequest as any).auth?.scopes).toEqual(DEFAULT_SCOPES.development);
     });
 
     it('should reject invalid API key format', async () => {
@@ -400,6 +436,7 @@ describe('API Key Authentication', () => {
         expect((mockRequest as any).isSameOrigin).toBe(true);
         expect((mockRequest as any).auth?.type).toBe('webapp');
         expect((mockRequest as any).auth?.keyType).toBe('webapp');
+        expect((mockRequest as any).auth?.scopes).toEqual(['webapp']);
         expect(mockResponse.status).not.toHaveBeenCalled();
       });
 
@@ -414,6 +451,7 @@ describe('API Key Authentication', () => {
         expect(mockNext).toHaveBeenCalled();
         expect((mockRequest as any).isSameOrigin).toBe(true);
         expect((mockRequest as any).auth?.type).toBe('webapp');
+        expect((mockRequest as any).auth?.scopes).toEqual(['webapp']);
       });
 
       it('should allow same-origin request from allowed domain (flyoverhead.com)', async () => {
@@ -427,6 +465,7 @@ describe('API Key Authentication', () => {
         expect(mockNext).toHaveBeenCalled();
         expect((mockRequest as any).isSameOrigin).toBe(true);
         expect((mockRequest as any).auth?.type).toBe('webapp');
+        expect((mockRequest as any).auth?.scopes).toEqual(['webapp']);
       });
 
       it('should allow same-origin request from www.flyoverhead.com', async () => {
@@ -439,6 +478,7 @@ describe('API Key Authentication', () => {
 
         expect(mockNext).toHaveBeenCalled();
         expect((mockRequest as any).isSameOrigin).toBe(true);
+        expect((mockRequest as any).auth?.scopes).toEqual(['webapp']);
       });
 
       it('should allow same-origin request when origin matches host', async () => {
@@ -451,6 +491,7 @@ describe('API Key Authentication', () => {
 
         expect(mockNext).toHaveBeenCalled();
         expect((mockRequest as any).isSameOrigin).toBe(true);
+        expect((mockRequest as any).auth?.scopes).toEqual(['webapp']);
       });
 
       it('should allow same-origin request via referer header', async () => {
@@ -463,6 +504,7 @@ describe('API Key Authentication', () => {
 
         expect(mockNext).toHaveBeenCalled();
         expect((mockRequest as any).isSameOrigin).toBe(true);
+        expect((mockRequest as any).auth?.scopes).toEqual(['webapp']);
       });
 
       it('should reject external request without API key', async () => {
@@ -488,6 +530,7 @@ describe('API Key Authentication', () => {
         expect(mockNext).toHaveBeenCalled();
         expect((mockRequest as any).isSameOrigin).toBe(true);
         expect((mockRequest as any).auth?.type).toBe('webapp');
+        expect((mockRequest as any).auth?.scopes).toEqual(['webapp']);
         expect(mockResponse.status).not.toHaveBeenCalled();
       });
 

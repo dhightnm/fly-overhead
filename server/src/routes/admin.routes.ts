@@ -7,6 +7,8 @@ import logger from '../utils/logger';
 import { generateApiKey } from '../utils/apiKeyGenerator';
 import { authenticateToken } from './auth.routes';
 import { getRateLimitStatusHandler } from '../middlewares/rateLimitMiddleware';
+import config from '../config';
+import { createApiKeySchema, listApiKeysSchema } from '../schemas/admin.schemas';
 
 const router = Router();
 
@@ -24,27 +26,20 @@ interface AuthenticatedRequest extends Request {
 router.post('/keys', authenticateToken, async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
   try {
     const {
-      name, description, type = 'production', scopes = ['read'], expiresAt,
-    } = req.body;
+      name, description, type, scopes, expiresAt,
+    } = createApiKeySchema.parse(req.body);
 
-    if (!name) {
-      return res.status(400).json({
-        error: {
-          code: 'VALIDATION_ERROR',
-          message: 'Name is required',
-          status: 400,
-        },
-      });
-    }
-
-    if (type !== 'development' && type !== 'production') {
-      return res.status(400).json({
-        error: {
-          code: 'VALIDATION_ERROR',
-          message: 'Type must be "development" or "production"',
-          status: 400,
-        },
-      });
+    if (type === 'development') {
+      const allowed = config.auth.devKeyAllowedEmails;
+      if (!allowed.includes(req.user?.email || '')) {
+        return res.status(403).json({
+          error: {
+            code: 'DEV_KEY_NOT_ALLOWED',
+            message: 'Development keys may only be created by approved administrators.',
+            status: 403,
+          },
+        });
+      }
     }
 
     const { key, prefix } = generateApiKey(type);
@@ -93,15 +88,15 @@ router.post('/keys', authenticateToken, async (req: AuthenticatedRequest, res: R
 router.get('/keys', authenticateToken, async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
   try {
     const {
-      status, type, limit = 100, offset = 0,
-    } = req.query;
+      status, type, limit, offset,
+    } = listApiKeysSchema.parse(req.query);
 
     const filters = {
       userId: req.user!.userId,
-      status: status as string | undefined,
+      status,
       keyPrefix: type === 'development' ? 'sk_dev_' : type === 'production' ? 'sk_live_' : null,
-      limit: parseInt(limit as string, 10),
-      offset: parseInt(offset as string, 10),
+      limit,
+      offset,
     };
 
     const keys = await postgresRepository.listApiKeys(filters);

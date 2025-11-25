@@ -96,6 +96,10 @@ export interface WebhookConfig {
   enforceHttps: boolean;
 }
 
+export interface AuthConfig {
+  devKeyAllowedEmails: string[];
+}
+
 export interface FeatureFlagsConfig {
   backgroundJobsEnabled: boolean;
   conusPollingEnabled: boolean;
@@ -113,4 +117,5 @@ export interface AppConfig {
   queue: QueueConfig;
   liveState: LiveStateConfig;
   webhooks: WebhookConfig;
+  auth: AuthConfig;
 }

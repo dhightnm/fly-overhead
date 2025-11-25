@@ -1,4 +1,5 @@
 import { Router, Response, NextFunction } from 'express';
+import { ZodError } from 'zod';
 import postgresRepository from '../repositories/PostgresRepository';
 import logger from '../utils/logger';
 import { requireApiKeyAuth, optionalApiKeyAuth, type AuthenticatedRequest } from '../middlewares/apiKeyAuth';
@@ -6,8 +7,22 @@ import { optionalAuthenticateToken } from './auth.routes';
 import { rateLimitMiddleware } from '../middlewares/rateLimitMiddleware';
 import { requireScopes } from '../middlewares/permissionMiddleware';
 import { API_SCOPES } from '../config/scopes';
+import {
+  feederAircraftBatchSchema,
+  feederLastSeenSchema,
+  feederRegisterSchema,
+  feederStatsSchema,
+} from '../schemas/feeder.schemas';
+import { STATE_INDEX, validateAircraftState } from '../utils/aircraftState';
+
+type InvalidState = Extract<ReturnType<typeof validateAircraftState>, { valid: false }>;
 
 const router = Router();
+
+const formatZodErrors = (error: ZodError) => error.issues.map((issue) => ({
+  icao24: 'unknown',
+  error: `${issue.path.join('.') || 'body'}: ${issue.message}`,
+}));
 
 /**
  * POST /api/feeder/aircraft
@@ -20,27 +35,28 @@ router.post(
   requireScopes(API_SCOPES.FEEDER_WRITE, API_SCOPES.AIRCRAFT_WRITE),
   rateLimitMiddleware,
   async (req: AuthenticatedRequest, res: Response, _next: NextFunction) => {
-    const { feeder_id, states } = req.body;
-
-    if (!feeder_id || !Array.isArray(states)) {
+    const parsedBody = feederAircraftBatchSchema.safeParse(req.body);
+    if (!parsedBody.success) {
       return res.status(400).json({
         processed: 0,
-        errors: [{ error: 'Invalid request: feeder_id and states array required' }],
+        errors: formatZodErrors(parsedBody.error),
       });
     }
 
+    const { feeder_id: bodyFeederId, states } = parsedBody.data;
+
     let feeder;
     try {
-      feeder = await postgresRepository.getFeederById(feeder_id);
+      feeder = await postgresRepository.getFeederById(bodyFeederId);
       if (!feeder) {
         return res.status(400).json({
           processed: 0,
-          errors: [{ error: `Feeder not found: ${feeder_id}` }],
+          errors: [{ error: `Feeder not found: ${bodyFeederId}` }],
         });
       }
     } catch (error) {
       const err = error as Error;
-      logger.error('Error checking feeder', { feeder_id, error: err.message });
+      logger.error('Error checking feeder', { feeder_id: bodyFeederId, error: err.message });
       return res.status(500).json({
         processed: 0,
         errors: [{ error: 'Internal server error' }],
@@ -58,93 +74,33 @@ router.post(
       icao24: string;
     }> = [];
 
-    for (const { state, feeder_id: stateFeederId } of states) {
+    for (const entry of states) {
+      const { state: rawState, feeder_id: stateFeederId } = entry;
       try {
-        if (!Array.isArray(state) || state.length !== 19) {
+        const validation = validateAircraftState(rawState);
+        if (!validation.valid) {
+          const fallbackIcao = Array.isArray(rawState) ? rawState[STATE_INDEX.ICAO24] : 'unknown';
+          const { error } = validation as InvalidState;
           errors.push({
-            icao24: state?.[0] || 'unknown',
-            error: 'Invalid state array length (expected 19 items)',
+            icao24: fallbackIcao || 'unknown',
+            error,
           });
           continue;
         }
 
-        const icao24 = state[0];
-        if (!icao24 || typeof icao24 !== 'string' || icao24.length !== 6) {
-          errors.push({
-            icao24: icao24 || 'unknown',
-            error: 'Invalid icao24 (must be 6-character hex string)',
-          });
-          continue;
-        }
-
-        if (state[4] === null || state[4] === undefined) {
-          errors.push({
-            icao24,
-            error: 'Missing required field: last_contact',
-          });
-          continue;
-        }
-
-        if (state[6] !== null && state[6] !== undefined) {
-          if (state[6] < -90 || state[6] > 90) {
-            errors.push({
-              icao24,
-              error: 'Invalid latitude (must be between -90 and 90)',
-            });
-            continue;
-          }
-        }
-
-        if (state[5] !== null && state[5] !== undefined) {
-          if (state[5] < -180 || state[5] > 180) {
-            errors.push({
-              icao24,
-              error: 'Invalid longitude (must be between -180 and 180)',
-            });
-            continue;
-          }
-        }
-
-        if (state[7] !== null && state[7] !== undefined) {
-          if (state[7] < -1500 || state[7] > 60000) {
-            errors.push({
-              icao24,
-              error: 'Invalid baro_altitude (must be between -1500 and 60000 meters)',
-            });
-            continue;
-          }
-        }
-
-        if (state[9] !== null && state[9] !== undefined) {
-          if (state[9] < 0 || state[9] > 1500) {
-            errors.push({
-              icao24,
-              error: 'Invalid velocity (must be between 0 and 1500 m/s)',
-            });
-            continue;
-          }
-        }
-
-        if (state[17] !== null && state[17] !== undefined) {
-          if (state[17] < 0 || state[17] > 19) {
-            errors.push({
-              icao24,
-              error: 'Invalid category (must be between 0 and 19)',
-            });
-            continue;
-          }
-        }
-
-        const finalFeederId = stateFeederId || feeder_id;
-        validStates.push({ state, feeder_id: finalFeederId, icao24 });
+        const normalizedState = validation.state;
+        const icao24 = normalizedState[STATE_INDEX.ICAO24];
+        const finalFeederId = stateFeederId || bodyFeederId;
+        validStates.push({ state: normalizedState, feeder_id: finalFeederId, icao24 });
       } catch (error) {
         const err = error as Error;
         logger.error('Error validating aircraft state', {
-          icao24: state?.[0] || 'unknown',
+          icao24: Array.isArray(rawState) ? rawState[STATE_INDEX.ICAO24] : 'unknown',
           error: err.message,
         });
+        const fallbackIcao = Array.isArray(rawState) ? rawState[STATE_INDEX.ICAO24] : 'unknown';
         errors.push({
-          icao24: state?.[0] || 'unknown',
+          icao24: fallbackIcao || 'unknown',
           error: err.message,
         });
       }
@@ -207,8 +163,8 @@ router.post(
       });
     }
 
-    postgresRepository.updateFeederLastSeen(feeder_id).catch((err: Error) => {
-      logger.warn('Failed to update feeder last seen', { feeder_id, error: err.message });
+    postgresRepository.updateFeederLastSeen(bodyFeederId).catch((err: Error) => {
+      logger.warn('Failed to update feeder last seen', { feeder_id: bodyFeederId, error: err.message });
     });
 
     return res.status(200).json({
@@ -251,17 +207,18 @@ router.post(
   // Note: Rate limiting bypassed for registration - feeder service already limits to 5/hour
   // This is a one-time operation and shouldn't be blocked by anonymous tier limits
   async (req: AuthenticatedRequest, res: Response, _next: NextFunction) => {
-    const {
-      feeder_id, api_key_hash, key_prefix, name, latitude, longitude, metadata,
-    } = req.body;
-
-    if (!feeder_id || !api_key_hash || !name) {
+    const parsedBody = feederRegisterSchema.safeParse(req.body);
+    if (!parsedBody.success) {
       return res.status(400).json({
         success: false,
-        error: 'feeder_id, api_key_hash, and name are required',
-        details: {},
+        error: 'Invalid feeder registration payload',
+        details: parsedBody.error.format(),
       });
     }
+
+    const {
+      feeder_id, api_key_hash, key_prefix, name, latitude, longitude, metadata,
+    } = parsedBody.data;
 
     try {
       // Check if feeder already exists
@@ -419,14 +376,16 @@ router.post(
   requireScopes(API_SCOPES.FEEDER_WRITE),
   rateLimitMiddleware,
   async (req: AuthenticatedRequest, res: Response, _next: NextFunction) => {
-    const { feeder_id, messages_received, unique_aircraft } = req.body;
-
-    if (!feeder_id || messages_received === undefined || unique_aircraft === undefined) {
+    const parsedBody = feederStatsSchema.safeParse(req.body);
+    if (!parsedBody.success) {
       return res.status(400).json({
         success: false,
-        error: 'feeder_id, messages_received, and unique_aircraft are required',
+        error: 'Invalid stats payload',
+        details: parsedBody.error.format(),
       });
     }
+
+    const { feeder_id, messages_received, unique_aircraft } = parsedBody.data;
 
     try {
       const feeder = await postgresRepository.getFeederById(feeder_id);
@@ -464,14 +423,15 @@ router.put(
   requireScopes(API_SCOPES.FEEDER_WRITE),
   rateLimitMiddleware,
   async (req: AuthenticatedRequest, res: Response, _next: NextFunction) => {
-    const { feeder_id } = req.body;
-
-    if (!feeder_id) {
+    const parsedBody = feederLastSeenSchema.safeParse(req.body);
+    if (!parsedBody.success) {
       return res.status(400).json({
         success: false,
-        error: 'feeder_id is required',
+        error: 'Invalid payload',
+        details: parsedBody.error.format(),
       });
     }
+    const { feeder_id } = parsedBody.data;
 
     try {
       await postgresRepository.updateFeederLastSeen(feeder_id);

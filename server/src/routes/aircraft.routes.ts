@@ -18,10 +18,15 @@ import logger from '../utils/logger';
 import { mapAircraftTypeToCategory } from '../utils/aircraftCategoryMapper';
 import { requireApiKeyAuth, optionalApiKeyAuth, type AuthenticatedRequest } from '../middlewares/apiKeyAuth';
 import { rateLimitMiddleware } from '../middlewares/rateLimitMiddleware';
+import { optionalPermissionCheck, requireScopes } from '../middlewares/permissionMiddleware';
+import { API_SCOPES } from '../config/scopes';
 import config from '../config';
 import { STATE_INDEX, applyStateToRecord, type DbAircraftRow } from '../utils/aircraftState';
+import { flightsQuerySchema } from '../schemas/aircraft.schemas';
 
 const router = Router();
+const requireAircraftRead = requireScopes(API_SCOPES.AIRCRAFT_READ, API_SCOPES.READ);
+const MAX_AIRPLANES_LIVE_RADIUS = config.external.airplanesLive?.maxRadiusNm || 250;
 
 const cache = new NodeCache({ stdTTL: 60, maxKeys: 100 });
 export const boundsCache = new NodeCache({
@@ -174,45 +179,21 @@ const maybeOverrideWithArrivalLocation = (aircraft: any, route: any, dataAgeSeco
 router.get(
   '/flights',
   optionalApiKeyAuth,
+  optionalPermissionCheck(API_SCOPES.AIRCRAFT_READ, API_SCOPES.READ),
   rateLimitMiddleware,
   async (req: Request, res: Response, next: NextFunction) => {
-    const { lat, lon, radius } = req.query;
-
-    // Validate parameters
-    if (!lat || !lon) {
-      return res.status(400).json({
-        error: 'Missing required parameters',
-        message: 'lat and lon are required',
-      });
-    }
-
-    const latitude = parseFloat(lat as string);
-    const longitude = parseFloat(lon as string);
-    const radiusNm = radius ? parseFloat(radius as string) : 100; // Default 100nm
-
-    if (isNaN(latitude) || isNaN(longitude) || isNaN(radiusNm)) {
+    const parsed = flightsQuerySchema.safeParse(req.query);
+    if (!parsed.success) {
       return res.status(400).json({
         error: 'Invalid parameters',
-        message: 'lat, lon, and radius must be valid numbers',
+        details: parsed.error.flatten().fieldErrors,
       });
     }
 
-    if (latitude < -90 || latitude > 90) {
-      return res.status(400).json({
-        error: 'Invalid latitude',
-        message: 'Latitude must be between -90 and 90',
-      });
-    }
-
-    if (longitude < -180 || longitude > 180) {
-      return res.status(400).json({
-        error: 'Invalid longitude',
-        message: 'Longitude must be between -180 and 180',
-      });
-    }
+    const { lat: latitude, lon: longitude, radius } = parsed.data;
 
     try {
-      const clampedRadius = Math.min(radiusNm, config.external.airplanesLive?.maxRadiusNm || 250);
+      const clampedRadius = Math.min(radius, MAX_AIRPLANES_LIVE_RADIUS);
 
       const result = await airplanesLiveService.getAircraftNearPoint({
         lat: latitude,
@@ -327,6 +308,7 @@ router.get('/conus-polling-status', async (_req: Request, res: Response, next: N
 router.get(
   '/area/all',
   requireApiKeyAuth,
+  requireAircraftRead,
   rateLimitMiddleware,
   async (_req: Request, res: Response, next: NextFunction) => {
     const cacheKey = '/area/all';
@@ -354,6 +336,7 @@ router.get(
 router.get(
   '/planes/:identifier',
   requireApiKeyAuth,
+  requireAircraftRead,
   rateLimitMiddleware,
   async (req: Request, res: Response, next: NextFunction) => {
     const { identifier } = req.params;
@@ -446,6 +429,7 @@ router.get(
 router.get(
   '/routes/stats',
   requireApiKeyAuth,
+  requireAircraftRead,
   rateLimitMiddleware,
   async (_req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
@@ -519,6 +503,7 @@ const withTimeout = async <T>(promise: Promise<T>, timeoutMs: number): Promise<T
 router.get(
   '/route/:identifier',
   requireApiKeyAuth,
+  requireAircraftRead,
   rateLimitMiddleware,
   async (req: Request, res: Response, next: NextFunction) => {
     const { identifier } = req.params;
@@ -636,6 +621,7 @@ router.get(
 router.get(
   '/area/:latmin/:lonmin/:latmax/:lonmax',
   requireApiKeyAuth,
+  requireAircraftRead,
   rateLimitMiddleware,
   async (req: Request, res: Response, next: NextFunction) => {
     const {
@@ -682,6 +668,7 @@ router.get(
 router.post(
   '/area/fetch/:latmin/:lonmin/:latmax/:lonmax',
   requireApiKeyAuth,
+  requireAircraftRead,
   rateLimitMiddleware,
   async (req: Request, res: Response, next: NextFunction) => {
     const {
@@ -720,6 +707,7 @@ router.post(
 router.post(
   '/fetch/all',
   requireApiKeyAuth,
+  requireAircraftRead,
   rateLimitMiddleware,
   async (_req: Request, res: Response, next: NextFunction) => {
     try {
@@ -751,6 +739,7 @@ router.post(
 router.get(
   '/starlink/:observer_lat/:observer_lng/:observer_alt',
   requireApiKeyAuth,
+  requireAircraftRead,
   rateLimitMiddleware,
   async (req: Request, res: Response, next: NextFunction) => {
     const { observer_lat, observer_lng, observer_alt } = req.params;
@@ -776,6 +765,7 @@ router.get(
 router.get(
   '/history/:icao24',
   requireApiKeyAuth,
+  requireAircraftRead,
   rateLimitMiddleware,
   async (req: Request, res: Response, next: NextFunction) => {
     const { icao24 } = req.params;
@@ -799,6 +789,7 @@ router.get(
 router.get(
   '/history/stats/:icao24?',
   requireApiKeyAuth,
+  requireAircraftRead,
   rateLimitMiddleware,
   async (req: Request, res: Response, next: NextFunction) => {
     const { icao24 } = req.params;
@@ -819,6 +810,7 @@ router.get(
 router.get(
   '/history/search',
   requireApiKeyAuth,
+  requireAircraftRead,
   rateLimitMiddleware,
   async (req: Request, res: Response, next: NextFunction) => {
     const { start, end, limit = 100 } = req.query;
@@ -870,6 +862,7 @@ router.get('/health', async (_req: Request, res: Response) => {
 router.get(
   '/diagnostics/data-freshness',
   requireApiKeyAuth,
+  requireAircraftRead,
   rateLimitMiddleware,
   async (_req: Request, res: Response, next: NextFunction) => {
     try {
@@ -976,6 +969,7 @@ router.get(
 router.get(
   '/test-opensky/:icao24',
   requireApiKeyAuth,
+  requireAircraftRead,
   rateLimitMiddleware,
   async (req: Request, res: Response, next: NextFunction) => {
     const { icao24 } = req.params;
@@ -1031,6 +1025,7 @@ router.get(
 router.get(
   '/spatial/near/:lat/:lon',
   requireApiKeyAuth,
+  requireAircraftRead,
   rateLimitMiddleware,
   async (req: Request, res: Response, next: NextFunction) => {
     const { lat, lon } = req.params;
@@ -1060,6 +1055,7 @@ router.get(
 router.get(
   '/spatial/path/:icao24',
   requireApiKeyAuth,
+  requireAircraftRead,
   rateLimitMiddleware,
   async (req: Request, res: Response, next: NextFunction) => {
     const { icao24 } = req.params;
@@ -1082,6 +1078,7 @@ router.get(
 router.get(
   '/spatial/density/:latmin/:lonmin/:latmax/:lonmax',
   requireApiKeyAuth,
+  requireAircraftRead,
   rateLimitMiddleware,
   async (req: Request, res: Response, next: NextFunction) => {
     const {
@@ -1108,6 +1105,7 @@ router.get(
 router.get(
   '/spatial/spotting/:lat/:lon',
   requireApiKeyAuth,
+  requireAircraftRead,
   rateLimitMiddleware,
   async (req: Request, res: Response, next: NextFunction) => {
     const { lat, lon } = req.params;
@@ -1134,6 +1132,7 @@ router.get(
 router.get(
   '/airports/near/:lat/:lon',
   requireApiKeyAuth,
+  requireAircraftRead,
   rateLimitMiddleware,
   async (req: Request, res: Response, next: NextFunction) => {
     const { lat, lon } = req.params;
@@ -1166,6 +1165,7 @@ router.get(
 router.get(
   '/airports/bounds/:latmin/:lonmin/:latmax/:lonmax',
   requireApiKeyAuth,
+  requireAircraftRead,
   rateLimitMiddleware,
   async (req: Request, res: Response, next: NextFunction) => {
     const {
@@ -1206,6 +1206,7 @@ router.get(
 router.get(
   '/airports/:code',
   requireApiKeyAuth,
+  requireAircraftRead,
   rateLimitMiddleware,
   async (req: Request, res: Response, next: NextFunction) => {
     const { code } = req.params;
@@ -1231,6 +1232,7 @@ router.get(
 router.get(
   '/airports/search/:term',
   requireApiKeyAuth,
+  requireAircraftRead,
   rateLimitMiddleware,
   async (req: Request, res: Response, next: NextFunction) => {
     const { term } = req.params;
@@ -1257,6 +1259,7 @@ router.get(
 router.get(
   '/navaids/near/:lat/:lon',
   requireApiKeyAuth,
+  requireAircraftRead,
   rateLimitMiddleware,
   async (req: Request, res: Response, next: NextFunction) => {
     const { lat, lon } = req.params;
@@ -1289,6 +1292,7 @@ router.get(
 router.get(
   '/flightplan/:identifier',
   requireApiKeyAuth,
+  requireAircraftRead,
   rateLimitMiddleware,
   async (req: Request, res: Response, next: NextFunction) => {
     const { identifier } = req.params;
@@ -1333,6 +1337,7 @@ router.get(
 router.get(
   '/flightplan/test/data',
   requireApiKeyAuth,
+  requireAircraftRead,
   rateLimitMiddleware,
   async (_req: Request, res: Response, next: NextFunction) => {
     try {

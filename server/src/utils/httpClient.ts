@@ -8,10 +8,7 @@ declare module 'axios' {
   }
 }
 
-const DEFAULT_TIMEOUT_MS = Math.max(
-  1000,
-  parseInt(process.env.HTTP_CLIENT_TIMEOUT_MS || '10000', 10),
-);
+const DEFAULT_TIMEOUT_MS = Math.max(1000, parseInt(process.env.HTTP_CLIENT_TIMEOUT_MS || '10000', 10));
 const MAX_RETRIES = Math.max(0, parseInt(process.env.HTTP_CLIENT_MAX_RETRIES || '2', 10));
 const BASE_RETRY_DELAY_MS = Math.max(50, parseInt(process.env.HTTP_CLIENT_RETRY_DELAY_MS || '300', 10));
 
@@ -27,13 +24,7 @@ function isTransientError(error: AxiosError): boolean {
 
   // Check for network-level transient errors (these have error.code)
   if (error.code) {
-    const transientCodes = new Set([
-      'ECONNABORTED',
-      'ECONNRESET',
-      'ENOTFOUND',
-      'ETIMEDOUT',
-      'EAI_AGAIN',
-    ]);
+    const transientCodes = new Set(['ECONNABORTED', 'ECONNRESET', 'ENOTFOUND', 'ETIMEDOUT', 'EAI_AGAIN']);
 
     if (transientCodes.has(error.code)) {
       return true;
