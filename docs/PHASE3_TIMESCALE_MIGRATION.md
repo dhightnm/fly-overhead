@@ -2,6 +2,21 @@
 
 This document captures the first sub-phase of the Phase 3 migration: enabling TimescaleDB inside the existing Postgres deployment (Lightsail + staging) without disturbing current data.
 
+## Local development bootstrap
+
+1. Update Docker compose to use TimescaleDB (done in repo: `timescale/timescaledb-ha:pg15-latest`).
+2. Place init SQL in `server/database/initdb/01-enable-timescale.sql` to auto-run `CREATE EXTENSION timescaledb;` and `postgis`.
+3. Recreate the dev database:
+   ```bash
+   docker compose -f docker-compose.dev.yml down -v db-data
+   docker compose -f docker-compose.dev.yml up -d db
+   ```
+4. Connect and verify:
+   ```bash
+   docker compose -f docker-compose.dev.yml exec db psql -U postgres -d fly_overhead -c \"\\dx\"
+   ```
+   You should see both `timescaledb` and `postgis` extensions installed.
+
 ## 0. Pre-flight
 
 1. **Snapshot the VM/volume** (Lightsail snapshot or block-level backup).
