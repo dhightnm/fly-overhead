@@ -16,7 +16,8 @@
     "type-check": "tsc --noEmit",
     "lint": "eslint . --ext .ts",
     "lint:fix": "eslint --fix . --ext .ts",
-    "test": "jest"
+    "test": "jest",
+    "db:timescale": "ts-node ./scripts/setupTimescale.ts"
   },
   "keywords": [],
   "author": "",
