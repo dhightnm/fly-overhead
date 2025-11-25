@@ -1,10 +1,10 @@
 import Redis from 'ioredis';
-import axios from 'axios';
 import crypto from 'crypto';
 import config from '../config';
 import logger from '../utils/logger';
 import postgresRepository from '../repositories/PostgresRepository';
 import type { WebhookQueueMessage } from '../services/WebhookQueueService';
+import httpClient from '../utils/httpClient';
 
 const {
   webhooks: {
@@ -25,6 +25,8 @@ const DEFAULT_BACKOFF_MS = backoffMs;
 const DEFAULT_MAX_ATTEMPTS = maxAttempts;
 
 let redis: Redis | null = null;
+let running = true;
+let pollPromise: Promise<void> | null = null;
 
 function createRedisClient(): Redis {
   const client = new Redis(redisUrl, {
@@ -44,7 +46,7 @@ function createRedisClient(): Redis {
 }
 
 async function fetchMessage(timeoutSeconds = 5): Promise<WebhookQueueMessage | null> {
-  if (!redis) return null;
+  if (!redis || !running) return null;
   const result = await redis.brpop(queueKey, timeoutSeconds);
   if (!result) {
     return null;
@@ -75,7 +77,7 @@ async function dispatchWebhook(message: WebhookQueueMessage): Promise<boolean> {
   const signature = computeSignature(message.signingSecret, timestamp, body);
 
   try {
-    const response = await axios.post(message.callbackUrl, body, {
+    const response = await httpClient.post(message.callbackUrl, body, {
       timeout: deliveryTimeoutMs,
       headers: {
         'content-type': 'application/json',
@@ -86,6 +88,7 @@ async function dispatchWebhook(message: WebhookQueueMessage): Promise<boolean> {
         [timestampHeader]: timestamp,
       },
       validateStatus: () => true,
+      retry: false,
     });
 
     const success = response.status >= 200 && response.status < 300;
@@ -135,7 +138,7 @@ async function dispatchWebhook(message: WebhookQueueMessage): Promise<boolean> {
 }
 
 async function requeueMessage(message: WebhookQueueMessage): Promise<void> {
-  if (!redis) return;
+  if (!redis || !running) return;
 
   const nextAttempt = message.attempt + 1;
   if (nextAttempt >= (message.maxAttempts || DEFAULT_MAX_ATTEMPTS)) {
@@ -197,8 +200,7 @@ async function processQueueIteration(): Promise<number> {
 }
 
 async function pollQueue(): Promise<void> {
-  // eslint-disable-next-line no-constant-condition
-  while (true) {
+  while (running) {
     const processed = await processQueueIteration();
     if (processed === 0) {
       await new Promise<void>((resolve) => {
@@ -216,7 +218,23 @@ export function initializeWebhookDispatcher(): void {
   redis = createRedisClient();
 }
 
+export async function stopWebhookDispatcher(): Promise<void> {
+  running = false;
+  if (redis) {
+    try {
+      await redis.quit();
+    } catch (error) {
+      logger.warn('Error closing Redis connection in webhook dispatcher', { error: (error as Error).message });
+    }
+    redis = null;
+  }
+  if (pollPromise) {
+    await pollPromise;
+  }
+}
+
 export default async function startWebhookDispatcher(): Promise<void> {
+  running = true;
   initializeWebhookDispatcher();
 
   if (!redis) return;
@@ -229,10 +247,19 @@ export default async function startWebhookDispatcher(): Promise<void> {
     maxAttempts: DEFAULT_MAX_ATTEMPTS,
   });
 
-  await pollQueue();
+  pollPromise = pollQueue();
+  await pollPromise;
 }
 
 if (require.main === module) {
+  const shutdown = async (signal: string) => {
+    logger.info(`Received ${signal}, shutting down webhook dispatcher`);
+    await stopWebhookDispatcher();
+    process.exit(0);
+  };
+  process.on('SIGINT', () => shutdown('SIGINT'));
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+
   startWebhookDispatcher().catch((error) => {
     logger.error('Fatal error in webhook dispatcher', { error: (error as Error).message });
     process.exit(1);

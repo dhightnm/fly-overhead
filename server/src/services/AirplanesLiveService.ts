@@ -1,7 +1,8 @@
-import axios, { AxiosError } from 'axios';
+import { AxiosError } from 'axios';
 import NodeCache from 'node-cache';
 import config from '../config';
 import logger from '../utils/logger';
+import httpClient from '../utils/httpClient';
 
 export interface AirplanesLiveAircraft {
   hex: string;
@@ -169,8 +170,9 @@ class AirplanesLiveService {
     const retryDelayMs = 1000 * (retryCount + 1); // Exponential backoff: 1s, 2s
 
     try {
-      const response = await axios.get<AirplanesLiveResponse>(`${this.baseUrl}/point/${lat}/${lon}/${radiusNm}`, {
-        timeout: 10000, // 10 second timeout
+      const response = await httpClient.get<AirplanesLiveResponse>(`${this.baseUrl}/point/${lat}/${lon}/${radiusNm}`, {
+        timeout: 10000, // explicit to match previous behavior
+        retry: false, // manual retry logic below
         headers: {
           Accept: 'application/json',
           'User-Agent': 'FlyOverhead/1.0',

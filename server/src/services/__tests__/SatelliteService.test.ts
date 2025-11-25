@@ -4,11 +4,11 @@ import {
   beforeEach, describe, expect, it, jest,
 } from '@jest/globals';
 import type { Mocked } from 'jest-mock';
-import axios from 'axios';
 import satelliteService from '../SatelliteService';
+import httpClient from '../../utils/httpClient';
 
 // Mock dependencies
-jest.mock('axios');
+jest.mock('../../utils/httpClient');
 jest.mock('../../config', () => ({
   external: {
     n2yo: {
@@ -24,7 +24,7 @@ jest.mock('../../utils/logger', () => ({
   info: jest.fn(),
 }));
 
-const mockAxios = axios as Mocked<typeof axios>;
+const mockHttpClient = httpClient as Mocked<typeof httpClient>;
 
 describe('SatelliteService', () => {
   beforeEach(() => {
@@ -54,53 +54,57 @@ describe('SatelliteService', () => {
         },
       };
 
-      mockAxios.get.mockResolvedValue(mockResponse);
+      mockHttpClient.get.mockResolvedValue(mockResponse);
 
       const result = await satelliteService.getSatellitesAbove(40.0, -100.0, 0);
 
-      expect(mockAxios.get).toHaveBeenCalledWith(
+      expect(mockHttpClient.get).toHaveBeenCalledWith(
         'https://api.n2yo.com/rest/v1/satellite/above/40/-100/0/45/52&apiKey=test-api-key',
+        expect.objectContaining({ timeout: expect.any(Number) }),
       );
       expect(result).toEqual(mockResponse.data);
     });
 
     it('should construct URL with correct parameters', async () => {
-      mockAxios.get.mockResolvedValue({ data: { above: [] } });
+      mockHttpClient.get.mockResolvedValue({ data: { above: [] } });
 
       await satelliteService.getSatellitesAbove(37.7749, -122.4194, 100);
 
-      expect(mockAxios.get).toHaveBeenCalledWith(
+      expect(mockHttpClient.get).toHaveBeenCalledWith(
         'https://api.n2yo.com/rest/v1/satellite/above/37.7749/-122.4194/100/45/52&apiKey=test-api-key',
+        expect.objectContaining({ timeout: expect.any(Number) }),
       );
     });
 
     it('should handle negative coordinates', async () => {
-      mockAxios.get.mockResolvedValue({ data: { above: [] } });
+      mockHttpClient.get.mockResolvedValue({ data: { above: [] } });
 
       await satelliteService.getSatellitesAbove(-40.0, -100.0, 0);
 
-      expect(mockAxios.get).toHaveBeenCalledWith(
+      expect(mockHttpClient.get).toHaveBeenCalledWith(
         'https://api.n2yo.com/rest/v1/satellite/above/-40/-100/0/45/52&apiKey=test-api-key',
+        expect.objectContaining({ timeout: expect.any(Number) }),
       );
     });
 
     it('should handle high altitude values', async () => {
-      mockAxios.get.mockResolvedValue({ data: { above: [] } });
+      mockHttpClient.get.mockResolvedValue({ data: { above: [] } });
 
       await satelliteService.getSatellitesAbove(40.0, -100.0, 10000);
 
-      expect(mockAxios.get).toHaveBeenCalledWith(
+      expect(mockHttpClient.get).toHaveBeenCalledWith(
         'https://api.n2yo.com/rest/v1/satellite/above/40/-100/10000/45/52&apiKey=test-api-key',
+        expect.objectContaining({ timeout: expect.any(Number) }),
       );
     });
 
     it('should throw error when API request fails', async () => {
       const error = new Error('Network error');
-      mockAxios.get.mockRejectedValue(error);
+      mockHttpClient.get.mockRejectedValue(error);
 
       await expect(satelliteService.getSatellitesAbove(40.0, -100.0, 0)).rejects.toThrow('Network error');
 
-      expect(mockAxios.get).toHaveBeenCalled();
+      expect(mockHttpClient.get).toHaveBeenCalled();
     });
 
     it('should handle HTTP error responses', async () => {
@@ -110,7 +114,7 @@ describe('SatelliteService', () => {
         data: { error: 'Internal server error' },
       };
 
-      mockAxios.get.mockRejectedValue(httpError);
+      mockHttpClient.get.mockRejectedValue(httpError);
 
       await expect(satelliteService.getSatellitesAbove(40.0, -100.0, 0)).rejects.toThrow('Request failed');
     });
@@ -119,7 +123,7 @@ describe('SatelliteService', () => {
       const timeoutError: any = new Error('ETIMEDOUT');
       timeoutError.code = 'ETIMEDOUT';
 
-      mockAxios.get.mockRejectedValue(timeoutError);
+      mockHttpClient.get.mockRejectedValue(timeoutError);
 
       await expect(satelliteService.getSatellitesAbove(40.0, -100.0, 0)).rejects.toThrow('ETIMEDOUT');
     });
@@ -131,7 +135,7 @@ describe('SatelliteService', () => {
         data: { error: 'Invalid API key' },
       };
 
-      mockAxios.get.mockRejectedValue(unauthorizedError);
+      mockHttpClient.get.mockRejectedValue(unauthorizedError);
 
       await expect(satelliteService.getSatellitesAbove(40.0, -100.0, 0)).rejects.toThrow('Unauthorized');
     });
@@ -143,13 +147,13 @@ describe('SatelliteService', () => {
         data: { error: 'Rate limit exceeded' },
       };
 
-      mockAxios.get.mockRejectedValue(rateLimitError);
+      mockHttpClient.get.mockRejectedValue(rateLimitError);
 
       await expect(satelliteService.getSatellitesAbove(40.0, -100.0, 0)).rejects.toThrow('Too many requests');
     });
 
     it('should handle empty response data', async () => {
-      mockAxios.get.mockResolvedValue({ data: { above: [] } });
+      mockHttpClient.get.mockResolvedValue({ data: { above: [] } });
 
       const result = await satelliteService.getSatellitesAbove(40.0, -100.0, 0);
 
@@ -187,7 +191,7 @@ describe('SatelliteService', () => {
         },
       };
 
-      mockAxios.get.mockResolvedValue(mockResponse);
+      mockHttpClient.get.mockResolvedValue(mockResponse);
 
       const result = await satelliteService.getSatellitesAbove(40.0, -100.0, 0);
 

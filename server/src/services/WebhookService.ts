@@ -69,6 +69,18 @@ class WebhookService {
       metadata,
     } = params;
 
+    try {
+      const parsedUrl = new URL(callbackUrl);
+      const isLocalhost = ['localhost', '127.0.0.1', '0.0.0.0'].includes(parsedUrl.hostname);
+      const isSecure = parsedUrl.protocol === 'https:' || isLocalhost;
+      if (config.webhooks.enforceHttps && !isSecure) {
+        throw new Error('Webhook callback URL must use HTTPS (or localhost for development)');
+      }
+    } catch (error) {
+      logger.warn('Invalid webhook callback URL', { callbackUrl, error: (error as Error).message });
+      throw error;
+    }
+
     if (!config.webhooks.enabled) {
       logger.warn('Webhook registration attempted while webhooks are disabled');
     }

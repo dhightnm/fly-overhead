@@ -105,6 +105,8 @@ class DatabaseConnection {
     // Parse connection string to detect AWS RDS/Lightsail endpoints
     const isAwsRds = DatabaseConnection.isAwsRdsEndpoint(connectionString);
 
+    const rejectUnauthorized = process.env.POSTGRES_REJECT_UNAUTHORIZED !== 'false';
+
     // Configure SSL for AWS RDS/Lightsail connections
     // Parse connection string and add SSL configuration
     if (isAwsRds) {
@@ -118,8 +120,7 @@ class DatabaseConnection {
           user: url.username,
           password: decodeURIComponent(url.password), // Decode password
           ssl: {
-            // AWS RDS certificates are trusted, but Node.js needs this for self-signed certs
-            rejectUnauthorized: false,
+            rejectUnauthorized,
           },
           // Connection pool settings
           // Maximum number of clients in the pool (keep below database max_connections limit)
@@ -150,6 +151,9 @@ class DatabaseConnection {
           keepAlive: true,
           keepAliveInitialDelayMillis: 10000,
           query_timeout: 10000, // pg-promise query timeout (10 seconds)
+          ssl: {
+            rejectUnauthorized,
+          },
         };
         this.db = pgp(fallbackConfig);
       }
@@ -246,6 +250,17 @@ class DatabaseConnection {
    */
   getPostGIS(): PostGISService {
     return this.postgis;
+  }
+
+  /**
+   * Close database connections and pool
+   */
+  async close(): Promise<void> {
+    try {
+      await this.db.$pool.end();
+    } finally {
+      pgp.end();
+    }
   }
 }
 

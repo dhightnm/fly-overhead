@@ -1,6 +1,7 @@
-import axios, { AxiosError } from 'axios';
+import { AxiosError } from 'axios';
 import config from '../config';
 import logger from '../utils/logger';
+import httpClient from '../utils/httpClient';
 
 interface BoundingBox {
   lamin: number;
@@ -72,13 +73,14 @@ class FlightAwareService {
 
       let response;
       try {
-        response = await axios.get(`${this.baseUrl}/flights/search`, {
+        response = await httpClient.get(`${this.baseUrl}/flights/search`, {
           params: {
             query,
             max_pages: 1,
           },
           headers: this.getAuthHeader(),
           timeout: 15000,
+          retry: true,
         });
       } catch (apiError) {
         const err = apiError as AxiosError;
@@ -189,13 +191,14 @@ class FlightAwareService {
 
       const query = `{range lat ${lamin} ${lamax}} {range lon ${lomin} ${lomax}}`;
 
-      const response = await axios.get(`${this.baseUrl}/flights/search`, {
+      const response = await httpClient.get(`${this.baseUrl}/flights/search`, {
         params: {
           query,
           max_pages: 1,
         },
         headers: this.getAuthHeader(),
         timeout: 10000,
+        retry: true,
       });
 
       if (!response.data?.results || response.data.results.length === 0) {

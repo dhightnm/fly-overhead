@@ -7,13 +7,14 @@ import config from './config';
 import aircraftService from './services/AircraftService';
 import backgroundRouteService from './services/BackgroundRouteService';
 import conusPollingService from './services/ConusPollingService';
-import startAircraftIngestionWorker from './workers/aircraftIngestionWorker';
-import startWebhookDispatcher from './workers/webhookDispatcherWorker';
+import startAircraftIngestionWorker, { stopAircraftIngestionWorker } from './workers/aircraftIngestionWorker';
+import startWebhookDispatcher, { stopWebhookDispatcher } from './workers/webhookDispatcherWorker';
 import webSocketService from './services/WebSocketService';
 import realTimeEventService from './services/RealTimeEventService';
 import errorHandler from './middlewares/errorHandler';
 import requestLogger from './middlewares/requestLogger';
 import logger from './utils/logger';
+import postgresRepository from './repositories/PostgresRepository';
 
 // API Routes - All migrated to TypeScript
 import authRoutes from './routes/auth.routes';
@@ -26,6 +27,9 @@ import webhookRoutes from './routes/webhook.routes';
 
 const app = express();
 const server = createServer(app);
+let ingestionWorkerStarted = false;
+let webhookDispatcherStarted = false;
+let shuttingDown = false;
 
 // Configure CORS
 app.use(
@@ -259,6 +263,7 @@ async function startServer(): Promise<void> {
     }
 
     if (config.queue.enabled && config.queue.spawnWorkerInProcess) {
+      ingestionWorkerStarted = true;
       startAircraftIngestionWorker().catch((err: Error) => {
         logger.error('Error starting embedded ingestion worker', { error: err.message });
       });
@@ -267,6 +272,7 @@ async function startServer(): Promise<void> {
     }
 
     if (config.webhooks.enabled && config.webhooks.spawnWorkerInProcess) {
+      webhookDispatcherStarted = true;
       startWebhookDispatcher().catch((err: Error) => {
         logger.error('Error starting embedded webhook dispatcher', { error: err.message });
       });
@@ -287,19 +293,72 @@ async function startServer(): Promise<void> {
   }
 }
 
-// Graceful shutdown
-process.on('SIGTERM', () => {
-  logger.info('SIGTERM received, shutting down gracefully');
-  backgroundRouteService.stop();
-  conusPollingService.stop();
+async function gracefulShutdown(signal: string): Promise<void> {
+  if (shuttingDown) return;
+  shuttingDown = true;
+
+  logger.info(`${signal} received, shutting down gracefully`);
+
+  try {
+    backgroundRouteService.stop();
+  } catch (error) {
+    logger.warn('Error stopping backgroundRouteService', { error: (error as Error).message });
+  }
+
+  try {
+    conusPollingService.stop();
+  } catch (error) {
+    logger.warn('Error stopping conusPollingService', { error: (error as Error).message });
+  }
+
+  const stopTasks: Promise<any>[] = [];
+  if (ingestionWorkerStarted) {
+    stopTasks.push(stopAircraftIngestionWorker().catch((error: Error) => {
+      logger.warn('Error stopping ingestion worker', { error: error.message });
+    }));
+  }
+  if (webhookDispatcherStarted) {
+    stopTasks.push(stopWebhookDispatcher().catch((error: Error) => {
+      logger.warn('Error stopping webhook dispatcher', { error: error.message });
+    }));
+  }
+  stopTasks.push(realTimeEventService.stop().catch((error: Error) => {
+    logger.warn('Error stopping real-time event service', { error: error.message });
+  }));
+
+  const closeServer = new Promise<void>((resolve) => {
+    if (!server.listening) {
+      resolve();
+      return;
+    }
+    server.close(() => {
+      logger.info('HTTP server closed');
+      resolve();
+    });
+  });
+
+  await Promise.allSettled(stopTasks);
+  await closeServer;
+
+  try {
+    await postgresRepository.close();
+  } catch (error) {
+    logger.warn('Error closing database connection', { error: (error as Error).message });
+  }
+
   process.exit(0);
+}
+
+process.on('SIGTERM', () => {
+  gracefulShutdown('SIGTERM').catch((error: Error) => {
+    logger.error('Error during SIGTERM shutdown', { error: error.message });
+  });
 });
 
 process.on('SIGINT', () => {
-  logger.info('SIGINT received, shutting down gracefully');
-  backgroundRouteService.stop();
-  conusPollingService.stop();
-  process.exit(0);
+  gracefulShutdown('SIGINT').catch((error: Error) => {
+    logger.error('Error during SIGINT shutdown', { error: error.message });
+  });
 });
 
 // Handle uncaught exceptions

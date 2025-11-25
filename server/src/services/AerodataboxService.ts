@@ -1,7 +1,7 @@
-import axios from 'axios';
 import config from '../config';
 import logger from '../utils/logger';
 import type { RouteData } from '../types/api.types';
+import httpClient from '../utils/httpClient';
 
 interface AerodataboxFlightSegment {
   airport?: {
@@ -366,7 +366,7 @@ export class AerodataboxService {
       logger.info('Querying Aerodatabox for flight data', { icao24, url });
       this.recordUsage();
 
-      const response = await axios.get(url, {
+      const response = await httpClient.get(url, {
         params: {
           dateLocalRole: 'Both',
           withAircraftImage: false,
@@ -377,6 +377,7 @@ export class AerodataboxService {
           'x-api-market-key': this.apiKey,
         },
         timeout: 8000,
+        retry: true,
       });
 
       const flights = this.extractFlights(response.data);

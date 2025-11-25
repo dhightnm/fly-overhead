@@ -439,6 +439,10 @@ class PostgresRepository {
   async searchAirports(searchTerm: string, limit?: number): Promise<any> {
     return this.airport.searchAirports(searchTerm, limit);
   }
+
+  async close(): Promise<void> {
+    await this.connection.close();
+  }
 }
 
 // Export singleton instance for backward compatibility

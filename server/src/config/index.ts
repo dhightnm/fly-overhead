@@ -91,6 +91,11 @@ const webhooksEnabled = resolveBooleanFlag(
   process.env.DISABLE_WEBHOOKS,
   true,
 );
+const enforceWebhookHttps = resolveBooleanFlag(
+  process.env.ENFORCE_HTTPS_WEBHOOKS,
+  process.env.ALLOW_INSECURE_WEBHOOKS,
+  true,
+);
 const webhookQueueKey = process.env.WEBHOOK_QUEUE_KEY || 'flyoverhead:webhooks';
 const webhookBatchSize = Math.max(1, parseNumber(process.env.WEBHOOK_QUEUE_BATCH_SIZE, 50));
 const webhookPollIntervalMs = Math.max(250, parseNumber(process.env.WEBHOOK_QUEUE_POLL_INTERVAL_MS, 1000));
@@ -102,6 +107,28 @@ const spawnWebhookDispatcherInProcess = resolveBooleanFlag(
   process.env.DISABLE_EMBEDDED_WEBHOOK_DISPATCHER,
   true,
 );
+const defaultAllowedOrigins = [
+  'https://flyoverhead.com',
+  'http://flyoverhead.com',
+  'https://www.flyoverhead.com',
+  'http://www.flyoverhead.com',
+  'https://api.flyoverhead.com',
+  'https://app.flyoverhead.com',
+  `http://localhost:${process.env.PORT || 3005}`,
+  'http://localhost:3000',
+  'http://127.0.0.1:3000',
+  'http://127.0.0.1:3005',
+  'http://192.168.58.15:3000',
+  'http://192.168.58.15:3005',
+  'http://192.168.58.15',
+];
+const defaultAllowedIPs = ['192.168.58.15'];
+const parseListEnv = (value: string | undefined): string[] => (value || '')
+  .split(',')
+  .map((item) => item.trim())
+  .filter(Boolean);
+const envAllowedOrigins = parseListEnv(process.env.CORS_ALLOWED_ORIGINS);
+const envAllowedIPs = parseListEnv(process.env.CORS_ALLOWED_IPS);
 
 /**
  * Centralized configuration management
@@ -157,18 +184,8 @@ const config: AppConfig = {
     },
   },
   cors: {
-    allowedOrigins: [
-      'http://flyoverhead.com',
-      'https://flyoverhead.com',
-      'http://www.flyoverhead.com',
-      'https://www.flyoverhead.com',
-      `http://localhost:${process.env.PORT || 3005}`,
-      `http://192.168.58.15:${process.env.PORT || 3005}`,
-      'http://192.168.58.15:3000',
-      'http://192.168.58.15:3005',
-      'http://192.168.58.15',
-    ],
-    allowedIPs: ['192.168.58.15'],
+    allowedOrigins: envAllowedOrigins.length > 0 ? envAllowedOrigins : defaultAllowedOrigins,
+    allowedIPs: envAllowedIPs.length > 0 ? envAllowedIPs : defaultAllowedIPs,
   },
   aircraft: {
     updateInterval: 600000, // 10 minutes (600 seconds) - safer for OpenSky rate limits
@@ -211,6 +228,7 @@ const config: AppConfig = {
     signatureHeader: 'x-flyover-signature',
     timestampHeader: 'x-flyover-timestamp',
     spawnWorkerInProcess: spawnWebhookDispatcherInProcess,
+    enforceHttps: enforceWebhookHttps,
   },
 };
 

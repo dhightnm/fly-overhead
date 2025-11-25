@@ -1,4 +1,3 @@
-import axios from 'axios';
 import openSkyService from '../OpenSkyService';
 import rateLimitManager from '../RateLimitManager';
 import {
@@ -6,9 +5,9 @@ import {
   OPEN_SKY_SAMPLE_STATES,
   buildOpenSkyResponse,
 } from '../../__tests__/fixtures/aircraftFixtures';
+import httpClient from '../../utils/httpClient';
 
 // Mock dependencies
-jest.mock('axios');
 jest.mock('../RateLimitManager');
 jest.mock('../../config', () => ({
   external: {
@@ -26,7 +25,8 @@ jest.mock('../../utils/logger', () => ({
   info: jest.fn(),
 }));
 
-const mockAxios = axios as jest.Mocked<typeof axios>;
+jest.mock('../../utils/httpClient');
+const mockHttpClient = httpClient as jest.Mocked<typeof httpClient>;
 const mockRateLimitManager = rateLimitManager as jest.Mocked<typeof rateLimitManager>;
 
 describe('OpenSkyService', () => {
@@ -39,11 +39,11 @@ describe('OpenSkyService', () => {
       const mockResponse = buildOpenSkyResponse();
 
       mockRateLimitManager.isRateLimited.mockReturnValue(false);
-      mockAxios.get.mockResolvedValue({ data: mockResponse });
+      mockHttpClient.get.mockResolvedValue({ data: mockResponse } as any);
 
       const result = await openSkyService.getAllStates();
 
-      expect(mockAxios.get).toHaveBeenCalledWith(
+      expect(mockHttpClient.get).toHaveBeenCalledWith(
         'https://opensky-network.org/api/states/all',
         expect.objectContaining({
           params: { extended: 1 },
@@ -66,7 +66,7 @@ describe('OpenSkyService', () => {
         retryAfter: 60,
       });
 
-      expect(mockAxios.get).not.toHaveBeenCalled();
+      expect(mockHttpClient.get).not.toHaveBeenCalled();
     });
 
     it('should handle 429 rate limit response', async () => {
@@ -79,7 +79,7 @@ describe('OpenSkyService', () => {
       };
 
       mockRateLimitManager.isRateLimited.mockReturnValue(false);
-      mockAxios.get.mockRejectedValue(rateLimitError);
+      mockHttpClient.get.mockRejectedValue(rateLimitError);
 
       await expect(openSkyService.getAllStates()).rejects.toMatchObject({
         rateLimited: true,
@@ -94,13 +94,13 @@ describe('OpenSkyService', () => {
       timeoutError.code = 'ETIMEDOUT';
 
       mockRateLimitManager.isRateLimited.mockReturnValue(false);
-      mockAxios.get.mockRejectedValueOnce(timeoutError).mockResolvedValueOnce({
+      mockHttpClient.get.mockRejectedValueOnce(timeoutError).mockResolvedValueOnce({
         data: buildOpenSkyResponse([]),
       });
 
       const result = await openSkyService.getAllStates();
 
-      expect(mockAxios.get).toHaveBeenCalledTimes(2);
+      expect(mockHttpClient.get).toHaveBeenCalledTimes(2);
       expect(result).toBeDefined();
     });
 
@@ -109,13 +109,13 @@ describe('OpenSkyService', () => {
       resetError.code = 'ECONNRESET';
 
       mockRateLimitManager.isRateLimited.mockReturnValue(false);
-      mockAxios.get.mockRejectedValueOnce(resetError).mockResolvedValueOnce({
+      mockHttpClient.get.mockRejectedValueOnce(resetError).mockResolvedValueOnce({
         data: buildOpenSkyResponse([]),
       });
 
       const result = await openSkyService.getAllStates();
 
-      expect(mockAxios.get).toHaveBeenCalledTimes(2);
+      expect(mockHttpClient.get).toHaveBeenCalledTimes(2);
       expect(result).toBeDefined();
     });
 
@@ -124,13 +124,13 @@ describe('OpenSkyService', () => {
       dnsError.code = 'ENOTFOUND';
 
       mockRateLimitManager.isRateLimited.mockReturnValue(false);
-      mockAxios.get.mockRejectedValueOnce(dnsError).mockResolvedValueOnce({
+      mockHttpClient.get.mockRejectedValueOnce(dnsError).mockResolvedValueOnce({
         data: buildOpenSkyResponse([]),
       });
 
       const result = await openSkyService.getAllStates();
 
-      expect(mockAxios.get).toHaveBeenCalledTimes(2);
+      expect(mockHttpClient.get).toHaveBeenCalledTimes(2);
       expect(result).toBeDefined();
     });
 
@@ -140,21 +140,21 @@ describe('OpenSkyService', () => {
       timeoutError.code = 'ETIMEDOUT';
 
       mockRateLimitManager.isRateLimited.mockReturnValue(false);
-      mockAxios.get.mockRejectedValue(timeoutError);
+      mockHttpClient.get.mockRejectedValue(timeoutError);
 
       await expect(openSkyService.getAllStates()).rejects.toThrow();
-      expect(mockAxios.get).toHaveBeenCalledTimes(3); // Max retries
+      expect(mockHttpClient.get).toHaveBeenCalledTimes(3); // Max retries
     }, 10000);
 
     it('should use correct authentication header', async () => {
       mockRateLimitManager.isRateLimited.mockReturnValue(false);
-      mockAxios.get.mockResolvedValue({
+      mockHttpClient.get.mockResolvedValue({
         data: buildOpenSkyResponse([]),
       });
 
       await openSkyService.getAllStates();
 
-      const callArgs = mockAxios.get.mock.calls[0];
+      const callArgs = mockHttpClient.get.mock.calls[0];
       const headers = callArgs[1]?.headers;
       expect(headers?.Authorization).toMatch(/^Basic /);
     });
@@ -167,11 +167,11 @@ describe('OpenSkyService', () => {
       const mockResponse = buildOpenSkyResponse([OPEN_SKY_SAMPLE_STATES[0]]);
 
       mockRateLimitManager.isRateLimited.mockReturnValue(false);
-      mockAxios.get.mockResolvedValue({ data: mockResponse });
+      mockHttpClient.get.mockResolvedValue({ data: mockResponse });
 
       const result = await openSkyService.getStatesInBounds(boundingBox);
 
-      expect(mockAxios.get).toHaveBeenCalledWith(
+      expect(mockHttpClient.get).toHaveBeenCalledWith(
         'https://opensky-network.org/api/states/all',
         expect.objectContaining({
           params: {
@@ -221,7 +221,7 @@ describe('OpenSkyService', () => {
       };
 
       mockRateLimitManager.isRateLimited.mockReturnValue(false);
-      mockAxios.get.mockRejectedValue(rateLimitError);
+      mockHttpClient.get.mockRejectedValue(rateLimitError);
 
       await expect(openSkyService.getStatesInBounds(boundingBox)).rejects.toMatchObject({
         rateLimited: true,
@@ -246,11 +246,11 @@ describe('OpenSkyService', () => {
         ],
       };
 
-      mockAxios.get.mockResolvedValue(mockResponse);
+      mockHttpClient.get.mockResolvedValue(mockResponse);
 
       const result = await openSkyService.getFlightsByAircraft(icao24, begin, end);
 
-      expect(mockAxios.get).toHaveBeenCalledWith(
+      expect(mockHttpClient.get).toHaveBeenCalledWith(
         'https://opensky-network.org/api/flights/aircraft',
         expect.objectContaining({
           params: {
@@ -271,7 +271,7 @@ describe('OpenSkyService', () => {
       const notFoundError: any = new Error('Not found');
       notFoundError.response = { status: 404 };
 
-      mockAxios.get.mockRejectedValue(notFoundError);
+      mockHttpClient.get.mockRejectedValue(notFoundError);
 
       const result = await openSkyService.getFlightsByAircraft(icao24, begin, end);
 
@@ -286,7 +286,7 @@ describe('OpenSkyService', () => {
       const badRequestError: any = new Error('Bad request');
       badRequestError.response = { status: 400 };
 
-      mockAxios.get.mockRejectedValue(badRequestError);
+      mockHttpClient.get.mockRejectedValue(badRequestError);
 
       const result = await openSkyService.getFlightsByAircraft(icao24, begin, end);
 
@@ -298,11 +298,11 @@ describe('OpenSkyService', () => {
       const begin = Math.floor(Date.now() / 1000) - 86400;
       const end = Math.floor(Date.now() / 1000);
 
-      mockAxios.get.mockResolvedValue({ data: [] });
+      mockHttpClient.get.mockResolvedValue({ data: [] });
 
       await openSkyService.getFlightsByAircraft(icao24, begin, end);
 
-      const callArgs = mockAxios.get.mock.calls[0];
+      const callArgs = mockHttpClient.get.mock.calls[0];
       expect(callArgs[1]?.params?.icao24).toBe('abc123');
     });
   });

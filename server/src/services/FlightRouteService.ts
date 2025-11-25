@@ -1,10 +1,11 @@
-import axios, { AxiosError } from 'axios';
+import { AxiosError } from 'axios';
 import config from '../config';
 import logger from '../utils/logger';
 import postgresRepository from '../repositories/PostgresRepository';
 import openSkyService from './OpenSkyService';
 import aerodataboxService from './AerodataboxService';
 import { mapAircraftType } from '../utils/aircraftCategoryMapper';
+import httpClient from '../utils/httpClient';
 
 interface Airport {
   iata?: string | null;
@@ -219,7 +220,7 @@ export class FlightRouteService {
       yesterday.setDate(yesterday.getDate() - 1);
       const startDate = yesterday.toISOString().split('T')[0];
 
-      const response = await axios.get(`${this.flightAwareBaseUrl}/flights/${callsign}`, {
+      const response = await httpClient.get(`${this.flightAwareBaseUrl}/flights/${callsign}`, {
         params: {
           start: startDate,
         },
@@ -622,7 +623,7 @@ export class FlightRouteService {
         });
 
         try {
-          const searchResponse = await axios.get(`${this.flightAwareBaseUrl}/flights/search`, {
+          const searchResponse = await httpClient.get(`${this.flightAwareBaseUrl}/flights/search`, {
             params: {
               query: `-ident ${icao24}`,
               max_pages: 1,
@@ -632,6 +633,7 @@ export class FlightRouteService {
               'x-apikey': this.flightAwareApiKey,
             },
             timeout: 8000,
+            retry: true,
           });
 
           if (searchResponse.data?.results && searchResponse.data.results.length > 0) {
@@ -1111,13 +1113,14 @@ export class FlightRouteService {
 
       logger.info('Querying FlightAware AeroAPI', { callsign, date: dateString || 'all recent' });
 
-      const response = await axios.get(`${this.flightAwareBaseUrl}/flights/${callsign}`, {
+      const response = await httpClient.get(`${this.flightAwareBaseUrl}/flights/${callsign}`, {
         params,
         headers: {
           Accept: 'application/json; charset=UTF-8',
           'x-apikey': this.flightAwareApiKey,
         },
         timeout: 8000,
+        retry: true,
       });
 
       if (!response.data?.flights || response.data.flights.length === 0) {

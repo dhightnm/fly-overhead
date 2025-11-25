@@ -1,6 +1,7 @@
 import { Server, Socket } from 'socket.io';
 import { Server as HttpServer } from 'http';
 import logger from '../utils/logger';
+import config from '../config';
 
 interface Bounds {
   latmin: number | string;
@@ -35,9 +36,24 @@ class WebSocketService {
    * Initialize WebSocket server
    */
   initialize(server: HttpServer): void {
+    const allowedOrigins = config.cors.allowedOrigins || [];
     this.io = new Server(server, {
       cors: {
-        origin: true, // Allow all origins (CORS handled at Express level)
+        origin: (origin, callback) => {
+          // Allow missing origin in non-production for local tooling
+          if (!origin && config.server.env !== 'production') {
+            callback(null, true);
+            return;
+          }
+
+          if (origin && allowedOrigins.includes(origin)) {
+            callback(null, true);
+            return;
+          }
+
+          logger.warn('WebSocket origin rejected', { origin });
+          callback(new Error('Not allowed by CORS'), false);
+        },
         methods: ['GET', 'POST'],
         credentials: true,
       },

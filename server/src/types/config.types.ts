@@ -93,6 +93,7 @@ export interface WebhookConfig {
   signatureHeader: string;
   timestampHeader: string;
   spawnWorkerInProcess: boolean;
+  enforceHttps: boolean;
 }
 
 export interface FeatureFlagsConfig {

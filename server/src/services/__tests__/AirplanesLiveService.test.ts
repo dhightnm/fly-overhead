@@ -1,9 +1,9 @@
-import axios from 'axios';
 import airplanesLiveService from '../AirplanesLiveService';
 import { createAirplanesLiveState } from '../../__tests__/fixtures/aircraftFixtures';
+import httpClient from '../../utils/httpClient';
 
 // Mock dependencies
-jest.mock('axios');
+jest.mock('../../utils/httpClient');
 jest.mock('../../utils/logger', () => ({
   info: jest.fn(),
   error: jest.fn(),
@@ -25,7 +25,7 @@ jest.mock('../../config', () => ({
   },
 }));
 
-const mockedAxios = axios as jest.Mocked<typeof axios>;
+const mockedHttpClient = httpClient as jest.Mocked<typeof httpClient>;
 
 describe('AirplanesLiveService', () => {
   beforeEach(() => {
@@ -139,7 +139,7 @@ describe('AirplanesLiveService', () => {
           now: Date.now() / 1000,
         },
       };
-      mockedAxios.get.mockResolvedValue(mockResponse);
+      mockedHttpClient.get.mockResolvedValue(mockResponse);
 
       await airplanesLiveService.getAircraftNearPoint({
         lat: 40.0,
@@ -148,7 +148,7 @@ describe('AirplanesLiveService', () => {
       });
 
       // Should clamp to 250nm
-      expect(mockedAxios.get).toHaveBeenCalledWith(
+      expect(mockedHttpClient.get).toHaveBeenCalledWith(
         expect.stringContaining('/250'),
         expect.any(Object),
       );

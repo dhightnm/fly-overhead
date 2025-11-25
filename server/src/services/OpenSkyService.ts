@@ -1,7 +1,8 @@
-import axios, { AxiosError } from 'axios';
+import { AxiosError } from 'axios';
 import config from '../config';
 import logger from '../utils/logger';
 import rateLimitManager from './RateLimitManager';
+import httpClient from '../utils/httpClient';
 
 interface OpenSkyResponse {
   time: number;
@@ -69,12 +70,13 @@ class OpenSkyService {
 
     for (let attempt = 0; attempt < maxRetries; attempt++) {
       try {
-        const response = await axios.get<OpenSkyResponse>(`${this.baseUrl}/states/all`, {
+        const response = await httpClient.get<OpenSkyResponse>(`${this.baseUrl}/states/all`, {
           params: {
             extended: 1, // Include category field (index 17) - use 1 instead of true
           },
           headers: this.getAuthHeader(),
           timeout: 30000, // 30 second timeout
+          retry: false,
         });
 
         // Record successful request
@@ -170,7 +172,7 @@ class OpenSkyService {
     }
 
     try {
-      const response = await axios.get<OpenSkyResponse>(`${this.baseUrl}/states/all`, {
+      const response = await httpClient.get<OpenSkyResponse>(`${this.baseUrl}/states/all`, {
         params: {
           extended: 1, // Include category field (index 17) - use 1 instead of true
           lamin,
@@ -180,6 +182,7 @@ class OpenSkyService {
         },
         headers: this.getAuthHeader(),
         timeout: 30000, // 30 second timeout
+        retry: false,
       });
 
       // Record successful request
@@ -229,7 +232,7 @@ class OpenSkyService {
       // OpenSky requires lowercase icao24
       const lowerIcao24 = icao24.toLowerCase();
 
-      const response = await axios.get(`${this.baseUrl}/flights/aircraft`, {
+      const response = await httpClient.get(`${this.baseUrl}/flights/aircraft`, {
         params: {
           icao24: lowerIcao24,
           begin,
@@ -237,6 +240,7 @@ class OpenSkyService {
         },
         headers: this.getAuthHeader(),
         timeout: 30000, // 30 second timeout
+        retry: false,
       });
 
       return response.data;

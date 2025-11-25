@@ -4,12 +4,12 @@ import {
   afterEach, describe, expect, it, jest,
 } from '@jest/globals';
 import type { Mocked } from 'jest-mock';
-import axios from 'axios';
 import { AerodataboxService } from '../AerodataboxService';
+import httpClient from '../../utils/httpClient';
 
-jest.mock('axios');
+jest.mock('../../utils/httpClient');
 
-const mockedAxios = axios as Mocked<typeof axios>;
+const mockedHttpClient = httpClient as Mocked<typeof httpClient>;
 
 jest.mock('../../utils/logger', () => ({
   __esModule: true,
@@ -49,7 +49,7 @@ describe('AerodataboxService', () => {
     const result = await service.getFlightByIcao24('a9034c');
 
     expect(result).toBeNull();
-    expect(mockedAxios.get).not.toHaveBeenCalled();
+    expect(mockedHttpClient.get).not.toHaveBeenCalled();
   });
 
   it('maps flight data and caches subsequent lookups', async () => {
@@ -83,7 +83,7 @@ describe('AerodataboxService', () => {
       ],
     };
 
-    mockedAxios.get.mockResolvedValue({ data: samplePayload });
+    mockedHttpClient.get.mockResolvedValue({ data: samplePayload });
 
     const first = await service.getFlightByIcao24('A9034C');
     expect(first).toBeTruthy();
@@ -104,24 +104,24 @@ describe('AerodataboxService', () => {
       source: 'aerodatabox',
     });
 
-    expect(mockedAxios.get).toHaveBeenCalledTimes(1);
+    expect(mockedHttpClient.get).toHaveBeenCalledTimes(1);
 
     const second = await service.getFlightByIcao24('a9034c');
     expect(second).toEqual(first);
-    expect(mockedAxios.get).toHaveBeenCalledTimes(1);
+    expect(mockedHttpClient.get).toHaveBeenCalledTimes(1);
   });
 
   it('skips remote call while in failure cooldown', async () => {
     const service = createService({ apiKey: 'test-key' });
-    mockedAxios.get.mockRejectedValueOnce(new Error('timeout'));
+    mockedHttpClient.get.mockRejectedValueOnce(new Error('timeout'));
 
     const first = await service.getFlightByIcao24('a9034c');
     expect(first).toBeNull();
-    expect(mockedAxios.get).toHaveBeenCalledTimes(1);
+    expect(mockedHttpClient.get).toHaveBeenCalledTimes(1);
 
-    mockedAxios.get.mockClear();
+    mockedHttpClient.get.mockClear();
     const second = await service.getFlightByIcao24('a9034c');
     expect(second).toBeNull();
-    expect(mockedAxios.get).not.toHaveBeenCalled();
+    expect(mockedHttpClient.get).not.toHaveBeenCalled();
   });
 });

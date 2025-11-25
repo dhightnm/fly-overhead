@@ -13,6 +13,8 @@ const {
 } = config;
 
 const MAX_RETRIES = 3;
+let running = true;
+let pollPromise: Promise<void> | null = null;
 
 export function createRedisClient(): Redis {
   const client = new Redis(redisUrl, {
@@ -32,12 +34,12 @@ export function createRedisClient(): Redis {
 }
 
 // Keep mutable for runtime assignment
-// eslint-disable-next-line prefer-const
-let redis: Redis;
+let redis: Redis | null = null;
 
 type QueueResult = null | AircraftQueueMessage;
 
 export async function fetchMessage(timeoutSeconds = 5): Promise<QueueResult> {
+  if (!redis || !running) return null;
   const result = await redis.brpop(queueKey, timeoutSeconds);
   if (!result) {
     return null;
@@ -56,6 +58,8 @@ export async function requeueMessage(message: AircraftQueueMessage): Promise<voi
     logger.error('Dropping aircraft message after max retries', { icao24: message.state?.[0], retries });
     return;
   }
+
+  if (!redis) return;
 
   await redis.rpush(queueKey, JSON.stringify({ ...message, retries }));
   logger.warn('Re-queued aircraft message for retry', { icao24: message.state?.[0], retries });
@@ -139,8 +143,7 @@ export async function processQueueIteration(): Promise<number> {
 }
 
 async function pollQueue(): Promise<void> {
-  // eslint-disable-next-line no-constant-condition
-  while (true) {
+  while (running) {
     await processQueueIteration();
   }
 }
@@ -153,7 +156,23 @@ export function initializeWorker(): void {
   redis = createRedisClient();
 }
 
+export async function stopAircraftIngestionWorker(): Promise<void> {
+  running = false;
+  if (redis) {
+    try {
+      await redis.quit();
+    } catch (error) {
+      logger.warn('Error closing Redis connection in ingestion worker', { error: (error as Error).message });
+    }
+    redis = null;
+  }
+  if (pollPromise) {
+    await pollPromise;
+  }
+}
+
 export default async function startAircraftIngestionWorker(): Promise<void> {
+  running = true;
   initializeWorker();
 
   if (!redis) return;
@@ -165,10 +184,19 @@ export default async function startAircraftIngestionWorker(): Promise<void> {
     pollIntervalMs,
   });
 
-  await pollQueue();
+  pollPromise = pollQueue();
+  await pollPromise;
 }
 
 if (require.main === module) {
+  const shutdown = async (signal: string) => {
+    logger.info(`Received ${signal}, shutting down ingestion worker`);
+    await stopAircraftIngestionWorker();
+    process.exit(0);
+  };
+  process.on('SIGINT', () => shutdown('SIGINT'));
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+
   startAircraftIngestionWorker().catch((error) => {
     logger.error('Fatal error in ingestion worker', { error: error.message });
     process.exit(1);

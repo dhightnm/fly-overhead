@@ -1,6 +1,6 @@
-import axios from 'axios';
 import config from '../config';
 import logger from '../utils/logger';
+import httpClient from '../utils/httpClient';
 
 /**
  * Service for satellite data
@@ -26,7 +26,9 @@ class SatelliteService {
     try {
       const url = `${this.baseUrl}/satellite/above/${observerLat}/${observerLng}/${observerAlt}/45/52`
         + `&apiKey=${this.apiKey}`;
-      const response = await axios.get(url);
+      const response = await httpClient.get(url, {
+        timeout: 8000,
+      });
 
       logger.debug(`Fetched satellite data for observer at ${observerLat}, ${observerLng}`);
       return response.data;
