@@ -2,9 +2,13 @@ import { Router, Response, NextFunction } from 'express';
 import { ZodError } from 'zod';
 import postgresRepository from '../repositories/PostgresRepository';
 import logger from '../utils/logger';
-import { requireApiKeyAuth, optionalApiKeyAuth, type AuthenticatedRequest } from '../middlewares/apiKeyAuth';
+import {
+  requireApiKeyAuth,
+  optionalApiKeyAuth,
+  extractApiKey,
+  type AuthenticatedRequest,
+} from '../middlewares/apiKeyAuth';
 import { optionalAuthenticateToken } from './auth.routes';
-import { rateLimitMiddleware } from '../middlewares/rateLimitMiddleware';
 import { requireScopes } from '../middlewares/permissionMiddleware';
 import { API_SCOPES } from '../config/scopes';
 import {
@@ -14,6 +18,7 @@ import {
   feederStatsSchema,
 } from '../schemas/feeder.schemas';
 import { STATE_INDEX, validateAircraftState } from '../utils/aircraftState';
+import { validateApiKeyFormat } from '../utils/apiKeyGenerator';
 
 type InvalidState = Extract<ReturnType<typeof validateAircraftState>, { valid: false }>;
 
@@ -43,6 +48,32 @@ const ensureFeederWriteAccess = (allowLegacyFallback = false) => (
   });
 };
 
+const maybeAuthenticateFeederRequest = async (
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction,
+): Promise<void> => {
+  const apiKey = extractApiKey(req);
+  if (apiKey && validateApiKeyFormat(apiKey)) {
+    await optionalApiKeyAuth(req, res, next);
+    return;
+  }
+
+  if (apiKey) {
+    logger.warn('Ignoring feeder auth header with unexpected format', {
+      path: req.path,
+    });
+  }
+
+  req.apiKey = undefined;
+  req.auth = req.auth || {
+    authenticated: false,
+    type: 'anonymous',
+    scopes: [],
+  };
+  next();
+};
+
 const formatZodErrors = (error: ZodError) => error.issues.map((issue) => ({
   icao24: 'unknown',
   error: `${issue.path.join('.') || 'body'}: ${issue.message}`,
@@ -57,7 +88,6 @@ router.post(
   '/feeder/aircraft',
   requireApiKeyAuth,
   requireScopes(API_SCOPES.FEEDER_WRITE, API_SCOPES.AIRCRAFT_WRITE),
-  rateLimitMiddleware,
   async (req: AuthenticatedRequest, res: Response, _next: NextFunction) => {
     const parsedBody = feederAircraftBatchSchema.safeParse(req.body);
     if (!parsedBody.success) {
@@ -396,9 +426,8 @@ router.post(
  */
 router.post(
   '/feeder/stats',
-  optionalApiKeyAuth,
+  maybeAuthenticateFeederRequest,
   ensureFeederWriteAccess(true),
-  rateLimitMiddleware,
   async (req: AuthenticatedRequest, res: Response, _next: NextFunction) => {
     const parsedBody = feederStatsSchema.safeParse(req.body);
     if (!parsedBody.success) {
@@ -443,9 +472,8 @@ router.post(
  */
 router.put(
   '/feeder/last-seen',
-  optionalApiKeyAuth,
+  maybeAuthenticateFeederRequest,
   ensureFeederWriteAccess(true),
-  rateLimitMiddleware,
   async (req: AuthenticatedRequest, res: Response, _next: NextFunction) => {
     const parsedBody = feederLastSeenSchema.safeParse(req.body);
     if (!parsedBody.success) {
@@ -482,7 +510,6 @@ router.get(
   '/feeder/me',
   requireApiKeyAuth,
   requireScopes(API_SCOPES.FEEDER_READ),
-  rateLimitMiddleware,
   async (req: AuthenticatedRequest, res: Response, _next: NextFunction) => {
     try {
       // Get feeder by API key hash (works for both user-linked and standalone feeders)
