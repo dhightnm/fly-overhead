@@ -204,3 +204,66 @@ export function optionalPermissionCheck(...requiredScopes: string[]) {
     }
   };
 }
+
+/**
+ * Allow same-origin requests (React app) to bypass auth while requiring API keys for others.
+ * Ensures that anonymous third parties cannot access endpoints unless they originate from the UI.
+ */
+export function allowSameOriginOrApiKey(...requiredScopes: string[]) {
+  return async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      if (req.isSameOrigin) {
+        next();
+        return;
+      }
+
+      if (req.auth?.authenticated && req.apiKey?.scopes && hasAnyScope(req.apiKey.scopes, requiredScopes)) {
+        next();
+        return;
+      }
+
+      if (req.auth?.authenticated) {
+        logger.warn('API key lacks required scopes for protected endpoint', {
+          keyId: req.apiKey?.keyId,
+          requiredScopes,
+          userScopes: req.apiKey?.scopes,
+          path: req.path,
+        });
+        res.status(403).json({
+          error: {
+            code: 'INSUFFICIENT_PERMISSIONS',
+            message: 'Your API key does not have permission to access this resource.',
+            status: 403,
+            details: {
+              requiredScopes,
+              yourScopes: req.apiKey?.scopes || [],
+            },
+          },
+        });
+        return;
+      }
+
+      res.status(401).json({
+        error: {
+          code: 'AUTHENTICATION_REQUIRED',
+          message: 'This endpoint requires authentication unless accessed from the FlyOverhead web app.',
+          status: 401,
+        },
+      });
+    } catch (error) {
+      const err = error as Error;
+      logger.error('allowSameOriginOrApiKey middleware error', {
+        error: err.message,
+        stack: err.stack,
+        path: req.path,
+      });
+      res.status(500).json({
+        error: {
+          code: 'INTERNAL_ERROR',
+          message: 'An error occurred while checking permissions.',
+          status: 500,
+        },
+      });
+    }
+  };
+}

@@ -2,6 +2,7 @@
 import aircraftService from '../AircraftService';
 import postgresRepository from '../../repositories/PostgresRepository';
 import rateLimitManager from '../RateLimitManager';
+import redisAircraftCache from '../RedisAircraftCache';
 
 // Import the mocked module to get type-safe access to mocks
 import openSkyService from '../OpenSkyService';
@@ -76,6 +77,14 @@ jest.mock('../OpenSkyService', () => ({
 }));
 jest.mock('../../repositories/PostgresRepository');
 jest.mock('../RateLimitManager');
+jest.mock('../RedisAircraftCache', () => ({
+  __esModule: true,
+  default: {
+    getByIdentifier: jest.fn(),
+    cacheRecord: jest.fn(),
+    cacheStateArray: jest.fn(),
+  },
+}));
 jest.mock('../../routes/aircraft.routes', () => ({
   boundsCache: {
     flushAll: jest.fn(),
@@ -84,6 +93,7 @@ jest.mock('../../routes/aircraft.routes', () => ({
 const mockOpenSkyService = openSkyService as jest.Mocked<typeof openSkyService>;
 const mockPostgresRepository = postgresRepository as jest.Mocked<typeof postgresRepository>;
 const mockRateLimitManager = rateLimitManager as jest.Mocked<typeof rateLimitManager>;
+const mockRedisAircraftCache = redisAircraftCache as jest.Mocked<typeof redisAircraftCache>;
 jest.mock('../../utils/logger', () => ({
   debug: jest.fn(),
   warn: jest.fn(),
@@ -99,6 +109,8 @@ jest.mock('../WebSocketService', () => ({
 describe('AircraftService', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockRedisAircraftCache.getByIdentifier.mockResolvedValue(null);
+    mockRedisAircraftCache.cacheRecord.mockResolvedValue(undefined);
   });
 
   describe('fetchAndUpdateAllAircraft', () => {
@@ -167,6 +179,37 @@ describe('AircraftService', () => {
       expect(result).toBeDefined();
       expect(result?.icao24).toBe('abc123');
       expect(mockPostgresRepository.findAircraftByIdentifier).toHaveBeenCalledWith('abc123');
+      expect(mockRedisAircraftCache.cacheRecord).toHaveBeenCalledWith(expect.objectContaining({
+        icao24: 'abc123',
+      }), expect.any(Object));
+    });
+
+    it('returns database results when cache misses', async () => {
+      const mockAircraft = {
+        icao24: 'abc123',
+        callsign: 'TEST01',
+        last_contact: Math.floor(Date.now() / 1000),
+      };
+      mockRedisAircraftCache.getByIdentifier.mockResolvedValue(null);
+      mockPostgresRepository.findAircraftByIdentifier.mockResolvedValue([mockAircraft]);
+
+      const result = await aircraftService.getAircraftByIdentifier('abc123');
+
+      expect(result).toEqual(expect.objectContaining({ icao24: 'abc123' }));
+      expect(mockRedisAircraftCache.cacheRecord).toHaveBeenCalled();
+    });
+    it('should return aircraft from cache when available', async () => {
+      const cached = {
+        icao24: 'abc999',
+        callsign: 'CACHE01',
+        last_contact: Math.floor(Date.now() / 1000),
+      };
+      mockRedisAircraftCache.getByIdentifier.mockResolvedValue(cached as any);
+
+      const result = await aircraftService.getAircraftByIdentifier('CACHE01');
+
+      expect(result).toEqual(expect.objectContaining({ icao24: 'abc999' }));
+      expect(mockPostgresRepository.findAircraftByIdentifier).not.toHaveBeenCalled();
     });
 
     it('should return null when aircraft not found', async () => {

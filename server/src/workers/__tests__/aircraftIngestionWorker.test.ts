@@ -60,6 +60,13 @@ jest.mock('../../services/WebhookService', () => ({
   },
 }));
 
+jest.mock('../../services/RedisAircraftCache', () => ({
+  __esModule: true,
+  default: {
+    cacheStateArray: jest.fn().mockResolvedValue(undefined),
+  },
+}));
+
 jest.mock('../../utils/logger', () => ({
   info: jest.fn(),
   error: jest.fn(),
@@ -76,6 +83,8 @@ const mockedRedisManager = redisClientManager as unknown as {
   getClient: jest.MockedFunction<(name: string, url: string) => any>;
   disconnect: jest.MockedFunction<(name?: string) => Promise<void>>;
 };
+const mockedRedisAircraftCache = jest.requireMock('../../services/RedisAircraftCache')
+  .default as { cacheStateArray: jest.MockedFunction<any> };
 
 describe('aircraftIngestionWorker', () => {
   let mockRedisInstance: any;
@@ -83,6 +92,7 @@ describe('aircraftIngestionWorker', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     jest.useRealTimers();
+    mockedRedisAircraftCache.cacheStateArray.mockClear();
 
     // Create a mock Redis instance with all methods needed
     mockRedisInstance = {
@@ -166,6 +176,13 @@ describe('aircraftIngestionWorker', () => {
         false,
       );
       expect(mockedLiveStateStore.upsertState).toHaveBeenCalledWith(message.state);
+      expect(mockedRedisAircraftCache.cacheStateArray).toHaveBeenCalledWith(
+        message.state,
+        expect.objectContaining({
+          data_source: message.source,
+          source_priority: message.sourcePriority,
+        }),
+      );
     });
 
     it('should process a full batch of messages', async () => {
@@ -198,6 +215,7 @@ describe('aircraftIngestionWorker', () => {
 
       expect(count).toBe(5);
       expect(mockedPostgresRepository.upsertAircraftStateWithPriority).toHaveBeenCalledTimes(5);
+      expect(mockedRedisAircraftCache.cacheStateArray).toHaveBeenCalledTimes(5);
     });
 
     it('should handle invalid JSON messages gracefully', async () => {

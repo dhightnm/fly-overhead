@@ -101,40 +101,6 @@ async function ensureCompressionPolicy(
   ]);
 }
 
-async function convertAircraftStates(client: Client): Promise<void> {
-  console.log('Converting aircraft_states hypertable...');
-
-  const tableName = 'aircraft_states';
-  const alreadyHypertable = await isHypertable(client, tableName);
-
-  if (alreadyHypertable) {
-    console.log('aircraft_states already a hypertable, skipping conversion.');
-    await ensureCompressionConfig(client, tableName, 'last_contact DESC, id', 'icao24');
-    await ensureCompressionPolicy(client, 'aircraft_states', '7 days', 7);
-    return;
-  }
-
-  await client.query('ALTER TABLE aircraft_states ALTER COLUMN last_contact SET NOT NULL;');
-  await client.query('ALTER TABLE aircraft_states DROP CONSTRAINT IF EXISTS aircraft_states_pkey;');
-  await client.query('ALTER TABLE aircraft_states ADD CONSTRAINT aircraft_states_pkey PRIMARY KEY (id, last_contact);');
-  await client.query('ALTER TABLE aircraft_states DROP CONSTRAINT IF EXISTS aircraft_states_icao24_key;');
-  await client.query('DROP INDEX IF EXISTS aircraft_states_icao24_key;');
-  await client.query('DROP INDEX IF EXISTS aircraft_states_icao24_last_contact_key;');
-  await client.query('CREATE UNIQUE INDEX IF NOT EXISTS aircraft_states_icao24_last_contact_key ON aircraft_states (icao24, last_contact);');
-  await client.query(`
-    SELECT create_hypertable(
-      'aircraft_states',
-      'last_contact',
-      chunk_time_interval => 86400,
-      migrate_data => true,
-      if_not_exists => true,
-      create_default_indexes => false
-    );
-  `);
-  await ensureCompressionConfig(client, tableName, 'last_contact DESC, id', 'icao24');
-  await ensureCompressionPolicy(client, 'aircraft_states', '7 days', 7);
-}
-
 async function convertAircraftStatesHistory(client: Client): Promise<void> {
   console.log('Converting aircraft_states_history hypertable...');
 
@@ -241,7 +207,6 @@ async function main(): Promise<void> {
   await client.connect();
   try {
     await ensureExtensions(client);
-    await convertAircraftStates(client);
     await convertAircraftStatesHistory(client);
     await convertFlightRoutesCache(client);
     await convertFlightRoutesHistory(client);

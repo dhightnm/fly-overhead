@@ -87,6 +87,21 @@ export interface LiveStateConfig {
   minResultsBeforeDbFallback: number;
 }
 
+export interface AircraftCacheConfig {
+  enabled: boolean;
+  redisUrl: string;
+  prefix: string;
+  ttlSeconds: number;
+  warmerEnabled: boolean;
+  warmIntervalSeconds: number;
+  warmLookbackMinutes: number;
+  warmBatchSize: number;
+}
+
+export interface CacheConfig {
+  aircraft: AircraftCacheConfig;
+}
+
 export interface WebhookConfig {
   enabled: boolean;
   redisUrl: string;
@@ -131,6 +146,7 @@ export interface AppConfig {
   features: FeatureFlagsConfig;
   queue: QueueConfig;
   liveState: LiveStateConfig;
+  cache: CacheConfig;
   webhooks: WebhookConfig;
   auth: AuthConfig;
 }

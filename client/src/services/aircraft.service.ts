@@ -93,10 +93,11 @@ class AircraftService {
    */
   async searchAircraft(query: string): Promise<Aircraft | null> {
     try {
-      const response = await api.get<Aircraft>(
-        `/api/planes/${encodeURIComponent(query.trim())}`
-      );
-      return response.data;
+      const response = await api.get<{ results: Aircraft[] }>(`/api/search`, {
+        params: { q: query.trim() },
+      });
+      const first = response.data?.results?.[0];
+      return first || null;
     } catch (error) {
       return null;
     }
