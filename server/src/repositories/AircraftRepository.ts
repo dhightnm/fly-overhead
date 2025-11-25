@@ -1,6 +1,7 @@
 import pgPromise from 'pg-promise';
 import type { AircraftState } from '../types/database.types';
 import PostGISService from '../services/PostGISService';
+import logger from '../utils/logger';
 
 /**
  * Aircraft state array format from OpenSky API + enriched data:
@@ -371,6 +372,33 @@ class AircraftRepository {
         );
       `;
       await this.db.query(insertHistoryQuery, historyState);
+
+      const insertRawQuery = `
+        INSERT INTO aircraft_states_raw (
+          icao24, callsign, origin_country, time_position, last_contact,
+          longitude, latitude, baro_altitude, on_ground, velocity,
+          true_track, vertical_rate, sensors, geo_altitude, squawk,
+          spi, position_source, category, feeder_id, ingestion_timestamp, data_source, source_priority,
+          aircraft_type, aircraft_description, registration, emergency_status,
+          nav_qnh, nav_altitude_mcp, nav_heading, owner_operator, year_built, created_at
+        )
+        VALUES(
+          $1, TRIM($2), $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18,
+          $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32
+        );
+      `;
+      const lastContactSeconds = typeof state[4] === 'number'
+        ? state[4] as number
+        : null;
+      const rawCreatedAt = ingestionTimestamp
+        || (lastContactSeconds ? new Date(lastContactSeconds * 1000) : new Date());
+      const rawStatePayload = [...historyState, rawCreatedAt];
+      try {
+        await this.db.query(insertRawQuery, rawStatePayload);
+      } catch (error) {
+        const err = error as Error;
+        logger.debug('Failed to insert into aircraft_states_raw', { error: err.message });
+      }
     }
 
     // Upsert with priority handling: higher priority or fresher data overwrites existing records

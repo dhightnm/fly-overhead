@@ -389,6 +389,53 @@ class SchemaRepository {
   }
 
   /**
+   * Raw aircraft states hypertable for append-only ingestion
+   */
+  async createRawAircraftStatesTable(): Promise<void> {
+    const query = `
+      CREATE TABLE IF NOT EXISTS aircraft_states_raw (
+        id BIGSERIAL,
+        icao24 TEXT NOT NULL,
+        callsign TEXT,
+        origin_country TEXT,
+        time_position INT,
+        last_contact INT,
+        longitude FLOAT8,
+        latitude FLOAT8,
+        baro_altitude FLOAT8,
+        on_ground BOOLEAN,
+        velocity FLOAT8,
+        true_track FLOAT8,
+        vertical_rate FLOAT8,
+        sensors INT[],
+        geo_altitude FLOAT8,
+        squawk TEXT,
+        spi BOOLEAN,
+        position_source INT,
+        category INT,
+        feeder_id TEXT,
+        ingestion_timestamp TIMESTAMPTZ,
+        data_source TEXT,
+        source_priority INT,
+        aircraft_type TEXT,
+        aircraft_description TEXT,
+        registration TEXT,
+        emergency_status TEXT,
+        nav_qnh FLOAT8,
+        nav_altitude_mcp FLOAT8,
+        nav_heading FLOAT8,
+        owner_operator TEXT,
+        year_built TEXT,
+        created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (id, created_at)
+      );
+    `;
+    await this.db.query(query);
+
+    await this.ensureRawHypertable();
+  }
+
+  /**
    * Create flight routes cache table
    */
   async createFlightRoutesTable(): Promise<void> {
@@ -635,7 +682,12 @@ class SchemaRepository {
       CREATE INDEX IF NOT EXISTS idx_routes_history_departure_icao ON flight_routes_history(departure_icao);
       CREATE INDEX IF NOT EXISTS idx_routes_history_arrival_icao ON flight_routes_history(arrival_icao);
     `;
-    await this.db.query(historyQuery);
+    const historyIsHypertable = await this.isHypertable('flight_routes_history');
+    if (historyIsHypertable) {
+      logger.info('flight_routes_history is a Timescale hypertable - skipping legacy column migrations');
+    } else {
+      await this.db.query(historyQuery);
+    }
 
     logger.info('Flight routes tables created or already exist');
   }
@@ -1124,6 +1176,7 @@ class SchemaRepository {
     await this.createAircraftStatesIndexes();
     await this.createHistoryTable();
     await this.createHistoryTableIndexes();
+    await this.createRawAircraftStatesTable();
     await this.createFlightRoutesTable();
     await this.createUsersTable();
     await this.addPasswordColumnToUsers(); // Migration for existing tables
@@ -1148,6 +1201,77 @@ class SchemaRepository {
     await this.initializeWebhookSchema();
 
     logger.info('Database initialized successfully with performance indexes');
+  }
+
+  private async ensureRawHypertable(): Promise<void> {
+    const tableName = 'aircraft_states_raw';
+    const hypertable = await this.isHypertable(tableName);
+    if (!hypertable) {
+      try {
+        await this.db.query(`
+          SELECT create_hypertable(
+            '${tableName}',
+            'created_at',
+            chunk_time_interval => INTERVAL '1 day',
+            if_not_exists => true,
+            create_default_indexes => false
+          );
+        `);
+      } catch (error) {
+        const err = error as Error;
+        logger.debug('aircraft_states_raw hypertable info', { error: err.message });
+      }
+    }
+
+    try {
+      await this.db.query(`
+        ALTER TABLE ${tableName} SET (
+          timescaledb.compress = true,
+          timescaledb.compress_orderby = 'created_at DESC',
+          timescaledb.compress_segmentby = 'icao24'
+        );
+      `);
+    } catch (error) {
+      const err = error as Error;
+      logger.debug('aircraft_states_raw compression config info', { error: err.message });
+    }
+
+    try {
+      await this.db.query(`
+        SELECT add_compression_policy('${tableName}'::regclass, INTERVAL '30 days');
+      `);
+    } catch (error) {
+      const err = error as Error;
+      logger.debug('aircraft_states_raw compression policy info', { error: err.message });
+    }
+
+    await this.db.query(`
+      CREATE INDEX IF NOT EXISTS idx_aircraft_states_raw_icao_created_at
+      ON ${tableName}(icao24, created_at DESC);
+    `);
+    await this.db.query(`
+      CREATE INDEX IF NOT EXISTS idx_aircraft_states_raw_last_contact
+      ON ${tableName}(last_contact DESC);
+    `);
+  }
+
+  private async isHypertable(tableName: string): Promise<boolean> {
+    try {
+      const result = await this.db.oneOrNone<{ exists: string }>(
+        `
+          SELECT 1 as exists
+          FROM timescaledb_information.hypertables
+          WHERE hypertable_name = $1
+          LIMIT 1;
+        `,
+        [tableName],
+      );
+      return Boolean(result);
+    } catch (error) {
+      // If the information schema is unavailable (Timescale not installed yet),
+      // treat the table as a regular table so migrations continue to run.
+      return false;
+    }
   }
 }
 

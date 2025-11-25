@@ -7,6 +7,7 @@ export interface AircraftQueueMessage {
   source: string;
   sourcePriority: number;
   ingestionTimestamp: string;
+  feederId?: string | null;
   retries?: number;
   availableAt?: number;
 }

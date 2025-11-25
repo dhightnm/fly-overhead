@@ -66,6 +66,10 @@ class PostgresRepository {
     return this.schema.createHistoryTableIndexes();
   }
 
+  async createRawAircraftStatesTable(): Promise<void> {
+    return this.schema.createRawAircraftStatesTable();
+  }
+
   async createFlightRoutesTable(): Promise<void> {
     return this.schema.createFlightRoutesTable();
   }

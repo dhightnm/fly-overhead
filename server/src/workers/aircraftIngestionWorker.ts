@@ -6,6 +6,7 @@ import type { AircraftQueueMessage } from '../services/QueueService';
 import liveStateStore from '../services/LiveStateStore';
 import webhookService from '../services/WebhookService';
 import redisClientManager from '../lib/redis/RedisClientManager';
+import redisAircraftCache from '../services/RedisAircraftCache';
 
 const {
   queue: {
@@ -142,6 +143,13 @@ export async function processBatch(messages: AircraftQueueMessage[]): Promise<vo
         false,
       );
       liveStateStore.upsertState(message.state);
+      redisAircraftCache.cacheStateArray(message.state, {
+        data_source: message.source,
+        source_priority: message.sourcePriority,
+        ingestion_timestamp: ingestionTimestamp.toISOString(),
+      }).catch((error: Error) => {
+        logger.debug('Failed to cache aircraft state', { error: error.message });
+      });
       webhookService.publishAircraftPositionUpdate(
         message.state,
         message.source,

@@ -18,11 +18,13 @@ import logger from '../utils/logger';
 import { mapAircraftTypeToCategory } from '../utils/aircraftCategoryMapper';
 import { requireApiKeyAuth, optionalApiKeyAuth, type AuthenticatedRequest } from '../middlewares/apiKeyAuth';
 import { rateLimitMiddleware } from '../middlewares/rateLimitMiddleware';
-import { optionalPermissionCheck, requireScopes } from '../middlewares/permissionMiddleware';
+import { allowSameOriginOrApiKey, requireScopes } from '../middlewares/permissionMiddleware';
 import { API_SCOPES } from '../config/scopes';
 import config from '../config';
 import { STATE_INDEX, applyStateToRecord, type DbAircraftRow } from '../utils/aircraftState';
 import { flightsQuerySchema } from '../schemas/aircraft.schemas';
+import redisAircraftCache from '../services/RedisAircraftCache';
+import aircraftCacheWarmer from '../services/AircraftCacheWarmer';
 
 const router = Router();
 const requireAircraftRead = requireScopes(API_SCOPES.AIRCRAFT_READ, API_SCOPES.READ);
@@ -179,7 +181,7 @@ const maybeOverrideWithArrivalLocation = (aircraft: any, route: any, dataAgeSeco
 router.get(
   '/flights',
   optionalApiKeyAuth,
-  optionalPermissionCheck(API_SCOPES.AIRCRAFT_READ, API_SCOPES.READ),
+  allowSameOriginOrApiKey(API_SCOPES.AIRCRAFT_READ, API_SCOPES.READ),
   rateLimitMiddleware,
   async (req: Request, res: Response, next: NextFunction) => {
     const parsed = flightsQuerySchema.safeParse(req.query);
@@ -210,6 +212,18 @@ router.get(
 
         liveStateStore.upsertStates(preparedStates);
 
+        await Promise.all(
+          preparedStates.map((state) => redisAircraftCache.cacheStateArray(state, {
+            data_source: 'airplanes.live',
+            source_priority: 20,
+          }).catch((error: Error) => {
+            logger.debug('Failed to cache airplanes.live state', {
+              icao24: state[0],
+              error: error.message,
+            });
+          })),
+        );
+
         if (queueService.isEnabled()) {
           await queueService.enqueueAircraftStates(
             preparedStates.map((state) => ({
@@ -238,6 +252,25 @@ router.get(
       } = createBoundingBox(latitude, longitude, clampedRadius);
       const nowSeconds = Math.floor(Date.now() / 1000);
       const recentThreshold = nowSeconds - BOUNDS_RECENT_WINDOW_SECONDS;
+      const cachedAircraft = await redisAircraftCache.getStatesInBounds(
+        latMin,
+        lonMin,
+        latMax,
+        lonMax,
+        recentThreshold,
+        config.liveState.minResultsBeforeDbFallback,
+      );
+
+      if (cachedAircraft.length >= config.liveState.minResultsBeforeDbFallback) {
+        return res.json({
+          success: true,
+          aircraft: cachedAircraft,
+          total: cachedAircraft.length,
+          timestamp: nowSeconds,
+          source: 'cache',
+        });
+      }
+
       const liveStateSamples = config.liveState.enabled
         ? liveStateStore.getStatesInBounds(latMin, lonMin, latMax, lonMax, recentThreshold)
         : [];
@@ -335,8 +368,8 @@ router.get(
  */
 router.get(
   '/planes/:identifier',
-  requireApiKeyAuth,
-  requireAircraftRead,
+  optionalApiKeyAuth,
+  allowSameOriginOrApiKey(API_SCOPES.AIRCRAFT_READ, API_SCOPES.READ),
   rateLimitMiddleware,
   async (req: Request, res: Response, next: NextFunction) => {
     const { identifier } = req.params;
@@ -502,8 +535,8 @@ const withTimeout = async <T>(promise: Promise<T>, timeoutMs: number): Promise<T
  */
 router.get(
   '/route/:identifier',
-  requireApiKeyAuth,
-  requireAircraftRead,
+  optionalApiKeyAuth,
+  allowSameOriginOrApiKey(API_SCOPES.AIRCRAFT_READ, API_SCOPES.READ),
   rateLimitMiddleware,
   async (req: Request, res: Response, next: NextFunction) => {
     const { identifier } = req.params;
@@ -833,6 +866,56 @@ router.get(
 );
 
 /**
+ * Search current aircraft by ICAO24/callsign/registration
+ */
+router.get(
+  '/search',
+  optionalApiKeyAuth,
+  allowSameOriginOrApiKey(API_SCOPES.AIRCRAFT_READ, API_SCOPES.READ),
+  rateLimitMiddleware,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { q } = req.query;
+      if (!q || typeof q !== 'string') {
+        return res.status(400).json({ error: 'Missing search query ?q=' });
+      }
+
+      const cached = await redisAircraftCache.getByIdentifier(q);
+      if (cached) {
+        return res.json({
+          source: 'cache',
+          results: [cached],
+        });
+      }
+
+      const rows = await postgresRepository.findAircraftByIdentifier(q);
+      if (!rows.length) {
+        return res.json({ source: 'database', results: [] });
+      }
+
+      const record = rows[0];
+      redisAircraftCache.cacheRecord(record, {
+        data_source: record.data_source,
+        source_priority: record.source_priority,
+        ingestion_timestamp: record.ingestion_timestamp
+          ? new Date(record.ingestion_timestamp).toISOString()
+          : null,
+        feeder_id: record.feeder_id,
+      }).catch((error: Error) => {
+        logger.debug('Failed to cache aircraft search fallback', { error: error.message });
+      });
+
+      return res.json({
+        source: 'database',
+        results: [record],
+      });
+    } catch (err) {
+      return next(err);
+    }
+  },
+);
+
+/**
  * Health check endpoint
  */
 router.get('/health', async (_req: Request, res: Response) => {
@@ -960,6 +1043,17 @@ router.get(
       return next(err);
     }
   },
+);
+
+router.get(
+  '/diagnostics/cache',
+  requireApiKeyAuth,
+  requireAircraftRead,
+  rateLimitMiddleware,
+  async (_req: Request, res: Response) => res.json({
+    cache: redisAircraftCache.getMetrics(),
+    warmer: aircraftCacheWarmer.getStatus(),
+  }),
 );
 
 /**

@@ -5,6 +5,7 @@ interface IndexDefinition {
   name: string;
   query: string;
   description: string;
+  tableName: string;
 }
 
 interface Bounds {
@@ -83,12 +84,14 @@ class PostGISService {
         query: `CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_aircraft_states_geom 
                 ON aircraft_states USING GIST(geom);`,
         description: 'Spatial index on aircraft_states',
+        tableName: 'aircraft_states',
       },
       {
         name: 'idx_aircraft_history_geom',
         query: `CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_aircraft_history_geom 
                 ON aircraft_states_history USING GIST(geom);`,
         description: 'Spatial index on aircraft_states_history',
+        tableName: 'aircraft_states_history',
       },
     ];
 
@@ -99,6 +102,7 @@ class PostGISService {
         query: `CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_aircraft_history_geom_time 
                 ON aircraft_states_history(icao24, created_at);`,
         description: 'Composite index for time-based spatial queries',
+        tableName: 'aircraft_states_history',
       },
     ];
 
@@ -114,7 +118,8 @@ class PostGISService {
 
         if (!exists) {
           logger.info(`Creating ${index.description}...`);
-          await this.db.query(index.query);
+          const query = await this.getIndexQuery(index);
+          await this.db.query(query);
           logger.info(`${index.name} created successfully`);
         } else {
           logger.debug(`${index.name} already exists`);
@@ -146,7 +151,8 @@ class PostGISService {
 
         if (!exists) {
           logger.info(`Creating optional ${index.description}...`);
-          await this.db.query(index.query);
+          const query = await this.getIndexQuery(index);
+          await this.db.query(query);
           logger.info(`${index.name} created successfully`);
         } else {
           logger.debug(`${index.name} already exists`);
@@ -432,6 +438,30 @@ class PostGISService {
     `;
 
     return this.db.query(query, [airportLat, airportLon, radiusKm * 1000]);
+  }
+
+  private async isHypertable(tableName: string): Promise<boolean> {
+    const result = await this.db.oneOrNone<{ exists: string }>(
+      `
+        SELECT 1 as exists
+        FROM timescaledb_information.hypertables
+        WHERE hypertable_name = $1
+        LIMIT 1;
+      `,
+      [tableName],
+    );
+    return Boolean(result);
+  }
+
+  private async getIndexQuery(index: IndexDefinition): Promise<string> {
+    if (!index.tableName) {
+      return index.query;
+    }
+    const hypertable = await this.isHypertable(index.tableName);
+    if (hypertable && index.query.includes('CONCURRENTLY')) {
+      return index.query.replace('CREATE INDEX CONCURRENTLY', 'CREATE INDEX');
+    }
+    return index.query;
   }
 }
 

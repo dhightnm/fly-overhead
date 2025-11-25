@@ -9,6 +9,7 @@ import config from '../config';
 import logger from '../utils/logger';
 import { mapAircraftType } from '../utils/aircraftCategoryMapper';
 import initializeAirportSchema from '../database/airportSchema';
+import redisAircraftCache from './RedisAircraftCache';
 
 interface BoundingBox {
   lamin: number;
@@ -190,6 +191,14 @@ class AircraftService {
     try {
       logger.info(`Searching for aircraft: ${identifier} (checking database)`);
 
+      const cached = await redisAircraftCache.getByIdentifier(identifier);
+      if (cached) {
+        return {
+          ...cached,
+          cacheHit: true,
+        };
+      }
+
       // Query database directly instead of calling OpenSky getAllStates()
       // This avoids fetching 6000+ aircraft just to find one
       const results = await postgresRepository.findAircraftByIdentifier(identifier);
@@ -200,6 +209,16 @@ class AircraftService {
       }
 
       const aircraft = results[0];
+      redisAircraftCache.cacheRecord(aircraft, {
+        data_source: aircraft.data_source,
+        source_priority: aircraft.source_priority,
+        ingestion_timestamp: aircraft.ingestion_timestamp
+          ? new Date(aircraft.ingestion_timestamp).toISOString()
+          : null,
+        feeder_id: aircraft.feeder_id,
+      }).catch((error: Error) => {
+        logger.debug('Failed to refresh aircraft cache from database', { error: error.message });
+      });
       const now = Math.floor(Date.now() / 1000);
       const lastContact = typeof aircraft.last_contact === 'number' ? aircraft.last_contact : null;
       const dataAgeSeconds = lastContact !== null ? now - lastContact : null;

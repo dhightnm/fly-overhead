@@ -96,6 +96,32 @@ const liveStateCleanupSeconds = Math.max(15, parseNumber(process.env.LIVE_STATE_
 const liveStateMaxEntries = Math.max(1000, parseNumber(process.env.LIVE_STATE_MAX_ENTRIES, 50000));
 const liveStateMinResults = Math.max(0, parseNumber(process.env.LIVE_STATE_MIN_RESULTS_BEFORE_DB, 25));
 
+const aircraftCacheEnabled = resolveBooleanFlag(
+  process.env.ENABLE_AIRCRAFT_REDIS_CACHE,
+  process.env.DISABLE_AIRCRAFT_REDIS_CACHE,
+  true,
+);
+const aircraftCacheRedisUrl = process.env.AIRCRAFT_CACHE_REDIS_URL || redisUrl;
+const aircraftCachePrefix = process.env.AIRCRAFT_CACHE_PREFIX || 'flyoverhead:aircraft';
+const aircraftCacheTtlSeconds = Math.max(60, parseNumber(process.env.AIRCRAFT_CACHE_TTL_SECONDS, 600));
+const aircraftCacheWarmerEnabled = resolveBooleanFlag(
+  process.env.ENABLE_AIRCRAFT_CACHE_WARMER,
+  process.env.DISABLE_AIRCRAFT_CACHE_WARMER,
+  true,
+);
+const aircraftCacheWarmIntervalSeconds = Math.max(
+  60,
+  parseNumber(process.env.AIRCRAFT_CACHE_WARM_INTERVAL_SECONDS, 300),
+);
+const aircraftCacheWarmLookbackMinutes = Math.max(
+  1,
+  parseNumber(process.env.AIRCRAFT_CACHE_WARM_LOOKBACK_MINUTES, 15),
+);
+const aircraftCacheWarmBatchSize = Math.max(
+  50,
+  parseNumber(process.env.AIRCRAFT_CACHE_WARM_BATCH_SIZE, 500),
+);
+
 const webhooksEnabled = resolveBooleanFlag(
   process.env.ENABLE_WEBHOOKS,
   process.env.DISABLE_WEBHOOKS,
@@ -251,6 +277,18 @@ const config: AppConfig = {
     cleanupIntervalSeconds: liveStateCleanupSeconds,
     maxEntries: liveStateMaxEntries,
     minResultsBeforeDbFallback: liveStateMinResults,
+  },
+  cache: {
+    aircraft: {
+      enabled: aircraftCacheEnabled,
+      redisUrl: aircraftCacheRedisUrl,
+      prefix: aircraftCachePrefix,
+      ttlSeconds: aircraftCacheTtlSeconds,
+      warmerEnabled: aircraftCacheWarmerEnabled,
+      warmIntervalSeconds: aircraftCacheWarmIntervalSeconds,
+      warmLookbackMinutes: aircraftCacheWarmLookbackMinutes,
+      warmBatchSize: aircraftCacheWarmBatchSize,
+    },
   },
   webhooks: {
     enabled: webhooksEnabled,

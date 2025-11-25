@@ -15,6 +15,7 @@ import errorHandler from './middlewares/errorHandler';
 import requestLogger from './middlewares/requestLogger';
 import logger from './utils/logger';
 import postgresRepository from './repositories/PostgresRepository';
+import aircraftCacheWarmer from './services/AircraftCacheWarmer';
 
 // API Routes - All migrated to TypeScript
 import authRoutes from './routes/auth.routes';
@@ -29,6 +30,7 @@ const app = express();
 const server = createServer(app);
 let ingestionWorkerStarted = false;
 let webhookDispatcherStarted = false;
+let cacheWarmerStarted = false;
 let shuttingDown = false;
 
 // Configure CORS
@@ -260,6 +262,14 @@ async function startServer(): Promise<void> {
       } else {
         logger.info('Background route backfill disabled via configuration');
       }
+
+      if (config.cache.aircraft.warmerEnabled) {
+        aircraftCacheWarmer.start();
+        cacheWarmerStarted = true;
+        logger.info('Aircraft cache warmer started');
+      } else {
+        logger.info('Aircraft cache warmer disabled via configuration');
+      }
     }
 
     if (config.queue.enabled && config.queue.spawnWorkerInProcess) {
@@ -309,6 +319,10 @@ async function gracefulShutdown(signal: string): Promise<void> {
     conusPollingService.stop();
   } catch (error) {
     logger.warn('Error stopping conusPollingService', { error: (error as Error).message });
+  }
+
+  if (cacheWarmerStarted) {
+    aircraftCacheWarmer.stop();
   }
 
   const stopTasks: Promise<any>[] = [];
