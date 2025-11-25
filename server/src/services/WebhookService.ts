@@ -1,5 +1,5 @@
 import crypto from 'crypto';
-import Redis from 'ioredis';
+import type Redis from 'ioredis';
 import config from '../config';
 import postgresRepository from '../repositories/PostgresRepository';
 import logger from '../utils/logger';
@@ -7,6 +7,7 @@ import webhookQueueService, { type WebhookQueueMessage } from './WebhookQueueSer
 import { mapStateArrayToRecord } from '../utils/aircraftState';
 import type { AircraftStateArray } from '../types/aircraftState.types';
 import type { WebhookSubscription } from '../types/database.types';
+import redisClientManager from '../lib/redis/RedisClientManager';
 
 interface PublishOptions {
   version?: string;
@@ -24,25 +25,9 @@ class WebhookService {
   private readonly pubSubChannel = 'flyoverhead:events';
 
   constructor() {
-    // Initialize Redis pub/sub client for real-time event broadcasting
     if (config.webhooks.enabled) {
-      this.redisPub = new Redis(config.webhooks.redisUrl, {
-        maxRetriesPerRequest: null,
-        enableReadyCheck: true,
-        lazyConnect: true,
-      });
-
-      this.redisPub.on('connect', () => {
-        logger.info('WebhookService Redis pub/sub connected', { channel: this.pubSubChannel });
-      });
-
-      this.redisPub.on('error', (error) => {
-        logger.error('WebhookService Redis pub/sub error', { error: error.message });
-      });
-
-      this.redisPub.connect().catch((error) => {
-        logger.warn('WebhookService failed to connect Redis pub/sub', { error: error.message });
-      });
+      this.redisPub = redisClientManager.getClient('webhook:pubsub', config.webhooks.redisUrl);
+      logger.info('WebhookService Redis pub/sub connected', { channel: this.pubSubChannel });
     }
   }
 
@@ -211,6 +196,7 @@ class WebhookService {
       attempt: 0,
       maxAttempts: subscription.delivery_max_attempts || config.webhooks.maxAttempts,
       backoffMs: subscription.delivery_backoff_ms || config.webhooks.backoffMs,
+      rateLimitPerMinute: subscription.rate_limit_per_minute || config.webhooks.subscriberRateLimitPerMinute,
     };
   }
 

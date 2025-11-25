@@ -4,6 +4,7 @@ import rateLimitManager from '../services/RateLimitManager';
 import webSocketService from '../services/WebSocketService';
 import liveStateStore from '../services/LiveStateStore';
 import queueService from '../services/QueueService';
+import webhookQueueService from '../services/WebhookQueueService';
 import config from '../config';
 import logger from '../utils/logger';
 
@@ -139,8 +140,13 @@ router.get('/opensky-status', (_req: Request, res: Response) => {
 /**
  * Cache status endpoint - shows LiveStateStore cache statistics
  */
-router.get('/cache-status', (_req: Request, res: Response) => {
+router.get('/cache-status', async (_req: Request, res: Response) => {
   try {
+    const [queueStats, webhookStats] = await Promise.all([
+      queueService.getStats(),
+      webhookQueueService.getStats(),
+    ]);
+
     res.json({
       timestamp: new Date().toISOString(),
       liveStateStore: {
@@ -153,6 +159,14 @@ router.get('/cache-status', (_req: Request, res: Response) => {
       queue: {
         enabled: queueService.isEnabled(),
         queueKey: queueService.getQueueKey(),
+        ...queueStats,
+        health: queueService.getHealth(),
+      },
+      webhookQueue: {
+        enabled: webhookQueueService.isEnabled(),
+        queueKey: webhookQueueService.getQueueKey(),
+        ...webhookStats,
+        health: webhookQueueService.getHealth(),
       },
     });
   } catch (error) {

@@ -1,42 +1,49 @@
-import Redis from 'ioredis';
+import type Redis from 'ioredis';
 import config from '../config';
 import logger from '../utils/logger';
 import postgresRepository from '../repositories/PostgresRepository';
 import type { AircraftQueueMessage } from '../services/QueueService';
 import liveStateStore from '../services/LiveStateStore';
 import webhookService from '../services/WebhookService';
+import redisClientManager from '../lib/redis/RedisClientManager';
 
 const {
   queue: {
-    redisUrl, key: queueKey, batchSize, pollIntervalMs,
+    redisUrl,
+    key: queueKey,
+    dlqKey,
+    delayedKey,
+    batchSize,
+    pollIntervalMs,
+    maxAttempts,
+    retryBackoffMs,
+    retryJitterMs,
+    delayedPromotionBatchSize,
   },
 } = config;
 
-const MAX_RETRIES = 3;
 let running = true;
 let pollPromise: Promise<void> | null = null;
 
 export function createRedisClient(): Redis {
-  const client = new Redis(redisUrl, {
-    maxRetriesPerRequest: null,
-    enableReadyCheck: true,
-  });
-
-  client.on('connect', () => {
-    logger.info('Ingestion worker connected to Redis', { redisUrl, queueKey });
-  });
-
-  client.on('error', (error) => {
-    logger.error('Ingestion worker Redis error', { error: error.message });
-  });
-
+  const client = redisClientManager.getClient('queue:worker:ingestion', redisUrl);
+  logger.info('Ingestion worker connected to Redis', { redisUrl, queueKey });
   return client;
 }
 
 // Keep mutable for runtime assignment
-let redis: Redis | null = null;
+let redis: ReturnType<typeof createRedisClient> | null = null;
 
 type QueueResult = null | AircraftQueueMessage;
+
+async function scheduleDelayed(
+  message: AircraftQueueMessage,
+  availableAt: number,
+): Promise<void> {
+  if (!redis) return;
+  const payload = JSON.stringify({ ...message, availableAt });
+  await redis.zadd(delayedKey, availableAt, payload);
+}
 
 export async function fetchMessage(timeoutSeconds = 5): Promise<QueueResult> {
   if (!redis || !running) return null;
@@ -45,24 +52,74 @@ export async function fetchMessage(timeoutSeconds = 5): Promise<QueueResult> {
     return null;
   }
   try {
-    return JSON.parse(result[1]) as AircraftQueueMessage;
+    const message = JSON.parse(result[1]) as AircraftQueueMessage;
+    if (message.availableAt && message.availableAt > Date.now()) {
+      await scheduleDelayed(message, message.availableAt);
+      return null;
+    }
+    return message;
   } catch (error) {
     logger.error('Failed to parse queue message', { error: (error as Error).message });
     return null;
   }
 }
 
-export async function requeueMessage(message: AircraftQueueMessage): Promise<void> {
+function calculateRetryDelay(attempt: number): number {
+  const exponential = retryBackoffMs * (2 ** (attempt - 1));
+  const jitter = retryJitterMs > 0
+    ? Math.floor(Math.random() * retryJitterMs)
+    : 0;
+  return exponential + jitter;
+}
+
+async function moveToDlq(message: AircraftQueueMessage, error?: Error): Promise<void> {
+  if (!redis) return;
+  const payload = JSON.stringify({
+    failedAt: new Date().toISOString(),
+    error: error?.message,
+    message,
+  });
+  await redis.lpush(dlqKey, payload);
+  logger.error('Moved aircraft message to DLQ after max retries', {
+    icao24: message.state?.[0],
+    dlqKey,
+  });
+}
+
+export async function requeueMessage(message: AircraftQueueMessage, error?: Error): Promise<void> {
+  if (!redis) return;
   const retries = (message.retries || 0) + 1;
-  if (retries > MAX_RETRIES) {
-    logger.error('Dropping aircraft message after max retries', { icao24: message.state?.[0], retries });
+  if (retries > maxAttempts) {
+    await moveToDlq(message, error);
     return;
   }
 
-  if (!redis) return;
+  const delay = calculateRetryDelay(retries);
+  const availableAt = Date.now() + delay;
+  await scheduleDelayed({ ...message, retries }, availableAt);
+  logger.warn('Scheduled aircraft message retry', {
+    icao24: message.state?.[0],
+    retries,
+    delayMs: delay,
+  });
+}
 
-  await redis.rpush(queueKey, JSON.stringify({ ...message, retries }));
-  logger.warn('Re-queued aircraft message for retry', { icao24: message.state?.[0], retries });
+async function promoteDelayedMessages(limit: number): Promise<number> {
+  if (!redis) return 0;
+  const now = Date.now();
+  const due = await redis.zrangebyscore(delayedKey, 0, now, 'LIMIT', 0, limit);
+  if (!due.length) {
+    return 0;
+  }
+
+  const pipeline = redis.pipeline();
+  due.forEach((payload) => {
+    pipeline.lpush(queueKey, payload);
+    pipeline.zrem(delayedKey, payload);
+  });
+  await pipeline.exec();
+  logger.debug('Promoted delayed aircraft messages', { count: due.length });
+  return due.length;
 }
 
 export async function processBatch(messages: AircraftQueueMessage[]): Promise<void> {
@@ -101,7 +158,7 @@ export async function processBatch(messages: AircraftQueueMessage[]): Promise<vo
         error: (error as Error).message,
         icao24: message.state?.[0],
       });
-      await requeueMessage(message);
+      await requeueMessage(message, error as Error);
     }
   });
 
@@ -117,6 +174,7 @@ export async function processBatch(messages: AircraftQueueMessage[]): Promise<vo
 export async function processQueueIteration(): Promise<number> {
   const messages: AircraftQueueMessage[] = [];
   try {
+    await promoteDelayedMessages(delayedPromotionBatchSize);
     // Fetch up to batchSize messages
     while (messages.length < batchSize) {
       // Use a shorter timeout for subsequent messages in the batch to keep things moving
@@ -160,7 +218,7 @@ export async function stopAircraftIngestionWorker(): Promise<void> {
   running = false;
   if (redis) {
     try {
-      await redis.quit();
+      await redisClientManager.disconnect('queue:worker:ingestion');
     } catch (error) {
       logger.warn('Error closing Redis connection in ingestion worker', { error: (error as Error).message });
     }

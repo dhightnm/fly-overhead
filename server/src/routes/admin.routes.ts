@@ -6,7 +6,7 @@ import postgresRepository from '../repositories/PostgresRepository';
 import logger from '../utils/logger';
 import { generateApiKey } from '../utils/apiKeyGenerator';
 import { authenticateToken } from './auth.routes';
-import { getRateLimitStatusHandler } from '../middlewares/rateLimitMiddleware';
+import { rateLimitMiddleware, getRateLimitStatusHandler } from '../middlewares/rateLimitMiddleware';
 import config from '../config';
 import { createApiKeySchema, listApiKeysSchema } from '../schemas/admin.schemas';
 
@@ -23,7 +23,7 @@ interface AuthenticatedRequest extends Request {
  * POST /api/admin/keys
  * Create a new API key
  */
-router.post('/keys', authenticateToken, async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+router.post('/keys', authenticateToken, rateLimitMiddleware, async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
   try {
     const {
       name, description, type, scopes, expiresAt,
@@ -85,7 +85,7 @@ router.post('/keys', authenticateToken, async (req: AuthenticatedRequest, res: R
  * GET /api/admin/keys
  * List all API keys for the authenticated user
  */
-router.get('/keys', authenticateToken, async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+router.get('/keys', authenticateToken, rateLimitMiddleware, async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
   try {
     const {
       status, type, limit, offset,
@@ -134,7 +134,7 @@ router.get('/keys', authenticateToken, async (req: AuthenticatedRequest, res: Re
  * GET /api/admin/keys/:keyId
  * Get details of a specific API key
  */
-router.get('/keys/:keyId', authenticateToken, async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+router.get('/keys/:keyId', authenticateToken, rateLimitMiddleware, async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
   try {
     const { keyId } = req.params;
 
@@ -187,7 +187,7 @@ router.get('/keys/:keyId', authenticateToken, async (req: AuthenticatedRequest, 
  * PUT /api/admin/keys/:keyId
  * Update an API key (name, description, scopes)
  */
-router.put('/keys/:keyId', authenticateToken, async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+router.put('/keys/:keyId', authenticateToken, rateLimitMiddleware, async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
   try {
     const { keyId } = req.params;
     const { name, description, scopes } = req.body;
@@ -249,7 +249,7 @@ router.put('/keys/:keyId', authenticateToken, async (req: AuthenticatedRequest, 
  * DELETE /api/admin/keys/:keyId
  * Revoke an API key
  */
-router.delete('/keys/:keyId', authenticateToken, async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+router.delete('/keys/:keyId', authenticateToken, rateLimitMiddleware, async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
   try {
     const { keyId } = req.params;
     const { reason } = req.body;
@@ -300,6 +300,6 @@ router.delete('/keys/:keyId', authenticateToken, async (req: AuthenticatedReques
  * GET /api/admin/rate-limit-status
  * Get current rate limit status for authenticated user/key
  */
-router.get('/rate-limit-status', authenticateToken, getRateLimitStatusHandler as any);
+router.get('/rate-limit-status', authenticateToken, rateLimitMiddleware, getRateLimitStatusHandler as any);
 
 export default router;

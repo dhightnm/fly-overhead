@@ -9,17 +9,22 @@ import type { AuthenticatedRequest } from './apiKeyAuth';
  * Enforces rate limits based on API key tier or IP address
  * Development keys and admin scopes bypass rate limits
  */
+type MaybeAuthenticatedRequest = AuthenticatedRequest & { user?: { userId: number } };
+
 export async function rateLimitMiddleware(
-  req: AuthenticatedRequest,
+  req: MaybeAuthenticatedRequest,
   res: Response,
   next: NextFunction,
 ): Promise<void> {
   try {
     // Determine identifier (API key ID or IP address)
-    const identifier = req.apiKey?.keyId || req.ip || 'unknown';
+    const userIdentifier = req.user?.userId ? `user:${req.user.userId}` : undefined;
+    const identifier = req.apiKey?.keyId || userIdentifier || req.ip || 'unknown';
 
     // If same-origin request (web app), use 'webapp' tier for better limits
-    const keyType = req.isSameOrigin ? 'webapp' : req.apiKey?.type;
+    const keyType = req.isSameOrigin
+      ? 'webapp'
+      : req.apiKey?.type || (req.user ? 'webapp' : undefined);
     const scopes = req.apiKey?.scopes;
 
     // Check rate limit

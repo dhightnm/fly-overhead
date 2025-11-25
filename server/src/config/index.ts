@@ -79,8 +79,18 @@ const liveStateEnabled = resolveBooleanFlag(
 
 const redisUrl = process.env.REDIS_URL || 'redis://127.0.0.1:6379';
 const queueKey = process.env.QUEUE_KEY || 'flyoverhead:aircraft_ingest';
+const queueDlqKey = process.env.QUEUE_DLQ_KEY || `${queueKey}:dlq`;
+const queueDelayedKey = process.env.QUEUE_DELAYED_KEY || `${queueKey}:delayed`;
 const queueBatchSize = Math.max(10, parseNumber(process.env.QUEUE_BATCH_SIZE, 200));
 const queuePollIntervalMs = Math.max(250, parseNumber(process.env.QUEUE_POLL_INTERVAL_MS, 1000));
+const queueMaxAttempts = Math.max(1, parseNumber(process.env.QUEUE_MAX_ATTEMPTS, 5));
+const queueRetryBackoffMs = Math.max(100, parseNumber(process.env.QUEUE_RETRY_BASE_DELAY_MS, 5000));
+const queueRetryJitterMs = Math.max(0, parseNumber(process.env.QUEUE_RETRY_JITTER_MS, 750));
+const queueDelayedPromotionBatchSize = Math.max(
+  1,
+  parseNumber(process.env.QUEUE_DELAYED_PROMOTION_BATCH_SIZE, 100),
+);
+
 const liveStateTtlSeconds = Math.max(60, parseNumber(process.env.LIVE_STATE_TTL_SECONDS, 300));
 const liveStateCleanupSeconds = Math.max(15, parseNumber(process.env.LIVE_STATE_CLEANUP_INTERVAL_SECONDS, 60));
 const liveStateMaxEntries = Math.max(1000, parseNumber(process.env.LIVE_STATE_MAX_ENTRIES, 50000));
@@ -97,11 +107,30 @@ const enforceWebhookHttps = resolveBooleanFlag(
   true,
 );
 const webhookQueueKey = process.env.WEBHOOK_QUEUE_KEY || 'flyoverhead:webhooks';
+const webhookDelayedKey = process.env.WEBHOOK_QUEUE_DELAYED_KEY || `${webhookQueueKey}:delayed`;
+const webhookDlqKey = process.env.WEBHOOK_QUEUE_DLQ_KEY || `${webhookQueueKey}:dlq`;
 const webhookBatchSize = Math.max(1, parseNumber(process.env.WEBHOOK_QUEUE_BATCH_SIZE, 50));
 const webhookPollIntervalMs = Math.max(250, parseNumber(process.env.WEBHOOK_QUEUE_POLL_INTERVAL_MS, 1000));
 const webhookMaxAttempts = Math.max(1, parseNumber(process.env.WEBHOOK_MAX_ATTEMPTS, 6));
 const webhookBackoffMs = Math.max(1000, parseNumber(process.env.WEBHOOK_BACKOFF_MS, 15000));
+const webhookRetryJitterMs = Math.max(0, parseNumber(process.env.WEBHOOK_RETRY_JITTER_MS, 2000));
+const webhookDelayedPromotionBatchSize = Math.max(
+  1,
+  parseNumber(process.env.WEBHOOK_DELAYED_PROMOTION_BATCH_SIZE, 100),
+);
 const webhookTimeoutMs = Math.max(2000, parseNumber(process.env.WEBHOOK_TIMEOUT_MS, 10000));
+const webhookSubscriberRateLimitPerMinute = Math.max(0, parseNumber(
+  process.env.WEBHOOK_SUBSCRIBER_RATE_LIMIT_PER_MINUTE,
+  60,
+));
+const webhookCircuitBreakerFailureThreshold = Math.max(
+  1,
+  parseNumber(process.env.WEBHOOK_CIRCUIT_BREAKER_FAILURE_THRESHOLD, 5),
+);
+const webhookCircuitBreakerResetSeconds = Math.max(
+  30,
+  parseNumber(process.env.WEBHOOK_CIRCUIT_BREAKER_RESET_SECONDS, 300),
+);
 const spawnWebhookDispatcherInProcess = resolveBooleanFlag(
   process.env.ENABLE_EMBEDDED_WEBHOOK_DISPATCHER,
   process.env.DISABLE_EMBEDDED_WEBHOOK_DISPATCHER,
@@ -206,9 +235,15 @@ const config: AppConfig = {
     enabled: queueEnabled,
     redisUrl,
     key: queueKey,
+    dlqKey: queueDlqKey,
+    delayedKey: queueDelayedKey,
     batchSize: queueBatchSize,
     pollIntervalMs: queuePollIntervalMs,
     spawnWorkerInProcess,
+    maxAttempts: queueMaxAttempts,
+    retryBackoffMs: queueRetryBackoffMs,
+    retryJitterMs: queueRetryJitterMs,
+    delayedPromotionBatchSize: queueDelayedPromotionBatchSize,
   },
   liveState: {
     enabled: liveStateEnabled,
@@ -221,15 +256,24 @@ const config: AppConfig = {
     enabled: webhooksEnabled,
     redisUrl,
     queueKey: webhookQueueKey,
+    delayedKey: webhookDelayedKey,
+    dlqKey: webhookDlqKey,
     batchSize: webhookBatchSize,
     pollIntervalMs: webhookPollIntervalMs,
     maxAttempts: webhookMaxAttempts,
     backoffMs: webhookBackoffMs,
+    retryJitterMs: webhookRetryJitterMs,
+    delayedPromotionBatchSize: webhookDelayedPromotionBatchSize,
     deliveryTimeoutMs: webhookTimeoutMs,
     signatureHeader: 'x-flyover-signature',
     timestampHeader: 'x-flyover-timestamp',
     spawnWorkerInProcess: spawnWebhookDispatcherInProcess,
     enforceHttps: enforceWebhookHttps,
+    subscriberRateLimitPerMinute: webhookSubscriberRateLimitPerMinute,
+    circuitBreaker: {
+      failureThreshold: webhookCircuitBreakerFailureThreshold,
+      resetSeconds: webhookCircuitBreakerResetSeconds,
+    },
   },
   auth: {
     devKeyAllowedEmails,

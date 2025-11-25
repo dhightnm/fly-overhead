@@ -1,4 +1,3 @@
-import Redis from 'ioredis';
 import postgresRepository from '../../repositories/PostgresRepository';
 import liveStateStore from '../../services/LiveStateStore';
 import type { AircraftQueueMessage } from '../../services/QueueService';
@@ -6,9 +5,23 @@ import {
   initializeWorker,
   processQueueIteration,
 } from '../aircraftIngestionWorker';
+import redisClientManager from '../../lib/redis/RedisClientManager';
+
+jest.mock('../../lib/redis/RedisClientManager', () => {
+  const getClient = jest.fn();
+  const disconnect = jest.fn().mockResolvedValue(undefined);
+  const getHealth = jest.fn();
+  return {
+    __esModule: true,
+    default: {
+      getClient,
+      disconnect,
+      getHealth,
+    },
+  };
+});
 
 // Mock dependencies
-jest.mock('ioredis');
 jest.mock('pg-promise', () => {
   const mockDb = {
     connect: jest.fn().mockResolvedValue({
@@ -57,9 +70,12 @@ jest.mock('../../utils/logger', () => ({
 // Mock config needs to be handled carefully since it's imported by the worker
 // We'll use doMock in tests to change values if needed
 
-const MockedRedis = Redis as jest.MockedClass<typeof Redis>;
 const mockedPostgresRepository = postgresRepository as jest.Mocked<typeof postgresRepository>;
 const mockedLiveStateStore = liveStateStore as jest.Mocked<typeof liveStateStore>;
+const mockedRedisManager = redisClientManager as unknown as {
+  getClient: jest.MockedFunction<(name: string, url: string) => any>;
+  disconnect: jest.MockedFunction<(name?: string) => Promise<void>>;
+};
 
 describe('aircraftIngestionWorker', () => {
   let mockRedisInstance: any;
@@ -73,6 +89,13 @@ describe('aircraftIngestionWorker', () => {
       brpop: jest.fn().mockResolvedValue(null),
       rpush: jest.fn().mockResolvedValue(1),
       lpush: jest.fn().mockResolvedValue(1),
+      zadd: jest.fn().mockResolvedValue(1),
+      zrangebyscore: jest.fn().mockResolvedValue([]),
+      pipeline: jest.fn().mockReturnValue({
+        lpush: jest.fn().mockReturnThis(),
+        zrem: jest.fn().mockReturnThis(),
+        exec: jest.fn().mockResolvedValue([]),
+      }),
       on: jest.fn(),
       connect: jest.fn().mockResolvedValue(undefined),
       disconnect: jest.fn(),
@@ -82,7 +105,7 @@ describe('aircraftIngestionWorker', () => {
       publish: jest.fn().mockResolvedValue(1),
     };
 
-    MockedRedis.mockImplementation(() => mockRedisInstance);
+    mockedRedisManager.getClient.mockReturnValue(mockRedisInstance);
 
     // Mock postgres repository
     mockedPostgresRepository.upsertAircraftStateWithPriority = jest.fn().mockResolvedValue(undefined);
@@ -103,7 +126,7 @@ describe('aircraftIngestionWorker', () => {
       jest.isolateModules(() => {
         const { initializeWorker: initWorker } = require('../aircraftIngestionWorker');
         initWorker();
-        expect(MockedRedis).toHaveBeenCalled();
+        expect(mockedRedisManager.getClient).toHaveBeenCalledWith('queue:worker:ingestion', expect.any(String));
       });
     });
   });
@@ -206,8 +229,9 @@ describe('aircraftIngestionWorker', () => {
       const count = await processQueueIteration();
 
       expect(count).toBe(1); // Processed (attempted) 1 message
-      expect(mockRedisInstance.rpush).toHaveBeenCalledWith(
-        'flyoverhead:aircraft_ingest',
+      expect(mockRedisInstance.zadd).toHaveBeenCalledWith(
+        'flyoverhead:aircraft_ingest:delayed',
+        expect.any(Number),
         expect.stringContaining('"retries":1'),
       );
     });
@@ -218,7 +242,7 @@ describe('aircraftIngestionWorker', () => {
         source: 'test',
         sourcePriority: 1,
         ingestionTimestamp: new Date().toISOString(),
-        retries: 3,
+        retries: 5,
       };
 
       mockRedisInstance.brpop
@@ -229,7 +253,10 @@ describe('aircraftIngestionWorker', () => {
 
       await processQueueIteration();
 
-      expect(mockRedisInstance.rpush).not.toHaveBeenCalled();
+      expect(mockRedisInstance.lpush).toHaveBeenCalledWith(
+        'flyoverhead:aircraft_ingest:dlq',
+        expect.any(String),
+      );
     });
 
     it('should handle Redis errors gracefully', async () => {

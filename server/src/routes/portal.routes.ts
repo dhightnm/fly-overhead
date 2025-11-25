@@ -2,6 +2,7 @@ import { Router, Response, NextFunction } from 'express';
 import postgresRepository from '../repositories/PostgresRepository';
 import logger from '../utils/logger';
 import { authenticateToken, type AuthenticatedRequest } from './auth.routes';
+import { rateLimitMiddleware } from '../middlewares/rateLimitMiddleware';
 import userAircraftProfileService, {
   type CreateUserAircraftProfileInput,
 } from '../services/UserAircraftProfileService';
@@ -28,7 +29,7 @@ router.use((_req, res, next) => {
  * GET /api/portal/feeders
  * Get all feeders associated with the authenticated user
  */
-router.get('/feeders', authenticateToken, async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+router.get('/feeders', authenticateToken, rateLimitMiddleware, async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
   try {
     const { userId } = portalUserSchema.parse(req.user);
 
@@ -74,7 +75,7 @@ router.get('/feeders', authenticateToken, async (req: AuthenticatedRequest, res:
  * GET /api/portal/planes
  * Get aircraft profiles created by the authenticated user
  */
-router.get('/planes', authenticateToken, async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+router.get('/planes', authenticateToken, rateLimitMiddleware, async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
   try {
     const { userId } = portalUserSchema.parse(req.user);
 
@@ -98,7 +99,7 @@ router.get('/planes', authenticateToken, async (req: AuthenticatedRequest, res: 
  * POST /api/portal/planes
  * Create a new aircraft profile for the authenticated user
  */
-router.post('/planes', authenticateToken, async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+router.post('/planes', authenticateToken, rateLimitMiddleware, async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
   const { userId } = portalUserSchema.parse(req.user);
 
   try {
@@ -142,6 +143,7 @@ router.post('/planes', authenticateToken, async (req: AuthenticatedRequest, res:
 router.put(
   '/planes/:planeId',
   authenticateToken,
+  rateLimitMiddleware,
   async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
       const { userId } = portalUserSchema.parse(req.user);
@@ -170,7 +172,7 @@ router.put(
  * GET /api/portal/aircraft
  * Get aircraft from user's associated feeders
  */
-router.get('/aircraft', authenticateToken, async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+router.get('/aircraft', authenticateToken, rateLimitMiddleware, async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
   try {
     const { userId } = portalUserSchema.parse(req.user);
     const { limit, offset } = portalPaginationSchema.parse(req.query);
@@ -333,7 +335,7 @@ router.get('/aircraft', authenticateToken, async (req: AuthenticatedRequest, res
  * GET /api/portal/stats
  * Get portal statistics for the authenticated user
  */
-router.get('/stats', authenticateToken, async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+router.get('/stats', authenticateToken, rateLimitMiddleware, async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
   try {
     const { userId } = portalUserSchema.parse(req.user);
 

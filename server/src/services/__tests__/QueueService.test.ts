@@ -1,7 +1,6 @@
 import type { AircraftQueueMessage } from '../QueueService';
 
 // Create mock instance that will be shared
-// Using an object literal avoids TDZ issues - objects are created immediately
 const mockRedisInstance = {
   lpush: jest.fn().mockResolvedValue(1),
   rpop: jest.fn().mockResolvedValue(null),
@@ -11,11 +10,11 @@ const mockRedisInstance = {
   connect: jest.fn().mockResolvedValue(undefined),
   on: jest.fn(),
   disconnect: jest.fn(),
+  quit: jest.fn(),
+  pipeline: jest.fn(),
+  zadd: jest.fn(),
+  zrangebyscore: jest.fn(),
 };
-
-// Mock dependencies BEFORE importing the service
-// QueueService is instantiated at module load, so mocks must be ready first
-jest.mock('ioredis', () => jest.fn(() => mockRedisInstance));
 
 jest.mock('../../utils/logger', () => ({
   info: jest.fn(),
@@ -31,9 +30,15 @@ jest.mock('../../config', () => ({
       enabled: true,
       redisUrl: 'redis://localhost:6379',
       key: 'flyoverhead:aircraft_ingest',
+      dlqKey: 'flyoverhead:aircraft_ingest:dlq',
+      delayedKey: 'flyoverhead:aircraft_ingest:delayed',
       batchSize: 100,
       pollIntervalMs: 1000,
-      requeueDelayMs: 5000,
+      spawnWorkerInProcess: true,
+      maxAttempts: 5,
+      retryBackoffMs: 5000,
+      retryJitterMs: 500,
+      delayedPromotionBatchSize: 50,
     },
   },
 }));
@@ -41,14 +46,25 @@ jest.mock('../../config', () => ({
 // Import QueueService AFTER mocks are set up
 // This ensures the mock is ready when QueueService constructor runs
 // eslint-disable-next-line import/first
-import queueService from '../QueueService';
+import { QueueService as QueueServiceClass } from '../QueueService';
 
 describe('QueueService', () => {
+  const mockManager = {
+    getClient: jest.fn(() => mockRedisInstance),
+    getHealth: jest.fn(() => ({ 'queue:producer': { status: 'ready' } })),
+  };
+
+  let queueService: QueueServiceClass;
+
   beforeEach(() => {
     jest.clearAllMocks();
     // Reset mock functions to default values
     mockRedisInstance.lpush.mockResolvedValue(1);
     mockRedisInstance.connect.mockResolvedValue(undefined);
+    mockManager.getClient.mockClear();
+    mockManager.getHealth.mockClear();
+    queueService = new QueueServiceClass(mockManager as any);
+    jest.spyOn(queueService as any, 'getRedis').mockReturnValue(mockRedisInstance as any);
   });
 
   describe('initialization', () => {
@@ -59,7 +75,6 @@ describe('QueueService', () => {
       expect(queueService.isEnabled()).toBe(true);
       expect(queueService.getQueueKey()).toBe('flyoverhead:aircraft_ingest');
       // Verify mock instance methods are available
-      expect(mockRedisInstance.connect).toBeDefined();
       expect(mockRedisInstance.on).toBeDefined();
     });
 
@@ -172,6 +187,23 @@ describe('QueueService', () => {
       const parsed = JSON.parse(serialized);
       expect(parsed.state).toEqual(['a1b2c3', 'AAL123']);
       expect(parsed.source).toBe('airplanes.live');
+    });
+  });
+
+  describe('getStats', () => {
+    it('returns Redis queue metrics', async () => {
+      const llen = jest.fn().mockReturnThis();
+      const zcard = jest.fn().mockReturnThis();
+      const exec = jest.fn().mockResolvedValue([[null, 5], [null, 2], [null, 1]]);
+      mockRedisInstance.pipeline.mockReturnValue({ llen, zcard, exec });
+
+      const stats = await queueService.getStats();
+
+      expect(mockRedisInstance.pipeline).toHaveBeenCalled();
+      expect(llen).toHaveBeenCalledWith('flyoverhead:aircraft_ingest');
+      expect(zcard).toHaveBeenCalledWith('flyoverhead:aircraft_ingest:delayed');
+      expect(exec).toHaveBeenCalled();
+      expect(stats).toEqual({ queueDepth: 5, delayedDepth: 2, dlqDepth: 1 });
     });
   });
 });

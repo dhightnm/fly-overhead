@@ -68,9 +68,15 @@ export interface QueueConfig {
   enabled: boolean;
   redisUrl: string;
   key: string;
+  dlqKey: string;
+  delayedKey: string;
   batchSize: number;
   pollIntervalMs: number;
   spawnWorkerInProcess: boolean;
+  maxAttempts: number;
+  retryBackoffMs: number;
+  retryJitterMs: number;
+  delayedPromotionBatchSize: number;
 }
 
 export interface LiveStateConfig {
@@ -85,15 +91,24 @@ export interface WebhookConfig {
   enabled: boolean;
   redisUrl: string;
   queueKey: string;
+  delayedKey: string;
+  dlqKey: string;
   batchSize: number;
   pollIntervalMs: number;
   maxAttempts: number;
   backoffMs: number;
+  retryJitterMs: number;
+  delayedPromotionBatchSize: number;
   deliveryTimeoutMs: number;
   signatureHeader: string;
   timestampHeader: string;
   spawnWorkerInProcess: boolean;
   enforceHttps: boolean;
+  subscriberRateLimitPerMinute: number;
+  circuitBreaker: {
+    failureThreshold: number;
+    resetSeconds: number;
+  };
 }
 
 export interface AuthConfig {
