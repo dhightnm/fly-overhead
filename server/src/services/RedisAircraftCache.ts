@@ -38,8 +38,11 @@ class RedisAircraftCache {
   private redis = this.enabled
     ? redisClientManager.getClient(this.clientName, this.redisUrl)
     : null;
+
   private scanBatchSize = 200;
+
   private maxScanResults = 1000;
+
   private metrics: CacheMetrics = {
     hits: 0,
     misses: 0,

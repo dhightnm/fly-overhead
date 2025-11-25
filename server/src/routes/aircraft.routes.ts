@@ -1050,12 +1050,10 @@ router.get(
   requireApiKeyAuth,
   requireAircraftRead,
   rateLimitMiddleware,
-  async (_req: Request, res: Response) => {
-    return res.json({
-      cache: redisAircraftCache.getMetrics(),
-      warmer: aircraftCacheWarmer.getStatus(),
-    });
-  },
+  async (_req: Request, res: Response) => res.json({
+    cache: redisAircraftCache.getMetrics(),
+    warmer: aircraftCacheWarmer.getStatus(),
+  }),
 );
 
 /**
