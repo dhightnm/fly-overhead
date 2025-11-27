@@ -25,17 +25,13 @@ import { STATE_INDEX, applyStateToRecord, type DbAircraftRow } from '../utils/ai
 import { flightsQuerySchema } from '../schemas/aircraft.schemas';
 import redisAircraftCache from '../services/RedisAircraftCache';
 import aircraftCacheWarmer from '../services/AircraftCacheWarmer';
+import boundsCacheService from '../services/BoundsCacheService';
 
 const router = Router();
 const requireAircraftRead = requireScopes(API_SCOPES.AIRCRAFT_READ, API_SCOPES.READ);
 const MAX_AIRPLANES_LIVE_RADIUS = config.external.airplanesLive?.maxRadiusNm || 250;
 
 const cache = new NodeCache({ stdTTL: 60, maxKeys: 100 });
-export const boundsCache = new NodeCache({
-  stdTTL: 2, // 2 seconds - short TTL to ensure fresh data after OpenSky updates
-  maxKeys: 1000,
-  checkperiod: 10,
-});
 
 const NM_TO_LAT_DEGREES = 1 / 60; // Rough conversion (1 NM = 1 minute of latitude)
 const BOUNDS_RECENT_WINDOW_SECONDS = 15 * 60; // 15 minutes of recency for bounds queries
@@ -662,17 +658,17 @@ router.get(
       latmin, lonmin, latmax, lonmax,
     } = req.params;
 
-    const roundedLatMin = Math.floor(parseFloat(latmin) * 100) / 100;
-    const roundedLonMin = Math.floor(parseFloat(lonmin) * 100) / 100;
-    const roundedLatMax = Math.ceil(parseFloat(latmax) * 100) / 100;
-    const roundedLonMax = Math.ceil(parseFloat(lonmax) * 100) / 100;
-
-    const cacheKey = `/area/${roundedLatMin}/${roundedLonMin}/${roundedLatMax}/${roundedLonMax}`;
+    const cacheKey = boundsCacheService.buildCacheKey(
+      parseFloat(latmin),
+      parseFloat(lonmin),
+      parseFloat(latmax),
+      parseFloat(lonmax),
+    );
 
     try {
-      if (boundsCache.has(cacheKey)) {
+      if (boundsCacheService.has(cacheKey)) {
         logger.debug('Serving cached aircraft data for bounding box', { cacheKey });
-        return res.json(boundsCache.get(cacheKey));
+        return res.json(boundsCacheService.get(cacheKey));
       }
 
       const aircraft = await aircraftService.getAircraftInBounds(
@@ -682,7 +678,7 @@ router.get(
         parseFloat(lonmax),
       );
 
-      boundsCache.set(cacheKey, aircraft);
+      boundsCacheService.set(cacheKey, aircraft);
       logger.debug('Cached aircraft data for bounding box', {
         cacheKey,
         aircraftCount: aircraft.length,

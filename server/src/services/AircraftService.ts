@@ -10,6 +10,7 @@ import logger from '../utils/logger';
 import { mapAircraftType } from '../utils/aircraftCategoryMapper';
 import initializeAirportSchema from '../database/airportSchema';
 import redisAircraftCache from './RedisAircraftCache';
+import boundsCacheService from './BoundsCacheService';
 
 interface BoundingBox {
   lamin: number;
@@ -28,6 +29,82 @@ interface RateLimitError extends Error {
  * Orchestrates repository and external service calls
  */
 class AircraftService {
+  private async ingestOpenSkyStates(states: any[], options: {
+    context: 'global' | 'bounds';
+    boundingBox?: BoundingBox;
+    useBatching?: boolean;
+    emitGlobalUpdate?: boolean;
+  }): Promise<any[]> {
+    if (!states || states.length === 0) {
+      logger[options.context === 'global' ? 'warn' : 'info']('No aircraft states returned from OpenSky', {
+        boundingBox: options.boundingBox,
+      });
+      return [];
+    }
+
+    logger.info(`Processing ${states.length} aircraft states (${options.context})`, {
+      boundingBox: options.boundingBox,
+    });
+
+    if (options.context === 'bounds' && states.length > 0) {
+      const sampleState = states[0];
+      logger.debug('Sample bounded aircraft from OpenSky', {
+        icao24: sampleState[0],
+        callsign: sampleState[1],
+        last_contact: sampleState[4],
+        last_contact_age_seconds: Math.floor(Date.now() / 1000) - sampleState[4],
+      });
+    }
+
+    if (options.useBatching) {
+      const BATCH_SIZE = 50;
+      let processed = 0;
+
+      for (let i = 0; i < states.length; i += BATCH_SIZE) {
+        const batch = states.slice(i, i + BATCH_SIZE);
+        const batchPromises = batch.map((state: any[]) => {
+          const preparedState = openSkyService.prepareStateForDatabase(state);
+          return postgresRepository.upsertAircraftStateWithPriority(preparedState, null, new Date(), 'opensky', 30);
+        });
+
+        await Promise.all(batchPromises);
+        processed += batch.length;
+
+        if ((i / BATCH_SIZE) % 5 === 0) {
+          logger.debug(`Processed ${processed}/${states.length} aircraft (${options.context})`);
+        }
+
+        if (i + BATCH_SIZE < states.length) {
+          await new Promise((resolve) => {
+            setImmediate(() => resolve(undefined));
+          });
+        }
+      }
+    } else {
+      const statePromises = states.map((state: any[]) => {
+        const preparedState = openSkyService.prepareStateForDatabase(state);
+        return postgresRepository.upsertAircraftStateWithPriority(preparedState, null, new Date(), 'opensky', 30);
+      });
+
+      await Promise.all(statePromises);
+    }
+
+    await this.clearBoundsCache(`OpenSky ${options.context} update`);
+
+    if (options.emitGlobalUpdate) {
+      webSocketService.getIO()?.emit('aircraft:global_update', {
+        timestamp: new Date().toISOString(),
+        message: 'Aircraft data updated',
+      });
+    }
+
+    return states;
+  }
+
+  private async clearBoundsCache(reason: string): Promise<void> {
+    boundsCacheService.flushAll(reason);
+  }
+
   /**
    * Fetch all aircraft and update database
    */
@@ -36,62 +113,11 @@ class AircraftService {
       logger.info('Fetching all aircraft from OpenSky');
       const data = await openSkyService.getAllStates();
 
-      if (!data.states || data.states.length === 0) {
-        logger.warn('No aircraft states returned from OpenSky');
-        return [];
-      }
-
-      logger.info(`Processing ${data.states.length} aircraft states`);
-
-      const BATCH_SIZE = 50;
-      let processed = 0;
-
-      for (let i = 0; i < data.states.length; i += BATCH_SIZE) {
-        const batch = data.states.slice(i, i + BATCH_SIZE);
-        const batchPromises = batch.map((state: any[]) => {
-          const preparedState = openSkyService.prepareStateForDatabase(state);
-          // Use priority system: OpenSky has priority 30 (lower = higher priority)
-          // Feeder has priority 10 (high priority), so feeder data is preferred
-          return postgresRepository.upsertAircraftStateWithPriority(preparedState, null, new Date(), 'opensky', 30);
-        });
-
-        await Promise.all(batchPromises);
-        processed += batch.length;
-
-        if ((i / BATCH_SIZE) % 5 === 0) {
-          logger.debug(`Processed ${processed}/${data.states.length} aircraft`);
-        }
-
-        if (i + BATCH_SIZE < data.states.length) {
-          await new Promise((resolve) => {
-            setImmediate(() => resolve(undefined));
-          });
-        }
-      }
-
-      logger.info(`Database updated successfully with all ${processed} aircraft`);
-
-      // Clear bounds cache so fresh data is returned on next request
-      // Use dynamic import to avoid circular dependency
-      try {
-        const aircraftRoutes = await import('../routes/aircraft.routes');
-        if (aircraftRoutes && aircraftRoutes.boundsCache) {
-          aircraftRoutes.boundsCache.flushAll();
-          logger.info('Cleared bounds cache after OpenSky update');
-        } else {
-          logger.warn('boundsCache not found in aircraft.routes module');
-        }
-      } catch (err) {
-        const error = err as Error;
-        logger.error('Failed to clear bounds cache', { error: error.message, stack: error.stack });
-      }
-
-      webSocketService.getIO()?.emit('aircraft:global_update', {
-        timestamp: new Date().toISOString(),
-        message: 'Aircraft data updated',
+      return this.ingestOpenSkyStates(data.states ?? [], {
+        context: 'global',
+        useBatching: true,
+        emitGlobalUpdate: true,
       });
-
-      return data.states;
     } catch (error) {
       const err = error as RateLimitError;
       // Check if it's a rate limit error
@@ -119,50 +145,10 @@ class AircraftService {
 
       const data = await openSkyService.getStatesInBounds(boundingBox);
 
-      if (!data.states || data.states.length === 0) {
-        logger.info('No aircraft in specified bounds');
-        return [];
-      }
-
-      logger.info(`Processing ${data.states.length} aircraft in bounds from OpenSky`);
-
-      // Debug: Log a sample aircraft to verify data
-      if (data.states.length > 0) {
-        const sampleState = data.states[0];
-        logger.debug('Sample bounded aircraft from OpenSky', {
-          icao24: sampleState[0],
-          callsign: sampleState[1],
-          last_contact: sampleState[4],
-          last_contact_age_seconds: Math.floor(Date.now() / 1000) - sampleState[4],
-        });
-      }
-
-      const statePromises = data.states.map((state: any[]) => {
-        const preparedState = openSkyService.prepareStateForDatabase(state);
-        // Use priority system: OpenSky has priority 30 (lower = higher priority)
-        // Feeder has priority 10 (high priority), so feeder data is preferred
-        return postgresRepository.upsertAircraftStateWithPriority(preparedState, null, new Date(), 'opensky', 30);
+      return this.ingestOpenSkyStates(data.states ?? [], {
+        context: 'bounds',
+        boundingBox,
       });
-
-      await Promise.all(statePromises);
-      logger.info('Database updated with bounded aircraft from OpenSky');
-
-      // Clear bounds cache so fresh data is returned on next request
-      // Use dynamic import to avoid circular dependency
-      try {
-        const aircraftRoutes = await import('../routes/aircraft.routes');
-        if (aircraftRoutes && aircraftRoutes.boundsCache) {
-          aircraftRoutes.boundsCache.flushAll();
-          logger.info('Cleared bounds cache after bounded OpenSky update');
-        } else {
-          logger.warn('boundsCache not found in aircraft.routes module');
-        }
-      } catch (err) {
-        const error = err as Error;
-        logger.error('Failed to clear bounds cache', { error: error.message, stack: error.stack });
-      }
-
-      return data.states;
     } catch (error) {
       const err = error as RateLimitError;
       // Check if it's a rate limit error

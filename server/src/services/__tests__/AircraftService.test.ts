@@ -85,8 +85,9 @@ jest.mock('../RedisAircraftCache', () => ({
     cacheStateArray: jest.fn(),
   },
 }));
-jest.mock('../../routes/aircraft.routes', () => ({
-  boundsCache: {
+jest.mock('../BoundsCacheService', () => ({
+  __esModule: true,
+  default: {
     flushAll: jest.fn(),
   },
 }));
