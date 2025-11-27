@@ -36,3 +36,7 @@ npm-debug.log*
 .DS_Store
 Thumbs.db
 
+# Scripts directory (utility scripts, not part of main codebase)
+scripts/
+../scripts/
+

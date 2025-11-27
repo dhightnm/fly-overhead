@@ -23,6 +23,8 @@ import { validateApiKeyFormat } from '../utils/apiKeyGenerator';
 type InvalidState = Extract<ReturnType<typeof validateAircraftState>, { valid: false }>;
 
 const router = Router();
+const LEGACY_FEEDER_WARNING_INTERVAL_MS = 60 * 1000;
+const legacyFeederWarningCache = new Map<string, number>();
 
 const ensureFeederWriteAccess = (allowLegacyFallback = false) => (
   req: AuthenticatedRequest,
@@ -35,10 +37,16 @@ const ensureFeederWriteAccess = (allowLegacyFallback = false) => (
   }
 
   if (allowLegacyFallback && req.body?.feeder_id) {
-    logger.warn('Legacy feeder stats endpoint accessed without API key', {
-      feeder_id: req.body.feeder_id,
-      path: req.path,
-    });
+    const feederId = req.body.feeder_id as string;
+    const now = Date.now();
+    const lastWarnedAt = legacyFeederWarningCache.get(feederId) || 0;
+    if (now - lastWarnedAt >= LEGACY_FEEDER_WARNING_INTERVAL_MS) {
+      logger.warn('Legacy feeder stats endpoint accessed without API key', {
+        feeder_id: feederId,
+        path: req.path,
+      });
+      legacyFeederWarningCache.set(feederId, now);
+    }
     return next();
   }
 

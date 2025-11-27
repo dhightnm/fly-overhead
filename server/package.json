@@ -17,7 +17,7 @@
     "lint": "eslint . --ext .ts",
     "lint:fix": "eslint --fix . --ext .ts",
     "test": "jest",
-    "db:timescale": "ts-node ./scripts/setupTimescale.ts"
+    "db:timescale": "ts-node ../scripts/setupTimescale.ts"
   },
   "keywords": [],
   "author": "",
