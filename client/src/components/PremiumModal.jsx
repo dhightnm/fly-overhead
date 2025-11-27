@@ -1,11 +1,18 @@
 import React from 'react';
+import { useHistory } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import './PremiumModal.css';
 
 const PremiumModal = ({ isOpen, onClose, onSignup }) => {
   const { isAuthenticated } = useAuth();
+  const history = useHistory();
 
   if (!isOpen) return null;
+
+  const handleUpgrade = () => {
+    onClose();
+    history.push('/tiers');
+  };
 
   const features = [
     'Advanced flight route visualization',
@@ -55,8 +62,8 @@ const PremiumModal = ({ isOpen, onClose, onSignup }) => {
           </div>
         ) : (
           <div className="premium-cta">
-            <button className="btn-primary btn-premium">
-              Upgrade to Premium
+            <button className="btn-primary btn-premium" onClick={handleUpgrade}>
+              View Plans & Upgrade
             </button>
             <p className="premium-note">Billing starts immediately. Cancel anytime.</p>
           </div>

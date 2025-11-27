@@ -388,13 +388,46 @@ class AirportDataImporter {
 
       const stats = {
         airports: await this.importAirports(),
-        runways: await this.importRunways(),
-        frequencies: await this.importFrequencies(),
-        navaids: await this.importNavaids(),
+        runways: 0,
+        frequencies: 0,
+        navaids: 0,
       };
 
-      // Aggregate runways and frequencies into airports
-      await this.aggregateRelatedData();
+      // Try to import optional files, skip if they don't exist
+      try {
+        stats.runways = await this.importRunways();
+      } catch (error) {
+        if (error.message.includes('File not found')) {
+          logger.info('Runways file not found, skipping...');
+        } else {
+          throw error;
+        }
+      }
+
+      try {
+        stats.frequencies = await this.importFrequencies();
+      } catch (error) {
+        if (error.message.includes('File not found')) {
+          logger.info('Frequencies file not found, skipping...');
+        } else {
+          throw error;
+        }
+      }
+
+      try {
+        stats.navaids = await this.importNavaids();
+      } catch (error) {
+        if (error.message.includes('File not found')) {
+          logger.info('Navaids file not found, skipping...');
+        } else {
+          throw error;
+        }
+      }
+
+      // Aggregate runways and frequencies into airports (only if they were imported)
+      if (stats.runways > 0 || stats.frequencies > 0) {
+        await this.aggregateRelatedData();
+      }
 
       const duration = ((Date.now() - startTime) / 1000).toFixed(2);
 

@@ -198,7 +198,7 @@ const NavBar = () => {
               {!isPremium() && (
                 <button 
                   className="nav-button nav-button-premium"
-                  onClick={() => setShowPremiumModal(true)}
+                  onClick={() => history.push('/tiers')}
                 >
                   ⭐ Premium
                 </button>
@@ -230,7 +230,7 @@ const NavBar = () => {
                       <button 
                         className="user-dropdown-item premium-badge"
                         onClick={() => {
-                          setShowPremiumModal(true);
+                          history.push('/tiers');
                           setShowUserMenu(false);
                         }}
                       >

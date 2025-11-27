@@ -9,6 +9,11 @@ import { authenticateToken } from './auth.routes';
 import { rateLimitMiddleware, getRateLimitStatusHandler } from '../middlewares/rateLimitMiddleware';
 import config from '../config';
 import { createApiKeySchema, listApiKeysSchema } from '../schemas/admin.schemas';
+import metricsService from '../services/MetricsService';
+import queueService from '../services/QueueService';
+import webhookQueueService from '../services/WebhookQueueService';
+import liveStateStore from '../services/LiveStateStore';
+import redisAircraftCache from '../services/RedisAircraftCache';
 
 const router = Router();
 
@@ -311,5 +316,102 @@ router.delete('/keys/:keyId', authenticateToken, rateLimitMiddleware, async (req
  * Get current rate limit status for authenticated user/key
  */
 router.get('/rate-limit-status', authenticateToken, rateLimitMiddleware, getRateLimitStatusHandler as any);
+
+/**
+ * Middleware to check if user is admin (in DEV_KEY_ALLOWED_EMAILS)
+ */
+function requireAdmin(req: AuthenticatedRequest, res: Response, next: NextFunction): void {
+  const userEmail = req.user?.email;
+  if (!userEmail) {
+    res.status(401).json({
+      error: {
+        code: 'AUTHENTICATION_REQUIRED',
+        message: 'Authentication required',
+        status: 401,
+      },
+    });
+    return;
+  }
+
+  const allowedEmails = config.auth.devKeyAllowedEmails.map(email => email.trim().toLowerCase());
+  const normalizedUserEmail = userEmail.trim().toLowerCase();
+  if (!allowedEmails.includes(normalizedUserEmail)) {
+    logger.warn('Unauthorized admin access attempt', { email: userEmail });
+    res.status(403).json({
+      error: {
+        code: 'FORBIDDEN',
+        message: 'Admin access required',
+        status: 403,
+      },
+    });
+    return;
+  }
+
+  next();
+}
+
+/**
+ * GET /api/admin/dashboard
+ * Get admin dashboard data (metrics, system status, etc.)
+ */
+router.get('/dashboard', authenticateToken, requireAdmin, async (_req: Request, res: Response, next: NextFunction) => {
+  try {
+    const [queueStats, webhookStats, dbPoolResult] = await Promise.all([
+      queueService.getStats(),
+      webhookQueueService.getStats(),
+      postgresRepository.getDb().query('SELECT COUNT(*) as total_connections FROM pg_stat_activity WHERE datname = current_database()'),
+    ]);
+
+    const dbPool = dbPoolResult?.rows?.[0] || { total_connections: 0 };
+
+    const metrics = metricsService.getMetricsJson();
+    const cacheMetrics = redisAircraftCache.getMetrics();
+
+    res.json({
+      timestamp: new Date().toISOString(),
+      metrics: {
+        enabled: metrics.enabled,
+        rateLimits: metrics.rateLimits,
+        circuitBreakers: metrics.circuitBreakers,
+      },
+      system: {
+        cache: {
+          enabled: redisAircraftCache.isEnabled(),
+          ...cacheMetrics,
+        },
+        liveState: {
+          enabled: config.liveState.enabled,
+          cacheSize: liveStateStore.getSize(),
+          maxEntries: config.liveState.maxEntries,
+          ttlSeconds: config.liveState.ttlSeconds,
+        },
+        queue: {
+          enabled: queueService.isEnabled(),
+          ...queueStats,
+          health: queueService.getHealth(),
+        },
+        webhookQueue: {
+          enabled: webhookQueueService.isEnabled(),
+          ...webhookStats,
+          health: webhookQueueService.getHealth(),
+        },
+        database: {
+          totalConnections: Number(dbPool.total_connections) || 0,
+        },
+      },
+      features: {
+        backgroundJobs: config.features.backgroundJobsEnabled,
+        conusPolling: config.features.conusPollingEnabled,
+        backfill: config.features.backfillEnabled,
+        metrics: config.features.metricsEnabled,
+        prometheus: config.features.prometheusExportEnabled,
+      },
+    });
+  } catch (error) {
+    const err = error as Error;
+    logger.error('Error fetching admin dashboard data', { error: err.message });
+    next(error);
+  }
+});
 
 export default router;

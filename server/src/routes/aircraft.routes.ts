@@ -768,8 +768,8 @@ router.post(
  */
 router.get(
   '/starlink/:observer_lat/:observer_lng/:observer_alt',
-  requireApiKeyAuth,
-  requireAircraftRead,
+  optionalApiKeyAuth,
+  allowSameOriginOrApiKey(API_SCOPES.AIRCRAFT_READ, API_SCOPES.READ),
   rateLimitMiddleware,
   async (req: Request, res: Response, next: NextFunction) => {
     const { observer_lat, observer_lng, observer_alt } = req.params;
@@ -1255,8 +1255,8 @@ router.get(
  */
 router.get(
   '/airports/bounds/:latmin/:lonmin/:latmax/:lonmax',
-  requireApiKeyAuth,
-  requireAircraftRead,
+  optionalApiKeyAuth,
+  allowSameOriginOrApiKey(API_SCOPES.AIRPORTS_READ, API_SCOPES.READ),
   rateLimitMiddleware,
   async (req: Request, res: Response, next: NextFunction) => {
     const {
