@@ -2,115 +2,24 @@ import React, { useState } from 'react';
 import type {
   UserPlane,
   CreatePlaneRequest,
-  PlaneCategory,
-  AirspeedUnit,
-  LengthUnit,
-  WeightUnit,
-  FuelUnit,
 } from '../../types';
 import { getErrorMessage } from '../../services/api';
 import './YourPlanesCard.css';
+import {
+  airspeedOptions,
+  categoryOptions,
+  fuelOptions,
+  getDefaultPlaneFormState,
+  lengthOptions,
+  weightOptions,
+  type PlaneFormState,
+} from '../../constants/portalPlanes';
 
 interface YourPlanesCardProps {
   planes: UserPlane[];
   onCreatePlane: (payload: CreatePlaneRequest) => Promise<UserPlane>;
   onUpdatePlane: (planeId: number, payload: CreatePlaneRequest) => Promise<UserPlane>;
 }
-
-type FormState = {
-  tailNumber: string;
-  displayName: string;
-  callsign: string;
-  serialNumber: string;
-  manufacturer: string;
-  model: string;
-  yearOfManufacture: string;
-  aircraftType: string;
-  category: PlaneCategory;
-  homeAirportCode: string;
-  primaryColor: string;
-  secondaryColor: string;
-  airspeedUnit: AirspeedUnit;
-  lengthUnit: LengthUnit;
-  weightUnit: WeightUnit;
-  fuelUnit: FuelUnit;
-  fuelType: string;
-  engineType: string;
-  engineCount: string;
-  propConfiguration: string;
-  avionicsText: string;
-  defaultCruiseAltitude: string;
-  serviceCeiling: string;
-  cruiseSpeed: string;
-  maxSpeed: string;
-  stallSpeed: string;
-  bestGlideSpeed: string;
-  bestGlideRatio: string;
-  emptyWeight: string;
-  maxTakeoffWeight: string;
-  maxLandingWeight: string;
-  fuelCapacityTotal: string;
-  fuelCapacityUsable: string;
-  startTaxiFuel: string;
-  fuelBurnPerHour: string;
-  operatingCostPerHour: string;
-  totalFlightHours: string;
-  notes: string;
-};
-
-const categoryOptions: { label: string; value: PlaneCategory }[] = [
-  { label: 'Airplane', value: 'airplane' },
-  { label: 'Rotorcraft', value: 'rotorcraft' },
-  { label: 'Glider', value: 'glider' },
-  { label: 'Experimental', value: 'experimental' },
-  { label: 'Other', value: 'other' },
-];
-
-const airspeedOptions: AirspeedUnit[] = ['knots', 'mph'];
-const lengthOptions: LengthUnit[] = ['feet', 'meters', 'inches', 'centimeters'];
-const weightOptions: WeightUnit[] = ['pounds', 'kilograms'];
-const fuelOptions: FuelUnit[] = ['gallons', 'liters', 'pounds', 'kilograms'];
-
-const getDefaultFormState = (): FormState => ({
-  tailNumber: '',
-  displayName: '',
-  callsign: '',
-  serialNumber: '',
-  manufacturer: '',
-  model: '',
-  yearOfManufacture: '',
-  aircraftType: '',
-  category: 'airplane',
-  homeAirportCode: '',
-  primaryColor: '',
-  secondaryColor: '',
-  airspeedUnit: 'knots',
-  lengthUnit: 'feet',
-  weightUnit: 'pounds',
-  fuelUnit: 'gallons',
-  fuelType: '',
-  engineType: '',
-  engineCount: '',
-  propConfiguration: '',
-  avionicsText: '',
-  defaultCruiseAltitude: '',
-  serviceCeiling: '',
-  cruiseSpeed: '',
-  maxSpeed: '',
-  stallSpeed: '',
-  bestGlideSpeed: '',
-  bestGlideRatio: '',
-  emptyWeight: '',
-  maxTakeoffWeight: '',
-  maxLandingWeight: '',
-  fuelCapacityTotal: '',
-  fuelCapacityUsable: '',
-  startTaxiFuel: '',
-  fuelBurnPerHour: '',
-  operatingCostPerHour: '',
-  totalFlightHours: '',
-  notes: '',
-});
 
 const formatAvionicsText = (plane: UserPlane): string => {
   if (!Array.isArray(plane.avionics) || plane.avionics.length === 0) {
@@ -136,7 +45,7 @@ const numberToString = (value: number | null | undefined): string => (
   value === null || value === undefined ? '' : value.toString()
 );
 
-const mapPlaneToFormState = (plane: UserPlane): FormState => ({
+const mapPlaneToFormState = (plane: UserPlane): PlaneFormState => ({
   tailNumber: plane.tailNumber || '',
   displayName: plane.displayName || '',
   callsign: plane.callsign || '',
@@ -192,7 +101,7 @@ const parseAvionicsText = (value: string): CreatePlaneRequest['avionics'] => (
     .filter(Boolean)
 );
 
-const buildPayload = (form: FormState): CreatePlaneRequest => ({
+const buildPayload = (form: PlaneFormState): CreatePlaneRequest => ({
   tailNumber: form.tailNumber,
   displayName: form.displayName || undefined,
   callsign: form.callsign || undefined,
@@ -236,7 +145,7 @@ const buildPayload = (form: FormState): CreatePlaneRequest => ({
 const YourPlanesCard: React.FC<YourPlanesCardProps> = ({ planes, onCreatePlane, onUpdatePlane }) => {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingPlane, setEditingPlane] = useState<UserPlane | null>(null);
-  const [formState, setFormState] = useState<FormState>(getDefaultFormState());
+  const [formState, setFormState] = useState<PlaneFormState>(getDefaultPlaneFormState());
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -249,7 +158,7 @@ const YourPlanesCard: React.FC<YourPlanesCardProps> = ({ planes, onCreatePlane, 
   };
 
   const resetForm = () => {
-    setFormState(getDefaultFormState());
+    setFormState(getDefaultPlaneFormState());
     setError(null);
     setIsFormOpen(false);
     setEditingPlane(null);

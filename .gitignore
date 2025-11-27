@@ -71,3 +71,6 @@ fly-overhead-feeder-service/
 
 # Large data files (one-time backfill only)
 data/ourairports/airports.csv
+
+# Scripts directory (utility scripts, not part of main codebase)
+scripts/
