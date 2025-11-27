@@ -111,13 +111,14 @@ export function maskApiKey(key: string): string {
     return '****';
   }
 
-  const prefix = key.startsWith('sk_dev_')
-    ? 'sk_dev_'
-    : key.startsWith('sk_live_')
-      ? 'sk_live_'
-      : key.startsWith('fd_')
-        ? 'fd_'
-        : '';
+  let prefix = '';
+  if (key.startsWith('sk_dev_')) {
+    prefix = 'sk_dev_';
+  } else if (key.startsWith('sk_live_')) {
+    prefix = 'sk_live_';
+  } else if (key.startsWith('fd_')) {
+    prefix = 'fd_';
+  }
   const lastFour = key.slice(-4);
 
   return `${prefix}${'*'.repeat(key.length - prefix.length - 4)}${lastFour}`;

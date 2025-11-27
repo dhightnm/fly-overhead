@@ -160,11 +160,13 @@ class UserAircraftProfileService {
       return null;
     }
 
-    const num = typeof value === 'number'
-      ? value
-      : typeof value === 'string'
-        ? Number(value)
-        : null;
+    let num: number | null = null;
+    if (typeof value === 'number') {
+      num = value;
+    } else if (typeof value === 'string') {
+      const parsed = Number(value);
+      num = Number.isNaN(parsed) ? null : parsed;
+    }
 
     if (num === null || Number.isNaN(num) || !Number.isFinite(num)) {
       return null;

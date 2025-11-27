@@ -89,12 +89,12 @@ async function migrateFeederApiKey(feederId: string, plainApiKey: string): Promi
       key_prefix: apiKeyData.key_prefix,
       user_id: userId,
     });
-
-    console.log('\n✅ Migration successful!');
-    console.log(`   Feeder: ${feeder.name}`);
-    console.log(`   API Key ID: ${apiKeyData.key_id}`);
-    console.log(`   Prefix: ${apiKeyData.key_prefix}`);
-    console.log(`   Scopes: ${apiKeyData.scopes.join(', ')}`);
+    logger.info('✅ Migration successful', {
+      feeder: feeder.name,
+      api_key_id: apiKeyData.key_id,
+      prefix: apiKeyData.key_prefix,
+      scopes: apiKeyData.scopes,
+    });
   } catch (error) {
     const err = error as Error;
     logger.error('Error migrating feeder API key', {
@@ -112,8 +112,8 @@ if (require.main === module) {
   const plainApiKey = process.argv[3];
 
   if (!feederId || !plainApiKey) {
-    console.error('Usage: ts-node migrate-existing-feeder-api-key.ts <feeder_id> <plain_api_key>');
-    console.error('Example: ts-node migrate-existing-feeder-api-key.ts feeder_123 sk_live_abc...');
+    logger.error('Usage: ts-node migrate-existing-feeder-api-key.ts <feeder_id> <plain_api_key>');
+    logger.error('Example: ts-node migrate-existing-feeder-api-key.ts feeder_123 sk_live_abc...');
     process.exit(1);
   }
 
@@ -122,7 +122,7 @@ if (require.main === module) {
       process.exit(0);
     })
     .catch((error) => {
-      console.error('Migration failed:', error);
+      logger.error('Migration failed', { error: (error as Error).message });
       process.exit(1);
     });
 }

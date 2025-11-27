@@ -12,6 +12,11 @@ const errorHandler = (
   res: Response,
   _next: NextFunction,
 ): void => {
+  if (res.headersSent) {
+    _next(err);
+    return;
+  }
+
   logger.error('Request error', {
     path: req.path,
     method: req.method,

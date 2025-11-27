@@ -1,3 +1,5 @@
+import redisAircraftCache from '../RedisAircraftCache';
+
 jest.mock('../../config', () => ({
   __esModule: true,
   default: {
@@ -12,34 +14,46 @@ jest.mock('../../config', () => ({
   },
 }));
 
-const mockSet = jest.fn();
-const mockGet = jest.fn();
-const mockDel = jest.fn();
-const mockScan = jest.fn();
-const mockMget = jest.fn();
+jest.mock('../../lib/redis/RedisClientManager', () => {
+  const redisClientMock = {
+    set: jest.fn(),
+    get: jest.fn(),
+    del: jest.fn(),
+    scan: jest.fn(),
+    mget: jest.fn(),
+  };
 
-jest.mock('../../lib/redis/RedisClientManager', () => ({
-  __esModule: true,
-  default: {
-    getClient: jest.fn(() => ({
-      set: mockSet,
-      get: mockGet,
-      del: mockDel,
-      scan: mockScan,
-      mget: mockMget,
-    })),
-  },
-}));
+  return {
+    __esModule: true,
+    default: {
+      getClient: jest.fn(() => redisClientMock),
+    },
+    redisClientMock,
+  };
+});
 
-import redisAircraftCache from '../RedisAircraftCache';
+type RedisClientMock = {
+  set: jest.Mock;
+  get: jest.Mock;
+  del: jest.Mock;
+  scan: jest.Mock;
+  mget: jest.Mock;
+};
+
+const getRedisClientMock = (): RedisClientMock => (
+  jest.requireMock('../../lib/redis/RedisClientManager') as { redisClientMock: RedisClientMock }
+).redisClientMock;
 
 describe('RedisAircraftCache', () => {
+  let redisClientMock: RedisClientMock;
+
   beforeEach(() => {
-    mockSet.mockReset();
-    mockGet.mockReset();
-    mockDel.mockReset();
-    mockScan.mockReset();
-    mockMget.mockReset();
+    redisClientMock = getRedisClientMock();
+    redisClientMock.set.mockReset();
+    redisClientMock.get.mockReset();
+    redisClientMock.del.mockReset();
+    redisClientMock.scan.mockReset();
+    redisClientMock.mget.mockReset();
     redisAircraftCache.resetMetrics();
   });
 
@@ -54,19 +68,19 @@ describe('RedisAircraftCache', () => {
       source_priority: 10,
     });
 
-    expect(mockSet).toHaveBeenCalledWith(
+    expect(redisClientMock.set).toHaveBeenCalledWith(
       expect.stringContaining('test:aircraft:icao:abc123'),
       expect.any(String),
       'EX',
       60,
     );
-    expect(mockSet).toHaveBeenCalledWith(
+    expect(redisClientMock.set).toHaveBeenCalledWith(
       expect.stringContaining('test:aircraft:callsign:TEST01'),
       'abc123',
       'EX',
       60,
     );
-    expect(mockSet).toHaveBeenCalledWith(
+    expect(redisClientMock.set).toHaveBeenCalledWith(
       expect.stringContaining('test:aircraft:registration:N123AA'),
       'abc123',
       'EX',
@@ -75,14 +89,14 @@ describe('RedisAircraftCache', () => {
   });
 
   it('returns cached aircraft by callsign', async () => {
-    mockGet
+    redisClientMock.get
       .mockResolvedValueOnce('abc123') // resolve callsign to icao
       .mockResolvedValueOnce(JSON.stringify({ icao24: 'abc123', callsign: 'TEST01' }));
 
     const result = await redisAircraftCache.getByIdentifier('TEST01');
 
     expect(result).toEqual(expect.objectContaining({ icao24: 'abc123' }));
-    expect(mockGet).toHaveBeenCalledTimes(2);
+    expect(redisClientMock.get).toHaveBeenCalledTimes(2);
   });
 
   it('returns states in bounds via scan', async () => {
@@ -92,21 +106,21 @@ describe('RedisAircraftCache', () => {
       longitude: 20,
       last_contact: 200,
     });
-    mockScan.mockResolvedValueOnce(['0', ['test:aircraft:icao:abc321']]);
-    mockMget.mockResolvedValueOnce([payload]);
+    redisClientMock.scan.mockResolvedValueOnce(['0', ['test:aircraft:icao:abc321']]);
+    redisClientMock.mget.mockResolvedValueOnce([payload]);
 
     const result = await redisAircraftCache.getStatesInBounds(5, 15, 15, 25, 100);
 
     expect(result).toHaveLength(1);
     expect(result[0].icao24).toBe('abc321');
-    expect(mockScan).toHaveBeenCalled();
-    expect(mockMget).toHaveBeenCalledWith('test:aircraft:icao:abc321');
+    expect(redisClientMock.scan).toHaveBeenCalled();
+    expect(redisClientMock.mget).toHaveBeenCalledWith('test:aircraft:icao:abc321');
   });
 
   it('tracks cache hit and miss metrics', async () => {
-    mockGet.mockResolvedValueOnce(JSON.stringify({ icao24: 'abc123' }));
+    redisClientMock.get.mockResolvedValueOnce(JSON.stringify({ icao24: 'abc123' }));
     await redisAircraftCache.getByIcao('abc123');
-    mockGet.mockResolvedValueOnce(null);
+    redisClientMock.get.mockResolvedValueOnce(null);
     await redisAircraftCache.getByIdentifier('missing');
     const metrics = redisAircraftCache.getMetrics();
     expect(metrics.hits).toBe(1);

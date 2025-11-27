@@ -112,7 +112,9 @@ describe('RateLimitService', () => {
           totalRequests++;
         }
         // Small delay between batches to reset burst window
-        await new Promise((resolve) => setTimeout(resolve, 15)); // 15ms > 10s burst window
+        await new Promise((resolve) => {
+          setTimeout(resolve, 15); // 15ms > 10s burst window
+        });
       }
 
       // Next request should be blocked by hourly limit

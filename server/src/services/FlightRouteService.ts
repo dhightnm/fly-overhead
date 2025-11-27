@@ -528,11 +528,12 @@ export class FlightRouteService {
               return status.includes('en route') || status.includes('in flight');
             });
 
-            const mostRecentRoute = inFlightRoutes.length > 0
-              ? inFlightRoutes[0]
-              : activeRoutes.length > 0
-                ? activeRoutes[0]
-                : routes[0];
+            let mostRecentRoute = routes[0];
+            if (inFlightRoutes.length > 0) {
+              [mostRecentRoute] = inFlightRoutes;
+            } else if (activeRoutes.length > 0) {
+              [mostRecentRoute] = activeRoutes;
+            }
 
             logger.info('Successfully fetched route from FlightAware', {
               icao24,
@@ -1135,6 +1136,21 @@ export class FlightRouteService {
           return null;
         }
 
+        const toEpochSeconds = (value?: string | null): number | null => (
+          value ? new Date(value).getTime() / 1000 : null
+        );
+
+        const resolveTimestamp = (
+          primary?: string | null,
+          fallback?: string | null,
+        ): number | null => {
+          const primaryValue = toEpochSeconds(primary);
+          if (primaryValue !== null) {
+            return primaryValue;
+          }
+          return toEpochSeconds(fallback);
+        };
+
         const mapped: Route = {
           departureAirport: {
             iata: flight.origin.code_iata || null,
@@ -1147,26 +1163,10 @@ export class FlightRouteService {
             name: flight.destination.name || null,
           },
           flightData: {
-            scheduledDeparture: flight.scheduled_off
-              ? new Date(flight.scheduled_off).getTime() / 1000
-              : flight.scheduled_out
-                ? new Date(flight.scheduled_out).getTime() / 1000
-                : null,
-            scheduledArrival: flight.scheduled_on
-              ? new Date(flight.scheduled_on).getTime() / 1000
-              : flight.scheduled_in
-                ? new Date(flight.scheduled_in).getTime() / 1000
-                : null,
-            actualDeparture: flight.actual_off
-              ? new Date(flight.actual_off).getTime() / 1000
-              : flight.actual_out
-                ? new Date(flight.actual_out).getTime() / 1000
-                : null,
-            actualArrival: flight.actual_on
-              ? new Date(flight.actual_on).getTime() / 1000
-              : flight.actual_in
-                ? new Date(flight.actual_in).getTime() / 1000
-                : null,
+            scheduledDeparture: resolveTimestamp(flight.scheduled_off, flight.scheduled_out),
+            scheduledArrival: resolveTimestamp(flight.scheduled_on, flight.scheduled_in),
+            actualDeparture: resolveTimestamp(flight.actual_off, flight.actual_out),
+            actualArrival: resolveTimestamp(flight.actual_on, flight.actual_in),
             filedEte: flight.filed_ete || null,
           },
           aircraft: flight.aircraft_type

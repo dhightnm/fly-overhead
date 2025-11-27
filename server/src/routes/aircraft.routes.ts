@@ -485,19 +485,14 @@ router.get(
 
 const hasArrivalData = (route?: any | null): boolean => !!(route?.arrivalAirport?.icao || route?.arrivalAirport?.iata);
 
-const getRouteAgeMs = (route?: any | null): number => {
-  if (!route?.cachedAt) return Number.POSITIVE_INFINITY;
-  const cachedAtDate = route.cachedAt instanceof Date ? route.cachedAt : new Date(route.cachedAt);
-  return Date.now() - cachedAtDate.getTime();
-};
-
 const respondWithRoute = async (
   res: Response,
   route: any,
   aircraftIcao24: string | null | undefined,
   currentAircraft: any,
 ): Promise<Response> => {
-  const { cachedAt, ...routePayload } = route || {};
+  const routePayload = { ...(route || {}) };
+  delete (routePayload as { cachedAt?: unknown }).cachedAt;
 
   let updatedCategory = currentAircraft?.category;
   if (aircraftIcao24 && (route.aircraft?.type || route.aircraft?.model)) {

@@ -289,11 +289,12 @@ class AirplanesLiveService {
 
     // airplanes.live sends altitude in FEET, but OpenSky uses METERS
     // Convert feet to meters: 1 ft = 0.3048 m
-    const rawBaroAltitude = typeof aircraft.alt_baro === 'number'
-      ? aircraft.alt_baro
-      : typeof aircraft.alt_baro === 'string'
-        ? parseFloat(aircraft.alt_baro)
-        : null;
+    let rawBaroAltitude: number | null = null;
+    if (typeof aircraft.alt_baro === 'number') {
+      rawBaroAltitude = aircraft.alt_baro;
+    } else if (typeof aircraft.alt_baro === 'string') {
+      rawBaroAltitude = parseFloat(aircraft.alt_baro);
+    }
     let altitude = rawBaroAltitude;
     if (altitude !== null && !Number.isNaN(altitude)) {
       altitude *= 0.3048; // Convert feet to meters
@@ -302,11 +303,13 @@ class AirplanesLiveService {
     }
 
     // airplanes.live sends ground speed in KNOTS (store/display as-is)
-    const velocity = typeof aircraft.gs === 'number'
-      ? aircraft.gs
-      : typeof aircraft.gs === 'string' && !Number.isNaN(parseFloat(aircraft.gs))
-        ? parseFloat(aircraft.gs)
-        : null;
+    let velocity: number | null = null;
+    if (typeof aircraft.gs === 'number') {
+      velocity = aircraft.gs;
+    } else if (typeof aircraft.gs === 'string') {
+      const parsedVelocity = parseFloat(aircraft.gs);
+      velocity = Number.isNaN(parsedVelocity) ? null : parsedVelocity;
+    }
     const track = aircraft.track || null;
 
     // Vertical rate in ft/min - convert to m/s for OpenSky compatibility

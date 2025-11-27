@@ -1,3 +1,7 @@
+import aircraftCacheWarmer from '../AircraftCacheWarmer';
+import postgresRepository from '../../repositories/PostgresRepository';
+import redisAircraftCache from '../RedisAircraftCache';
+
 jest.mock('../../repositories/PostgresRepository', () => ({
   __esModule: true,
   default: {
@@ -14,10 +18,6 @@ jest.mock('../RedisAircraftCache', () => ({
     isEnabled: jest.fn().mockReturnValue(true),
   },
 }));
-
-import aircraftCacheWarmer from '../AircraftCacheWarmer';
-import postgresRepository from '../../repositories/PostgresRepository';
-import redisAircraftCache from '../RedisAircraftCache';
 
 describe('AircraftCacheWarmer', () => {
   const mockGetDb = postgresRepository.getDb as unknown as jest.Mock;

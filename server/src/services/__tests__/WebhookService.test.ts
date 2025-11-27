@@ -35,10 +35,16 @@ const mockConfig = {
   },
 };
 
-const mockRandomBytes = jest.fn((_size?: number) => Buffer.from(
-  '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
-  'hex',
-));
+const mockRandomBytes = jest.fn((size?: number) => {
+  const buffer = Buffer.from(
+    '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+    'hex',
+  );
+  if (typeof size === 'number' && size > 0) {
+    return buffer.subarray(0, size);
+  }
+  return buffer;
+});
 
 const mockRandomUUID = jest.fn(() => 'uuid-1');
 

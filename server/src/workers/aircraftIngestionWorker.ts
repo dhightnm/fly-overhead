@@ -35,6 +35,11 @@ export function createRedisClient(): Redis {
 // Keep mutable for runtime assignment
 let redis: ReturnType<typeof createRedisClient> | null = null;
 
+// Test helper to inject a mock Redis client
+export function __setRedisClient(client: ReturnType<typeof createRedisClient> | null): void {
+  redis = client;
+}
+
 type QueueResult = null | AircraftQueueMessage;
 
 async function scheduleDelayed(

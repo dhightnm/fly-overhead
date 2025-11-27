@@ -131,7 +131,7 @@ aircraft.longitude!,
     progress = Math.max(0, Math.min(1, progress));
 
     if (flightData) {
-      const timeProgress = this.calculateTimeProgress(flightData, elapsedSeconds);
+      const timeProgress = this.calculateTimeProgress(flightData);
       if (timeProgress !== null) {
         progress = (timeProgress * 0.7) + (progress * 0.3);
       }
@@ -180,7 +180,7 @@ aircraft.longitude!,
     }
 
     const metersPerDegreeLat = 111000;
-    const metersPerDegreeLon = 111000 * Math.cos(aircraft.latitude * Math.PI / 180);
+    const metersPerDegreeLon = 111000 * Math.cos((aircraft.latitude * Math.PI) / 180);
     const distanceMeters = aircraft.velocity * elapsedSeconds;
     const headingRad = (aircraft.true_track * Math.PI) / 180;
 
@@ -212,7 +212,6 @@ aircraft.longitude!,
       actualArrival?: number;
       scheduledArrival?: number;
     },
-    _elapsedSeconds: number,
   ): number | null {
     const now = Math.floor(Date.now() / 1000);
     const departureTime = flightData.actualDeparture || flightData.scheduledDeparture;
@@ -285,11 +284,11 @@ aircraft.longitude!,
    */
   haversineDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
     const R = 6371000;
-    const dLat = (lat2 - lat1) * Math.PI / 180;
-    const dLon = (lon2 - lon1) * Math.PI / 180;
-    const a = Math.sin(dLat / 2) * Math.sin(dLat / 2)
-      + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180)
-      * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    const dLat = ((lat2 - lat1) * Math.PI) / 180;
+    const dLon = ((lon2 - lon1) * Math.PI) / 180;
+    const a = (Math.sin(dLat / 2) * Math.sin(dLat / 2))
+      + (Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180)
+        * Math.sin(dLon / 2) * Math.sin(dLon / 2));
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
     return R * c;
   }
@@ -298,10 +297,10 @@ aircraft.longitude!,
    * Interpolate position along great circle route
    */
   interpolateGreatCircle(lat1: number, lon1: number, lat2: number, lon2: number, f: number): Location {
-    const lat1Rad = lat1 * Math.PI / 180;
-    const lon1Rad = lon1 * Math.PI / 180;
-    const lat2Rad = lat2 * Math.PI / 180;
-    const lon2Rad = lon2 * Math.PI / 180;
+    const lat1Rad = (lat1 * Math.PI) / 180;
+    const lon1Rad = (lon1 * Math.PI) / 180;
+    const lat2Rad = (lat2 * Math.PI) / 180;
+    const lon2Rad = (lon2 * Math.PI) / 180;
 
     const d = Math.acos(
       Math.sin(lat1Rad) * Math.sin(lat2Rad)
@@ -323,8 +322,8 @@ aircraft.longitude!,
     const lonRad = Math.atan2(y, x);
 
     return {
-      lat: latRad * 180 / Math.PI,
-      lng: lonRad * 180 / Math.PI,
+      lat: (latRad * 180) / Math.PI,
+      lng: (lonRad * 180) / Math.PI,
     };
   }
 

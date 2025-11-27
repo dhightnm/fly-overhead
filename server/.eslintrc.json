@@ -75,7 +75,7 @@
         "camelcase": "off",
         "class-methods-use-this": "off",
         "no-mixed-operators": "warn",
-        "no-param-reassign": ["warn", { "props": true, "ignorePropertyModificationsFor": ["aircraft", "state"] }],
+        "no-param-reassign": ["warn", { "props": true, "ignorePropertyModificationsFor": ["aircraft", "state", "req", "res", "request", "response"] }],
         "no-restricted-globals": "warn",
         "consistent-return": "warn",
         "no-nested-ternary": "warn"
@@ -107,7 +107,7 @@
         "@typescript-eslint/ban-ts-comment": "off",
         "camelcase": "off",
         "no-mixed-operators": "warn",
-        "no-param-reassign": ["warn", { "props": true, "ignorePropertyModificationsFor": ["aircraft", "state"] }],
+        "no-param-reassign": ["warn", { "props": true, "ignorePropertyModificationsFor": ["aircraft", "state", "req", "res", "request", "response"] }],
         "no-restricted-globals": "warn",
         "consistent-return": "warn",
         "no-nested-ternary": "warn",

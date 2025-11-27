@@ -49,7 +49,7 @@ router.get('/feeders', authenticateToken, rateLimitMiddleware, async (req: Authe
       [userId.toString()],
     );
 
-    res.json({
+    return res.json({
       feeders: feeders.map((feeder) => ({
         feeder_id: feeder.feeder_id,
         name: feeder.name,
@@ -313,7 +313,7 @@ router.get('/aircraft', authenticateToken, rateLimitMiddleware, async (req: Auth
           : null,
     }));
 
-    res.json({
+    return res.json({
       aircraft: transformedAircraft,
       total: parseInt(totalResult.total, 10),
       limit,
@@ -373,7 +373,7 @@ router.get('/stats', authenticateToken, rateLimitMiddleware, async (req: Authent
       [userId],
     );
 
-    res.json({
+    return res.json({
       stats: {
         totalAircraft: aircraftCount,
         activeFeeders: parseInt(feederCount.count, 10),

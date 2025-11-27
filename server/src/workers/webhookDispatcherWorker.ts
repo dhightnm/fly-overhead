@@ -131,8 +131,18 @@ async function dispatchWebhook(message: WebhookQueueMessage): Promise<DispatchRe
     });
 
     const success = response.status >= 200 && response.status < 300;
+    const nextStatus = (() => {
+      if (success) {
+        return 'success';
+      }
+      if (message.attempt + 1 >= message.maxAttempts) {
+        return 'failed';
+      }
+      return 'pending';
+    })();
+
     await postgresRepository.updateWebhookDelivery(message.deliveryId, {
-      status: success ? 'success' : (message.attempt + 1 >= message.maxAttempts ? 'failed' : 'pending'),
+      status: nextStatus,
       attempt_count: message.attempt + 1,
       response_status: response.status,
       response_body: typeof response.data === 'string' ? response.data.slice(0, 500) : JSON.stringify(response.data).slice(0, 500),

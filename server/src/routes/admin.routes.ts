@@ -63,7 +63,7 @@ router.post('/keys', authenticateToken, rateLimitMiddleware, async (req: Authent
       createdBy: req.user!.userId,
     });
 
-    res.status(201).json({
+    return res.status(201).json({
       key,
       keyId: apiKeyData.key_id,
       name: apiKeyData.name,
@@ -91,10 +91,20 @@ router.get('/keys', authenticateToken, rateLimitMiddleware, async (req: Authenti
       status, type, limit, offset,
     } = listApiKeysSchema.parse(req.query);
 
+    const keyPrefix = (() => {
+      if (type === 'development') {
+        return 'sk_dev_';
+      }
+      if (type === 'production') {
+        return 'sk_live_';
+      }
+      return null;
+    })();
+
     const filters = {
       userId: req.user!.userId,
       status,
-      keyPrefix: type === 'development' ? 'sk_dev_' : type === 'production' ? 'sk_live_' : null,
+      keyPrefix,
       limit,
       offset,
     };
@@ -117,7 +127,7 @@ router.get('/keys', authenticateToken, rateLimitMiddleware, async (req: Authenti
       revokedAt: key.revoked_at,
     }));
 
-    res.json({
+    return res.json({
       keys: sanitizedKeys,
       count: sanitizedKeys.length,
       limit: filters.limit,
@@ -160,7 +170,7 @@ router.get('/keys/:keyId', authenticateToken, rateLimitMiddleware, async (req: A
       });
     }
 
-    res.json({
+    return res.json({
       keyId: key.key_id,
       name: key.name,
       description: key.description,
@@ -231,7 +241,7 @@ router.put('/keys/:keyId', authenticateToken, rateLimitMiddleware, async (req: A
 
     const updatedKey = await postgresRepository.updateApiKey(keyId, updates);
 
-    res.json({
+    return res.json({
       keyId: updatedKey.key_id,
       name: updatedKey.name,
       description: updatedKey.description,
@@ -282,7 +292,7 @@ router.delete('/keys/:keyId', authenticateToken, rateLimitMiddleware, async (req
       reason || 'Revoked by user',
     );
 
-    res.json({
+    return res.json({
       keyId: revokedKey.key_id,
       name: revokedKey.name,
       status: revokedKey.status,

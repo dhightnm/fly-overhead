@@ -37,7 +37,7 @@ export function authenticateToken(req: AuthenticatedRequest, res: Response, next
       return;
     }
     req.user = user as { userId: number; email: string };
-    return next();
+    next();
   });
 }
 
@@ -53,7 +53,8 @@ export function optionalAuthenticateToken(req: AuthenticatedRequest, _res: Respo
   // No token provided - pass through
   if (!token) {
     req.user = undefined;
-    return next();
+    next();
+    return;
   }
 
   // Try to verify token
@@ -61,10 +62,11 @@ export function optionalAuthenticateToken(req: AuthenticatedRequest, _res: Respo
     if (err) {
       // Invalid token - pass through without user (don't block)
       req.user = undefined;
-      return next();
+      next();
+      return;
     }
     req.user = user as { userId: number; email: string };
-    return next();
+    next();
   });
 }
 
@@ -101,7 +103,7 @@ router.post('/register', async (req: Request, res: Response, next: NextFunction)
 
     logger.info('User registered', { email, userId: user.id });
 
-    res.status(201).json({
+    return res.status(201).json({
       token,
       user: {
         id: user.id,
@@ -142,7 +144,7 @@ router.post('/login', async (req: Request, res: Response, next: NextFunction) =>
 
     logger.info('User logged in', { email, userId: user.id });
 
-    res.json({
+    return res.json({
       token,
       user: {
         id: user.id,
@@ -234,7 +236,7 @@ router.post('/google', async (req: Request, res: Response, next: NextFunction) =
 
     logger.info('User logged in with Google', { email: user.email, userId: user.id });
 
-    res.json({
+    return res.json({
       token,
       user: {
         id: user.id,
@@ -260,7 +262,7 @@ router.get('/me', authenticateToken, async (req: AuthenticatedRequest, res: Resp
       return res.status(404).json({ error: 'User not found' });
     }
 
-    res.json({
+    return res.json({
       id: user.id,
       email: user.email,
       name: user.name,

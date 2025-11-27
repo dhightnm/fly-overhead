@@ -88,7 +88,7 @@ router.post(
   '/feeder/aircraft',
   requireApiKeyAuth,
   requireScopes(API_SCOPES.FEEDER_WRITE, API_SCOPES.AIRCRAFT_WRITE),
-  async (req: AuthenticatedRequest, res: Response, _next: NextFunction) => {
+  async (req: AuthenticatedRequest, res: Response) => {
     const parsedBody = feederAircraftBatchSchema.safeParse(req.body);
     if (!parsedBody.success) {
       return res.status(400).json({
@@ -260,7 +260,7 @@ router.post(
   optionalApiKeyAuth, // Allow but don't require (for new feeder registration)
   // Note: Rate limiting bypassed for registration - feeder service already limits to 5/hour
   // This is a one-time operation and shouldn't be blocked by anonymous tier limits
-  async (req: AuthenticatedRequest, res: Response, _next: NextFunction) => {
+  async (req: AuthenticatedRequest, res: Response) => {
     const parsedBody = feederRegisterSchema.safeParse(req.body);
     if (!parsedBody.success) {
       return res.status(400).json({
@@ -428,7 +428,7 @@ router.post(
   '/feeder/stats',
   maybeAuthenticateFeederRequest,
   ensureFeederWriteAccess(true),
-  async (req: AuthenticatedRequest, res: Response, _next: NextFunction) => {
+  async (req: AuthenticatedRequest, res: Response) => {
     const parsedBody = feederStatsSchema.safeParse(req.body);
     if (!parsedBody.success) {
       return res.status(400).json({
@@ -474,7 +474,7 @@ router.put(
   '/feeder/last-seen',
   maybeAuthenticateFeederRequest,
   ensureFeederWriteAccess(true),
-  async (req: AuthenticatedRequest, res: Response, _next: NextFunction) => {
+  async (req: AuthenticatedRequest, res: Response) => {
     const parsedBody = feederLastSeenSchema.safeParse(req.body);
     if (!parsedBody.success) {
       return res.status(400).json({
@@ -510,7 +510,7 @@ router.get(
   '/feeder/me',
   requireApiKeyAuth,
   requireScopes(API_SCOPES.FEEDER_READ),
-  async (req: AuthenticatedRequest, res: Response, _next: NextFunction) => {
+  async (req: AuthenticatedRequest, res: Response) => {
     try {
       // Get feeder by API key hash (works for both user-linked and standalone feeders)
       const apiKeyHash = req.apiKey?.keyHash;

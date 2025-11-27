@@ -1,6 +1,7 @@
 import path from 'path';
 import dotenv from 'dotenv';
 import { Client } from 'pg';
+import logger from '../src/utils/logger';
 
 dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 
@@ -102,13 +103,13 @@ async function ensureCompressionPolicy(
 }
 
 async function convertAircraftStatesHistory(client: Client): Promise<void> {
-  console.log('Converting aircraft_states_history hypertable...');
+  logger.info('Converting aircraft_states_history hypertable...');
 
   const tableName = 'aircraft_states_history';
   const alreadyHypertable = await isHypertable(client, tableName);
 
   if (alreadyHypertable) {
-    console.log('aircraft_states_history already a hypertable, skipping conversion.');
+    logger.info('aircraft_states_history already a hypertable, skipping conversion.');
     await ensureCompressionConfig(client, tableName, 'created_at DESC, id', 'icao24');
     await ensureCompressionPolicy(client, 'aircraft_states_history', '30 days', 5);
     return;
@@ -133,13 +134,13 @@ async function convertAircraftStatesHistory(client: Client): Promise<void> {
 }
 
 async function convertFlightRoutesCache(client: Client): Promise<void> {
-  console.log('Converting flight_routes_cache hypertable...');
+  logger.info('Converting flight_routes_cache hypertable...');
 
   const tableName = 'flight_routes_cache';
   const alreadyHypertable = await isHypertable(client, tableName);
 
   if (alreadyHypertable) {
-    console.log('flight_routes_cache already a hypertable, skipping conversion.');
+    logger.info('flight_routes_cache already a hypertable, skipping conversion.');
     await ensureCompressionConfig(client, tableName, 'created_at DESC, id', 'cache_key');
     await ensureCompressionPolicy(client, 'flight_routes_cache', '30 days', 30);
     return;
@@ -166,13 +167,13 @@ async function convertFlightRoutesCache(client: Client): Promise<void> {
 }
 
 async function convertFlightRoutesHistory(client: Client): Promise<void> {
-  console.log('Converting flight_routes_history hypertable...');
+  logger.info('Converting flight_routes_history hypertable...');
 
   const tableName = 'flight_routes_history';
   const alreadyHypertable = await isHypertable(client, tableName);
 
   if (alreadyHypertable) {
-    console.log('flight_routes_history already a hypertable, skipping conversion.');
+    logger.info('flight_routes_history already a hypertable, skipping conversion.');
     await ensureCompressionConfig(client, tableName, 'created_at DESC, id', 'flight_key');
     await ensureCompressionPolicy(client, 'flight_routes_history', '60 days', 9);
     return;
@@ -210,13 +211,13 @@ async function main(): Promise<void> {
     await convertAircraftStatesHistory(client);
     await convertFlightRoutesCache(client);
     await convertFlightRoutesHistory(client);
-    console.log('TimescaleDB setup complete.');
+    logger.info('TimescaleDB setup complete.');
   } finally {
     await client.end();
   }
 }
 
 main().catch((error) => {
-  console.error('Failed to configure TimescaleDB:', error);
+  logger.error('Failed to configure TimescaleDB', { error: error.message });
   process.exitCode = 1;
 });

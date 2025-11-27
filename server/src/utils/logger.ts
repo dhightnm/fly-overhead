@@ -6,6 +6,7 @@ import fs from 'fs';
  */
 const transports: winston.transport[] = [
   new winston.transports.Console({
+    silent: process.env.NODE_ENV === 'test',
     format: winston.format.combine(
       winston.format.colorize(),
       winston.format.simple(),

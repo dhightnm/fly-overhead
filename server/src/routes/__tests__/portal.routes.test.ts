@@ -90,7 +90,7 @@ describe('Portal Routes', () => {
               [userId.toString()],
             );
 
-          res.json({
+          return res.json({
             feeders: feeders.map((feeder) => ({
               feeder_id: feeder.feeder_id,
               name: feeder.name,
@@ -160,7 +160,7 @@ describe('Portal Routes', () => {
               [userId.toString()],
             );
 
-          res.json({
+          return res.json({
             feeders: feeders.map((feeder) => ({
               feeder_id: feeder.feeder_id,
               name: feeder.name,
@@ -208,7 +208,7 @@ describe('Portal Routes', () => {
               [userId.toString()],
             );
 
-          res.json({
+          return res.json({
             feeders: feeders.map((feeder) => ({
               feeder_id: feeder.feeder_id,
               name: feeder.name,
@@ -413,7 +413,7 @@ describe('Portal Routes', () => {
             } : null,
           }));
 
-          res.json({
+          return res.json({
             aircraft: transformedAircraft,
             total: parseInt(totalResult.total, 10),
           });
@@ -485,6 +485,11 @@ describe('Portal Routes', () => {
               total: 0,
             });
           }
+
+          return res.json({
+            aircraft: userFeeders,
+            total: userFeeders.length,
+          });
         } catch (error) {
           return next(error);
         }
@@ -537,6 +542,11 @@ describe('Portal Routes', () => {
               'SELECT * FROM aircraft_states WHERE feeder_id = ANY($1) LIMIT $2 OFFSET $3',
               [feederIds, limit, offset],
             );
+
+          return res.json({
+            aircraft: [],
+            total: parseInt(mockTotal.total, 10),
+          });
         } catch (error) {
           return next(error);
         }
@@ -589,6 +599,11 @@ describe('Portal Routes', () => {
               'SELECT * FROM aircraft_states WHERE feeder_id = ANY($1) LIMIT $2 OFFSET $3',
               [feederIds, limit, offset],
             );
+
+          return res.json({
+            aircraft: [],
+            total: parseInt(mockTotal.total, 10),
+          });
         } catch (error) {
           return next(error);
         }
@@ -686,7 +701,7 @@ describe('Portal Routes', () => {
             } : null,
           }));
 
-          res.json({
+          return res.json({
             aircraft: transformedAircraft,
             total: parseInt(totalResult.total, 10),
           });
@@ -712,7 +727,7 @@ describe('Portal Routes', () => {
       const dbError = new Error('Database query failed');
       mockDb.any = jest.fn().mockRejectedValue(dbError);
 
-      const handler = async (req: AuthenticatedRequest, _res: Response, next: jest.Mock) => {
+      const handler = async (req: AuthenticatedRequest, res: Response, next: jest.Mock) => {
         try {
           const { userId } = (req.user!);
 
@@ -722,6 +737,8 @@ describe('Portal Routes', () => {
               'SELECT feeder_id FROM feeders WHERE metadata->>\'user_id\' = $1',
               [userId.toString()],
             );
+
+          return res.json({ ok: true });
         } catch (error) {
           return next(error);
         }
@@ -793,7 +810,7 @@ describe('Portal Routes', () => {
               [userId],
             );
 
-          res.json({
+          return res.json({
             stats: {
               totalAircraft: aircraftCount,
               activeFeeders: parseInt(feederCount.count, 10),
@@ -871,7 +888,7 @@ describe('Portal Routes', () => {
               [userId],
             );
 
-          res.json({
+          return res.json({
             stats: {
               totalAircraft: aircraftCount,
               activeFeeders: parseInt(feederCount.count, 10),
@@ -900,7 +917,7 @@ describe('Portal Routes', () => {
       const dbError = new Error('Database query failed');
       mockDb.one = jest.fn().mockRejectedValue(dbError);
 
-      const handler = async (req: AuthenticatedRequest, _res: Response, next: jest.Mock) => {
+      const handler = async (req: AuthenticatedRequest, res: Response, next: jest.Mock) => {
         try {
           const { userId } = (req.user!);
 
@@ -912,6 +929,8 @@ describe('Portal Routes', () => {
               WHERE metadata->>'user_id' = $1 AND status = 'active'`,
               [userId.toString()],
             );
+
+          return res.json({ ok: true });
         } catch (error) {
           return next(error);
         }

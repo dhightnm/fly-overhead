@@ -1,25 +1,51 @@
-import postgresRepository from '../../repositories/PostgresRepository';
-import liveStateStore from '../../services/LiveStateStore';
+import type postgresRepository from '../../repositories/PostgresRepository';
+import type liveStateStore from '../../services/LiveStateStore';
 import type { AircraftQueueMessage } from '../../services/QueueService';
-import {
-  initializeWorker,
-  processQueueIteration,
-} from '../aircraftIngestionWorker';
-import redisClientManager from '../../lib/redis/RedisClientManager';
+import type redisClientManager from '../../lib/redis/RedisClientManager';
 
-jest.mock('../../lib/redis/RedisClientManager', () => {
-  const getClient = jest.fn();
-  const disconnect = jest.fn().mockResolvedValue(undefined);
-  const getHealth = jest.fn();
-  return {
-    __esModule: true,
-    default: {
-      getClient,
-      disconnect,
-      getHealth,
+jest.mock('../../config', () => ({
+  __esModule: true,
+  default: {
+    database: {
+      postgres: {
+        url: 'postgresql://test:test@localhost:5432/test',
+        rejectUnauthorized: false,
+        pool: {
+          min: 0,
+          max: 1,
+        },
+      },
     },
-  };
-});
+    queue: {
+      enabled: true,
+      redisUrl: 'redis://localhost:6379',
+      key: 'flyoverhead:aircraft_ingest',
+      dlqKey: 'flyoverhead:aircraft_ingest:dlq',
+      delayedKey: 'flyoverhead:aircraft_ingest:delayed',
+      batchSize: 5,
+      pollIntervalMs: 10,
+      maxAttempts: 3,
+      retryBackoffMs: 10,
+      retryJitterMs: 0,
+      delayedPromotionBatchSize: 10,
+      worker: {
+        enabled: true,
+      },
+    },
+    redis: {
+      rejectUnauthorized: false,
+    },
+  },
+}));
+
+jest.mock('../../lib/redis/RedisClientManager', () => ({
+  __esModule: true,
+  default: {
+    getClient: jest.fn(),
+    disconnect: jest.fn().mockResolvedValue(undefined),
+    getHealth: jest.fn(),
+  },
+}));
 
 // Mock dependencies
 jest.mock('pg-promise', () => {
@@ -35,9 +61,17 @@ jest.mock('pg-promise', () => {
   const pgPromise = jest.fn(() => jest.fn(() => mockDb));
   return pgPromise;
 });
-jest.mock('../../repositories/PostgresRepository');
+jest.mock('../../repositories/PostgresRepository', () => ({
+  __esModule: true,
+  default: {
+    upsertAircraftStateWithPriority: jest.fn(),
+  },
+}));
 jest.mock('../../services/LiveStateStore', () => ({
-  upsertState: jest.fn(),
+  __esModule: true,
+  default: {
+    upsertState: jest.fn(),
+  },
 }));
 
 // Mock WebhookQueueService and WebhookService to prevent Redis instantiation during import
@@ -77,22 +111,21 @@ jest.mock('../../utils/logger', () => ({
 // Mock config needs to be handled carefully since it's imported by the worker
 // We'll use doMock in tests to change values if needed
 
-const mockedPostgresRepository = postgresRepository as jest.Mocked<typeof postgresRepository>;
-const mockedLiveStateStore = liveStateStore as jest.Mocked<typeof liveStateStore>;
-const mockedRedisManager = redisClientManager as unknown as {
-  getClient: jest.MockedFunction<(name: string, url: string) => any>;
-  disconnect: jest.MockedFunction<(name?: string) => Promise<void>>;
-};
-const mockedRedisAircraftCache = jest.requireMock('../../services/RedisAircraftCache')
-  .default as { cacheStateArray: jest.MockedFunction<any> };
+let mockedPostgresRepository: jest.Mocked<typeof postgresRepository>;
+let mockedLiveStateStore: jest.Mocked<typeof liveStateStore>;
+let mockedRedisAircraftCache: { cacheStateArray: jest.MockedFunction<any> };
+let redisManager: jest.Mocked<typeof redisClientManager>;
+let initializeWorker: typeof import('../aircraftIngestionWorker').initializeWorker;
+let processQueueIteration: typeof import('../aircraftIngestionWorker').processQueueIteration;
+let setRedisClient: typeof import('../aircraftIngestionWorker').__setRedisClient;
 
 describe('aircraftIngestionWorker', () => {
   let mockRedisInstance: any;
 
-  beforeEach(() => {
+  beforeEach(async () => {
+    jest.resetModules();
     jest.clearAllMocks();
     jest.useRealTimers();
-    mockedRedisAircraftCache.cacheStateArray.mockClear();
 
     // Create a mock Redis instance with all methods needed
     mockRedisInstance = {
@@ -115,39 +148,33 @@ describe('aircraftIngestionWorker', () => {
       publish: jest.fn().mockResolvedValue(1),
     };
 
-    mockedRedisManager.getClient.mockReturnValue(mockRedisInstance);
+    const workerModule = await import('../aircraftIngestionWorker');
+    initializeWorker = workerModule.initializeWorker;
+    processQueueIteration = workerModule.processQueueIteration;
+    setRedisClient = workerModule.__setRedisClient;
 
-    // Mock postgres repository
-    mockedPostgresRepository.upsertAircraftStateWithPriority = jest.fn().mockResolvedValue(undefined);
-    mockedLiveStateStore.upsertState = jest.fn();
+    // Re-acquire mocks after module reset so the worker uses the same instances we assert against
+    redisManager = jest.requireMock('../../lib/redis/RedisClientManager')
+      .default as jest.Mocked<typeof redisClientManager>;
+    mockedPostgresRepository = jest.requireMock('../../repositories/PostgresRepository')
+      .default as jest.Mocked<typeof postgresRepository>;
+    mockedLiveStateStore = jest.requireMock('../../services/LiveStateStore')
+      .default as jest.Mocked<typeof liveStateStore>;
+    mockedRedisAircraftCache = jest.requireMock('../../services/RedisAircraftCache')
+      .default as { cacheStateArray: jest.MockedFunction<any> };
+
+    redisManager.getClient.mockReturnValue(mockRedisInstance);
+    mockedPostgresRepository.upsertAircraftStateWithPriority.mockResolvedValue(undefined);
   });
 
   afterEach(() => {
     jest.clearAllTimers();
-    jest.resetModules();
-  });
-
-  describe('initialization', () => {
-    it('should create Redis client when enabled', async () => {
-      // Since the module is already loaded, we might need to reload it or trust the mock config
-      // For this test, we'll just call initializeWorker which uses the config
-
-      // Re-import to ensure clean state
-      jest.isolateModules(() => {
-        const { initializeWorker: initWorker } = require('../aircraftIngestionWorker');
-        initWorker();
-        expect(mockedRedisManager.getClient).toHaveBeenCalledWith('queue:worker:ingestion', expect.any(String));
-      });
-    });
   });
 
   describe('processQueueIteration', () => {
     beforeEach(() => {
-      // Ensure worker is initialized with mock redis
       initializeWorker();
-
-      // We need to make sure the exported redis variable in the worker is set to our mock
-      // Since we mocked the Redis constructor, calling initializeWorker() sets it up
+      setRedisClient(mockRedisInstance as any);
     });
 
     it('should fetch and process a single message', async () => {

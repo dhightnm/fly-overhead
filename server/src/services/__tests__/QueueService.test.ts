@@ -105,7 +105,9 @@ describe('QueueService', () => {
       mockRedisInstance.connect.mockRejectedValue(new Error('Connection failed'));
 
       // Wait for connection attempt
-      await new Promise((resolve) => setTimeout(resolve, 10));
+      await new Promise((resolve) => {
+        setTimeout(resolve, 10);
+      });
 
       // After connection failure, enabled should be false
       // Note: This depends on the actual implementation's error handling

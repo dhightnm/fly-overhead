@@ -144,7 +144,9 @@ describe('RealTimeEventService', () => {
       }
 
       // Manually trigger flush by waiting a bit (in real scenario, interval does this)
-      await new Promise((resolve) => setTimeout(resolve, 600));
+      await new Promise((resolve) => {
+        setTimeout(resolve, 600);
+      });
 
       // Should have broadcasted the update
       expect(mockWebSocketIO.emit).toHaveBeenCalledWith(
@@ -190,7 +192,9 @@ describe('RealTimeEventService', () => {
         messageHandler('flyoverhead:events', message);
       }
 
-      await new Promise((resolve) => setTimeout(resolve, 600));
+      await new Promise((resolve) => {
+        setTimeout(resolve, 600);
+      });
 
       // Should not broadcast (no valid aircraft data)
       expect(mockWebSocketIO.emit).not.toHaveBeenCalled();
@@ -213,7 +217,9 @@ describe('RealTimeEventService', () => {
         messageHandler('flyoverhead:events', message);
       }
 
-      await new Promise((resolve) => setTimeout(resolve, 600));
+      await new Promise((resolve) => {
+        setTimeout(resolve, 600);
+      });
 
       // Should not broadcast non-aircraft events
       expect(mockWebSocketIO.emit).not.toHaveBeenCalled();
@@ -228,7 +234,9 @@ describe('RealTimeEventService', () => {
         messageHandler('flyoverhead:events', 'invalid json{');
       }
 
-      await new Promise((resolve) => setTimeout(resolve, 600));
+      await new Promise((resolve) => {
+        setTimeout(resolve, 600);
+      });
 
       // Should not crash, should not broadcast
       expect(mockWebSocketIO.emit).not.toHaveBeenCalled();
@@ -268,7 +276,9 @@ describe('RealTimeEventService', () => {
         messageHandler('flyoverhead:events', message2);
       }
 
-      await new Promise((resolve) => setTimeout(resolve, 600));
+      await new Promise((resolve) => {
+        setTimeout(resolve, 600);
+      });
 
       // Should only broadcast once with latest data
       expect(mockWebSocketIO.emit).toHaveBeenCalledTimes(1);
@@ -299,7 +309,9 @@ describe('RealTimeEventService', () => {
         messageHandler('flyoverhead:events', message);
       }
 
-      await new Promise((resolve) => setTimeout(resolve, 600));
+      await new Promise((resolve) => {
+        setTimeout(resolve, 600);
+      });
 
       // Should not broadcast (no valid position)
       expect(mockWebSocketIO.emit).not.toHaveBeenCalled();
@@ -343,7 +355,9 @@ describe('RealTimeEventService', () => {
         messageHandler('flyoverhead:events', aircraft2);
       }
 
-      await new Promise((resolve) => setTimeout(resolve, 600));
+      await new Promise((resolve) => {
+        setTimeout(resolve, 600);
+      });
 
       // Should broadcast both aircraft in one message
       expect(mockWebSocketIO.emit).toHaveBeenCalledTimes(1);
@@ -353,7 +367,9 @@ describe('RealTimeEventService', () => {
     });
 
     it('should not broadcast when buffer is empty', async () => {
-      await new Promise((resolve) => setTimeout(resolve, 600));
+      await new Promise((resolve) => {
+        setTimeout(resolve, 600);
+      });
 
       // Should not broadcast if no events received
       expect(mockWebSocketIO.emit).not.toHaveBeenCalled();
@@ -380,11 +396,15 @@ describe('RealTimeEventService', () => {
       }
 
       // First flush
-      await new Promise((resolve) => setTimeout(resolve, 600));
+      await new Promise((resolve) => {
+        setTimeout(resolve, 600);
+      });
       expect(mockWebSocketIO.emit).toHaveBeenCalledTimes(1);
 
       // Second flush (buffer should be empty)
-      await new Promise((resolve) => setTimeout(resolve, 600));
+      await new Promise((resolve) => {
+        setTimeout(resolve, 600);
+      });
       expect(mockWebSocketIO.emit).toHaveBeenCalledTimes(1); // Still 1, no new broadcast
     });
 
@@ -425,7 +445,9 @@ describe('RealTimeEventService', () => {
         messageHandler('flyoverhead:events', message);
       }
 
-      await new Promise((resolve) => setTimeout(resolve, 600));
+      await new Promise((resolve) => {
+        setTimeout(resolve, 600);
+      });
 
       const broadcast = mockWebSocketIO.emit.mock.calls[0][1];
       const aircraft = broadcast.data.updated[0];

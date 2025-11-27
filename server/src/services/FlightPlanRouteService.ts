@@ -94,7 +94,7 @@ class FlightPlanRouteService {
         const lat = parseFloat(navaid.latitude_deg);
         const lng = parseFloat(navaid.longitude_deg);
 
-        if (isNaN(lat) || isNaN(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+        if (Number.isNaN(lat) || Number.isNaN(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
           logger.warn('Invalid coordinates for navaid', {
             code,
             lat,
@@ -139,7 +139,7 @@ class FlightPlanRouteService {
         const lat = parseFloat(airport.latitude_deg);
         const lng = parseFloat(airport.longitude_deg);
 
-        if (isNaN(lat) || isNaN(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+        if (Number.isNaN(lat) || Number.isNaN(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
           logger.warn('Invalid coordinates for airport', {
             code,
             lat,
