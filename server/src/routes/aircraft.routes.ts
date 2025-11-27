@@ -485,6 +485,12 @@ router.get(
 
 const hasArrivalData = (route?: any | null): boolean => !!(route?.arrivalAirport?.icao || route?.arrivalAirport?.iata);
 
+const getRouteAgeMs = (route?: any | null): number => {
+  if (!route?.cachedAt) return Number.POSITIVE_INFINITY;
+  const cachedAtDate = route.cachedAt instanceof Date ? route.cachedAt : new Date(route.cachedAt);
+  return Date.now() - cachedAtDate.getTime();
+};
+
 const respondWithRoute = async (
   res: Response,
   route: any,
