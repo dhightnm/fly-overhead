@@ -61,6 +61,18 @@ const backfillEnabled = backgroundJobsEnabled
   )
   : false;
 
+const metricsEnabled = resolveBooleanFlag(
+  process.env.ENABLE_METRICS,
+  process.env.DISABLE_METRICS,
+  false, // Disabled by default - enable when ready
+);
+
+const prometheusExportEnabled = resolveBooleanFlag(
+  process.env.ENABLE_PROMETHEUS_EXPORT,
+  process.env.DISABLE_PROMETHEUS_EXPORT,
+  false, // Disabled by default - requires Prometheus infrastructure
+);
+
 const queueEnabled = resolveBooleanFlag(
   process.env.ENABLE_QUEUE_INGESTION,
   process.env.DISABLE_QUEUE_INGESTION,
@@ -256,6 +268,8 @@ const config: AppConfig = {
     backgroundJobsEnabled,
     conusPollingEnabled,
     backfillEnabled,
+    metricsEnabled,
+    prometheusExportEnabled,
   },
   queue: {
     enabled: queueEnabled,
@@ -311,6 +325,17 @@ const config: AppConfig = {
     circuitBreaker: {
       failureThreshold: webhookCircuitBreakerFailureThreshold,
       resetSeconds: webhookCircuitBreakerResetSeconds,
+    },
+  },
+  feeders: {
+    circuitBreaker: {
+      failureThreshold: Math.max(1, parseNumber(process.env.FEEDER_CIRCUIT_BREAKER_FAILURE_THRESHOLD, 10)),
+      resetSeconds: Math.max(30, parseNumber(process.env.FEEDER_CIRCUIT_BREAKER_RESET_SECONDS, 300)),
+    },
+    perSubscriberRateLimits: {
+      statsPerHour: parseNumber(process.env.FEEDER_STATS_PER_HOUR, 60),
+      lastSeenPerHour: parseNumber(process.env.FEEDER_LAST_SEEN_PER_HOUR, 120),
+      infoPerHour: parseNumber(process.env.FEEDER_INFO_PER_HOUR, 100),
     },
   },
   auth: {

@@ -16,6 +16,7 @@ import requestLogger from './middlewares/requestLogger';
 import logger from './utils/logger';
 import postgresRepository from './repositories/PostgresRepository';
 import aircraftCacheWarmer from './services/AircraftCacheWarmer';
+import metricsService from './services/MetricsService';
 
 // API Routes - All migrated to TypeScript
 import authRoutes from './routes/auth.routes';
@@ -112,6 +113,18 @@ app.use('/api', feederRoutes);
 app.use('/api/portal', portalRoutes);
 app.use('/api/webhooks', webhookRoutes);
 
+// Metrics endpoint (if enabled)
+if (config.features.metricsEnabled) {
+  app.get('/api/metrics', (req: Request, res: Response) => {
+    if (config.features.prometheusExportEnabled && req.query.format === 'prometheus') {
+      res.setHeader('Content-Type', 'text/plain; version=0.0.4');
+      res.send(metricsService.exportPrometheusFormat());
+    } else {
+      res.json(metricsService.getMetricsJson());
+    }
+  });
+}
+
 // Catch-all handler: send back React's index.html for client-side routing
 // This must be AFTER API routes and static file middleware, and BEFORE error handler
 // IMPORTANT: Only match routes that don't start with /static, /api, etc.
@@ -144,7 +157,16 @@ async function startServer(): Promise<void> {
       backgroundJobsEnabled,
       conusPollingEnabled,
       backfillEnabled,
+      metricsEnabled,
     } = config.features;
+
+    // Initialize metrics service
+    metricsService.setEnabled(metricsEnabled);
+    if (metricsEnabled) {
+      logger.info('Metrics collection enabled', {
+        prometheusExport: config.features.prometheusExportEnabled,
+      });
+    }
 
     if (backgroundJobsEnabled) {
       logger.info('Background jobs enabled - starting auxiliary services');

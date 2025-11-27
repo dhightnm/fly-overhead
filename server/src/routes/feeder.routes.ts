@@ -19,6 +19,11 @@ import {
 } from '../schemas/feeder.schemas';
 import { STATE_INDEX, validateAircraftState } from '../utils/aircraftState';
 import { validateApiKeyFormat } from '../utils/apiKeyGenerator';
+import {
+  createPerSubscriberRateLimitMiddleware,
+  recordSubscriberSuccess,
+  recordSubscriberFailure,
+} from '../middlewares/perSubscriberRateLimitMiddleware';
 
 type InvalidState = Extract<ReturnType<typeof validateAircraftState>, { valid: false }>;
 
@@ -91,11 +96,18 @@ const formatZodErrors = (error: ZodError) => error.issues.map((issue) => ({
  * POST /api/feeder/aircraft
  * Receive aircraft state data from feeders
  * Requires API key with feeder:write scope
+ *
+ * NOTE: This endpoint does NOT use rate limiting middleware because:
+ * - Feeders are the primary data source for the application
+ * - Rate limiting data ingestion would disrupt the core functionality
+ * - Feeders are authenticated via API keys, providing security without rate limits
+ * - Circuit breakers (when implemented) will handle misbehaving feeders
  */
 router.post(
   '/feeder/aircraft',
   requireApiKeyAuth,
   requireScopes(API_SCOPES.FEEDER_WRITE, API_SCOPES.AIRCRAFT_WRITE),
+  // Intentionally NO rateLimitMiddleware - feeders are data providers
   async (req: AuthenticatedRequest, res: Response) => {
     const parsedBody = feederAircraftBatchSchema.safeParse(req.body);
     if (!parsedBody.success) {
@@ -431,11 +443,23 @@ router.post(
  * POST /api/feeder/stats
  * Update feeder statistics
  * Requires API key with feeder:write scope
+ * Rate limited per feeder to prevent abuse
  */
+const feederStatsRateLimit = createPerSubscriberRateLimitMiddleware(
+  'feeder',
+  (req: AuthenticatedRequest) => {
+    // Extract feeder_id from request body
+    const body = req.body as { feeder_id?: string };
+    return body?.feeder_id || null;
+  },
+  'stats',
+);
+
 router.post(
   '/feeder/stats',
   maybeAuthenticateFeederRequest,
   ensureFeederWriteAccess(true),
+  feederStatsRateLimit,
   async (req: AuthenticatedRequest, res: Response) => {
     const parsedBody = feederStatsSchema.safeParse(req.body);
     if (!parsedBody.success) {
@@ -459,12 +483,19 @@ router.post(
 
       await postgresRepository.upsertFeederStats(feeder_id, messages_received, unique_aircraft);
 
+      // Record success for circuit breaker
+      await recordSubscriberSuccess('feeder', feeder_id);
+
       return res.status(200).json({
         success: true,
       });
     } catch (error) {
       const err = error as Error;
       logger.error('Error updating feeder stats', { feeder_id, error: err.message });
+
+      // Record failure for circuit breaker
+      await recordSubscriberFailure('feeder', feeder_id);
+
       return res.status(500).json({
         success: false,
         error: 'Internal server error',
@@ -477,11 +508,23 @@ router.post(
  * PUT /api/feeder/last-seen
  * Update feeder last seen timestamp
  * Requires API key with feeder:write scope
+ * Rate limited per feeder to prevent abuse
  */
+const feederLastSeenRateLimit = createPerSubscriberRateLimitMiddleware(
+  'feeder',
+  (req: AuthenticatedRequest) => {
+    // Extract feeder_id from request body
+    const body = req.body as { feeder_id?: string };
+    return body?.feeder_id || null;
+  },
+  'last-seen',
+);
+
 router.put(
   '/feeder/last-seen',
   maybeAuthenticateFeederRequest,
   ensureFeederWriteAccess(true),
+  feederLastSeenRateLimit,
   async (req: AuthenticatedRequest, res: Response) => {
     const parsedBody = feederLastSeenSchema.safeParse(req.body);
     if (!parsedBody.success) {
@@ -496,12 +539,19 @@ router.put(
     try {
       await postgresRepository.updateFeederLastSeen(feeder_id);
 
+      // Record success for circuit breaker
+      await recordSubscriberSuccess('feeder', feeder_id);
+
       return res.status(200).json({
         success: true,
       });
     } catch (error) {
       const err = error as Error;
       logger.warn('Error updating feeder last seen', { feeder_id, error: err.message });
+
+      // Record failure for circuit breaker
+      await recordSubscriberFailure('feeder', feeder_id);
+
       return res.status(200).json({
         success: true,
       });
@@ -513,11 +563,19 @@ router.put(
  * GET /api/feeder/me
  * Get feeder information (authenticated by API key)
  * Requires API key with feeder:read scope
+ * Rate limited per API key to prevent abuse
  */
+const feederInfoRateLimit = createPerSubscriberRateLimitMiddleware(
+  'feeder',
+  (req: AuthenticatedRequest) => req.apiKey?.keyId || null,
+  'info',
+);
+
 router.get(
   '/feeder/me',
   requireApiKeyAuth,
   requireScopes(API_SCOPES.FEEDER_READ),
+  feederInfoRateLimit,
   async (req: AuthenticatedRequest, res: Response) => {
     try {
       // Get feeder by API key hash (works for both user-linked and standalone feeders)
@@ -572,6 +630,12 @@ router.get(
         });
       }
 
+      // Record success for circuit breaker (use API key ID as identifier)
+      const apiKeyId = req.apiKey?.keyId;
+      if (apiKeyId) {
+        await recordSubscriberSuccess('feeder', apiKeyId);
+      }
+
       // Return feeder info
       return res.status(200).json({
         success: true,
@@ -589,6 +653,13 @@ router.get(
     } catch (error) {
       const err = error as Error;
       logger.error('Error getting feeder info', { error: err.message });
+
+      // Record failure for circuit breaker
+      const apiKeyId = req.apiKey?.keyId;
+      if (apiKeyId) {
+        await recordSubscriberFailure('feeder', apiKeyId);
+      }
+
       return res.status(500).json({
         success: false,
         error: 'Internal server error',

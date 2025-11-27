@@ -130,10 +130,24 @@ export interface AuthConfig {
   devKeyAllowedEmails: string[];
 }
 
+export interface FeederConfig {
+  circuitBreaker: {
+    failureThreshold: number;
+    resetSeconds: number;
+  };
+  perSubscriberRateLimits: {
+    statsPerHour: number;
+    lastSeenPerHour: number;
+    infoPerHour: number;
+  };
+}
+
 export interface FeatureFlagsConfig {
   backgroundJobsEnabled: boolean;
   conusPollingEnabled: boolean;
   backfillEnabled: boolean;
+  metricsEnabled: boolean;
+  prometheusExportEnabled: boolean;
 }
 
 export interface AppConfig {
@@ -148,5 +162,6 @@ export interface AppConfig {
   liveState: LiveStateConfig;
   cache: CacheConfig;
   webhooks: WebhookConfig;
+  feeders: FeederConfig;
   auth: AuthConfig;
 }
