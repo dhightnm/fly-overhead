@@ -274,9 +274,9 @@ router.get(
         : [];
 
       let aircraftStates: DbAircraftRow[] = [];
-      const shouldQueryDb =
-        !config.liveState.enabled ||
-        liveStateSamples.length < liveStateStore.getMinResultsBeforeFallback();
+      const isLiveStateDisabled = !config.liveState.enabled;
+      const hasInsufficientSamples = liveStateSamples.length < liveStateStore.getMinResultsBeforeFallback();
+      const shouldQueryDb = isLiveStateDisabled || hasInsufficientSamples;
 
       if (shouldQueryDb) {
         aircraftStates = await postgresRepository.findAircraftInBounds(latMin, lonMin, latMax, lonMax, recentThreshold);
