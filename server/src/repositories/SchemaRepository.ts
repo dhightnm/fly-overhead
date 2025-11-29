@@ -1,4 +1,6 @@
 import pgPromise from 'pg-promise';
+import fs from 'fs';
+import path from 'path';
 import logger from '../utils/logger';
 import { getConnection } from './DatabaseConnection';
 import initializeAirportSchema from '../database/airportSchema';
@@ -1200,6 +1202,10 @@ class SchemaRepository {
 
     await this.initializeWebhookSchema();
 
+    // Stripe migrations
+    await this.addStripeTables();
+    await this.addUserSubscriptionFlags();
+
     logger.info('Database initialized successfully with performance indexes');
   }
 
@@ -1271,6 +1277,36 @@ class SchemaRepository {
       // If the information schema is unavailable (Timescale not installed yet),
       // treat the table as a regular table so migrations continue to run.
       return false;
+    }
+  }
+
+  /**
+   * Add Stripe tables (migration 007)
+   */
+  async addStripeTables(): Promise<void> {
+    try {
+      const migrationPath = path.join(__dirname, '../../migrations/007_add_stripe_tables.sql');
+      const migrationSQL = fs.readFileSync(migrationPath, 'utf8');
+      await this.db.query(migrationSQL);
+      logger.info('Stripe tables migration (007) completed');
+    } catch (error) {
+      const err = error as Error;
+      logger.warn('Stripe tables migration (007) issue', { error: err.message });
+    }
+  }
+
+  /**
+   * Add user subscription flags (migration 008)
+   */
+  async addUserSubscriptionFlags(): Promise<void> {
+    try {
+      const migrationPath = path.join(__dirname, '../../migrations/008_add_user_subscription_flags.sql');
+      const migrationSQL = fs.readFileSync(migrationPath, 'utf8');
+      await this.db.query(migrationSQL);
+      logger.info('User subscription flags migration (008) completed');
+    } catch (error) {
+      const err = error as Error;
+      logger.warn('User subscription flags migration (008) issue', { error: err.message });
     }
   }
 }
