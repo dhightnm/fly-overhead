@@ -1,6 +1,4 @@
-import {
-  Router, Request, Response, NextFunction,
-} from 'express';
+import { Router, Request, Response, NextFunction } from 'express';
 import dns from 'dns';
 import { promisify } from 'util';
 import axios from 'axios';
@@ -52,7 +50,10 @@ function createBoundingBox(lat: number, lon: number, radiusNm: number) {
   const lonMax = clamp(lon + lonRadius, -180, 180);
 
   return {
-    latMin, latMax, lonMin, lonMax,
+    latMin,
+    latMax,
+    lonMin,
+    lonMax,
   };
 }
 
@@ -65,10 +66,7 @@ const ROUTE_CACHE_MAX_AGE_MS = Number.isFinite(ROUTE_CACHE_MAX_AGE_HOURS)
   ? ROUTE_CACHE_MAX_AGE_HOURS * 60 * 60 * 1000
   : 3 * 60 * 60 * 1000;
 
-function mergeLiveSamplesWithDb(
-  dbRows: DbAircraftRow[],
-  liveStates: any[],
-): DbAircraftRow[] {
+function mergeLiveSamplesWithDb(dbRows: DbAircraftRow[], liveStates: any[]): DbAircraftRow[] {
   if (!liveStates.length) {
     return dbRows;
   }
@@ -134,7 +132,8 @@ const maybeOverrideWithArrivalLocation = (aircraft: any, route: any, dataAgeSeco
 
   const normalizedStatus = normalizeStatus(route?.flightStatus);
   const hasArrivalStatus = normalizedStatus ? LANDED_STATUSES.has(normalizedStatus) : false;
-  const actualArrivalTimestamp = typeof route?.flightData?.actualArrival === 'number' ? route.flightData.actualArrival : null;
+  const actualArrivalTimestamp =
+    typeof route?.flightData?.actualArrival === 'number' ? route.flightData.actualArrival : null;
   const nowSeconds = Math.floor(Date.now() / 1000);
   const actualArrivalAgeSeconds = actualArrivalTimestamp ? Math.max(0, nowSeconds - actualArrivalTimestamp) : null;
   const hasActualArrival = actualArrivalAgeSeconds !== null;
@@ -209,15 +208,19 @@ router.get(
         liveStateStore.upsertStates(preparedStates);
 
         await Promise.all(
-          preparedStates.map((state) => redisAircraftCache.cacheStateArray(state, {
-            data_source: 'airplanes.live',
-            source_priority: 20,
-          }).catch((error: Error) => {
-            logger.debug('Failed to cache airplanes.live state', {
-              icao24: state[0],
-              error: error.message,
-            });
-          })),
+          preparedStates.map((state) =>
+            redisAircraftCache
+              .cacheStateArray(state, {
+                data_source: 'airplanes.live',
+                source_priority: 20,
+              })
+              .catch((error: Error) => {
+                logger.debug('Failed to cache airplanes.live state', {
+                  icao24: state[0],
+                  error: error.message,
+                });
+              }),
+          ),
         );
 
         if (queueService.isEnabled()) {
@@ -231,21 +234,21 @@ router.get(
           );
         } else {
           await Promise.all(
-            preparedStates.map((state) => postgresRepository
-              .upsertAircraftStateWithPriority(state, null, new Date(), 'airplanes.live', 20, true)
-              .catch((error: Error) => {
-                logger.debug('Failed to store aircraft from airplanes.live', {
-                  icao24: state[0],
-                  error: error.message,
-                });
-              })),
+            preparedStates.map((state) =>
+              postgresRepository
+                .upsertAircraftStateWithPriority(state, null, new Date(), 'airplanes.live', 20, true)
+                .catch((error: Error) => {
+                  logger.debug('Failed to store aircraft from airplanes.live', {
+                    icao24: state[0],
+                    error: error.message,
+                  });
+                }),
+            ),
           );
         }
       }
 
-      const {
-        latMin, latMax, lonMin, lonMax,
-      } = createBoundingBox(latitude, longitude, clampedRadius);
+      const { latMin, latMax, lonMin, lonMax } = createBoundingBox(latitude, longitude, clampedRadius);
       const nowSeconds = Math.floor(Date.now() / 1000);
       const recentThreshold = nowSeconds - BOUNDS_RECENT_WINDOW_SECONDS;
       const cachedAircraft = await redisAircraftCache.getStatesInBounds(
@@ -272,17 +275,11 @@ router.get(
         : [];
 
       let aircraftStates: DbAircraftRow[] = [];
-      const shouldQueryDb = !config.liveState.enabled
-        || liveStateSamples.length < liveStateStore.getMinResultsBeforeFallback();
+      const shouldQueryDb =
+        !config.liveState.enabled || liveStateSamples.length < liveStateStore.getMinResultsBeforeFallback();
 
       if (shouldQueryDb) {
-        aircraftStates = await postgresRepository.findAircraftInBounds(
-          latMin,
-          lonMin,
-          latMax,
-          lonMax,
-          recentThreshold,
-        );
+        aircraftStates = await postgresRepository.findAircraftInBounds(latMin, lonMin, latMax, lonMax, recentThreshold);
       }
 
       const mergedAircraft = mergeLiveSamplesWithDb(
@@ -500,8 +497,8 @@ const respondWithRoute = async (
   if (aircraftIcao24 && (route.aircraft?.type || route.aircraft?.model)) {
     const inferredCategory = mapAircraftTypeToCategory(route.aircraft?.type, route.aircraft?.model);
     if (
-      inferredCategory !== null
-      && (!currentAircraft || currentAircraft.category === null || currentAircraft.category === 0)
+      inferredCategory !== null &&
+      (!currentAircraft || currentAircraft.category === null || currentAircraft.category === 0)
     ) {
       try {
         await postgresRepository.updateAircraftCategory(aircraftIcao24, inferredCategory);
@@ -519,12 +516,13 @@ const respondWithRoute = async (
   });
 };
 
-const withTimeout = async <T>(promise: Promise<T>, timeoutMs: number): Promise<T | null> => Promise.race([
-  promise,
-  new Promise<null>((resolve) => {
-    setTimeout(() => resolve(null), timeoutMs);
-  }),
-]);
+const withTimeout = async <T>(promise: Promise<T>, timeoutMs: number): Promise<T | null> =>
+  Promise.race([
+    promise,
+    new Promise<null>((resolve) => {
+      setTimeout(() => resolve(null), timeoutMs);
+    }),
+  ]);
 
 /**
  * Get flight route for an aircraft
@@ -654,9 +652,7 @@ router.get(
   requireAircraftRead,
   rateLimitMiddleware,
   async (req: Request, res: Response, next: NextFunction) => {
-    const {
-      latmin, lonmin, latmax, lonmax,
-    } = req.params;
+    const { latmin, lonmin, latmax, lonmax } = req.params;
 
     const cacheKey = boundsCacheService.buildCacheKey(
       parseFloat(latmin),
@@ -701,9 +697,7 @@ router.post(
   requireAircraftRead,
   rateLimitMiddleware,
   async (req: Request, res: Response, next: NextFunction) => {
-    const {
-      latmin, lonmin, latmax, lonmax,
-    } = req.params;
+    const { latmin, lonmin, latmax, lonmax } = req.params;
 
     const boundingBox = {
       lamin: parseFloat(latmin),
@@ -891,16 +885,16 @@ router.get(
       }
 
       const record = rows[0];
-      redisAircraftCache.cacheRecord(record, {
-        data_source: record.data_source,
-        source_priority: record.source_priority,
-        ingestion_timestamp: record.ingestion_timestamp
-          ? new Date(record.ingestion_timestamp).toISOString()
-          : null,
-        feeder_id: record.feeder_id,
-      }).catch((error: Error) => {
-        logger.debug('Failed to cache aircraft search fallback', { error: error.message });
-      });
+      redisAircraftCache
+        .cacheRecord(record, {
+          data_source: record.data_source,
+          source_priority: record.source_priority,
+          ingestion_timestamp: record.ingestion_timestamp ? new Date(record.ingestion_timestamp).toISOString() : null,
+          feeder_id: record.feeder_id,
+        })
+        .catch((error: Error) => {
+          logger.debug('Failed to cache aircraft search fallback', { error: error.message });
+        });
 
       return res.json({
         source: 'database',
@@ -1047,10 +1041,11 @@ router.get(
   requireApiKeyAuth,
   requireAircraftRead,
   rateLimitMiddleware,
-  async (_req: Request, res: Response) => res.json({
-    cache: redisAircraftCache.getMetrics(),
-    warmer: aircraftCacheWarmer.getStatus(),
-  }),
+  async (_req: Request, res: Response) =>
+    res.json({
+      cache: redisAircraftCache.getMetrics(),
+      warmer: aircraftCacheWarmer.getStatus(),
+    }),
 );
 
 /**
@@ -1172,15 +1167,17 @@ router.get(
   requireAircraftRead,
   rateLimitMiddleware,
   async (req: Request, res: Response, next: NextFunction) => {
-    const {
-      latmin, lonmin, latmax, lonmax,
-    } = req.params;
+    const { latmin, lonmin, latmax, lonmax } = req.params;
     const { cellSize = 0.01 } = req.query;
 
     try {
       // TODO: Implement getTrafficDensity in repository
       logger.warn('getTrafficDensity not yet implemented', {
-        latmin, lonmin, latmax, lonmax, cellSize,
+        latmin,
+        lonmin,
+        latmax,
+        lonmax,
+        cellSize,
       });
       return res.status(501).json({ error: 'Not implemented' });
     } catch (err) {
@@ -1259,9 +1256,7 @@ router.get(
   allowSameOriginOrApiKey(API_SCOPES.AIRPORTS_READ, API_SCOPES.READ),
   rateLimitMiddleware,
   async (req: Request, res: Response, next: NextFunction) => {
-    const {
-      latmin, lonmin, latmax, lonmax,
-    } = req.params;
+    const { latmin, lonmin, latmax, lonmax } = req.params;
     const { type, limit = 100 } = req.query;
 
     try {
