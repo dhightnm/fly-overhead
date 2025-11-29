@@ -39,6 +39,11 @@ services:
         - BUILD_DATE=${BUILD_DATE:-$(date -u +'%Y-%m-%dT%H:%M:%SZ')}
         - REACT_APP_API_URL=${REACT_APP_API_URL:-http://localhost:3005}
         - REACT_APP_GOOGLE_CLIENT_ID=${REACT_APP_GOOGLE_CLIENT_ID:-}
+        - REACT_APP_STRIPE_PRICE_FLIGHT_TRACKING_PRO=${REACT_APP_STRIPE_PRICE_FLIGHT_TRACKING_PRO:-}
+        - REACT_APP_STRIPE_PRICE_EFB_BASIC=${REACT_APP_STRIPE_PRICE_EFB_BASIC:-}
+        - REACT_APP_STRIPE_PRICE_EFB_PRO=${REACT_APP_STRIPE_PRICE_EFB_PRO:-}
+        - REACT_APP_STRIPE_PRICE_API_STARTER=${REACT_APP_STRIPE_PRICE_API_STARTER:-}
+        - REACT_APP_STRIPE_PRICE_API_PRO=${REACT_APP_STRIPE_PRICE_API_PRO:-}
     container_name: fly-overhead-server
     working_dir: /app/server
     command: npm run dev
@@ -66,9 +71,10 @@ services:
       - ./server/tsconfig.test.json:/app/server/tsconfig.test.json
       - ./server/package.json:/app/server/package.json
       - ./server/package-lock.json:/app/server/package-lock.json
-      # Mount local client build (if it exists) to use local builds automatically
-      # Note: Changes to build folder require container restart to be picked up
-      - ./client/build:/app/server/client/build:ro
+      # NOTE: Client build is created inside Docker with proper environment variables
+      # Do NOT mount local client/build as it may override Docker-built version with missing env vars
+      # If you need to use a local build, ensure it's built with all REACT_APP_* variables set
+      # - ./client/build:/app/server/client/build:ro
       # Anonymous volume to preserve node_modules installed in container
       - /app/server/node_modules
     depends_on:

@@ -320,6 +320,21 @@ class PostgresRepository {
     return this.user.updateUserFeederProviderStatus(userId, isFeederProvider);
   }
 
+  async updateUserStripeCustomerId(userId: number, stripeCustomerId: string): Promise<any> {
+    return this.user.updateUserStripeCustomerId(userId, stripeCustomerId);
+  }
+
+  async updateUserSubscriptionFlags(
+    userId: number,
+    flags: { is_premium?: boolean; is_efb?: boolean; is_api?: boolean },
+  ): Promise<any> {
+    return this.user.updateUserSubscriptionFlags(userId, flags);
+  }
+
+  async getUserByStripeCustomerId(stripeCustomerId: string): Promise<any> {
+    return this.user.getUserByStripeCustomerId(stripeCustomerId);
+  }
+
   // Delegate feeder methods
   async getFeederById(feederId: string): Promise<any> {
     return this.feeder.getFeederById(feederId);

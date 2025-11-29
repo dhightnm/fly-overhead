@@ -48,57 +48,93 @@ Key files:
 ### Prerequisites
 
 - Node.js (v16.20.2 or later)
-- PostgreSQL
-- AWS account with DynamoDB access
-- OpenSky Network API credentials
+- Docker and Docker Compose
+- PostgreSQL (via Docker)
+- Redis (via Docker)
 
-### Installation
+### Quick Start with Docker (Recommended)
 
-1. Clone the repository:
-   ```
+1. **Clone the repository:**
+   ```bash
    git clone <repository-url>
-   cd <repository-name>
+   cd fly-overhead
    ```
 
-2. Install server dependencies:
+2. **Set up environment variables:**
+   Create a `.env` file in the root directory (see `.env.example` if available). Required variables:
+   ```bash
+   # Database
+   POSTGRES_URL=postgresql://postgres:postgres@db:5432/fly_overhead
+   REDIS_URL=redis://redis:6379
+   
+   # React App Environment Variables (baked into build at build time)
+   REACT_APP_API_URL=http://localhost:3005
+   REACT_APP_GOOGLE_CLIENT_ID=your-google-client-id
+   REACT_APP_STRIPE_PUBLISHABLE_KEY=your-stripe-key
+   REACT_APP_STRIPE_PRICE_FLIGHT_TRACKING_PRO=price_xxx
+   REACT_APP_STRIPE_PRICE_EFB_BASIC=price_xxx
+   REACT_APP_STRIPE_PRICE_EFB_PRO=price_xxx
+   REACT_APP_STRIPE_PRICE_API_STARTER=price_xxx
+   REACT_APP_STRIPE_PRICE_API_PRO=price_xxx
+   
+   # Server Environment Variables
+   JWT_SECRET=your-jwt-secret
+   GOOGLE_CLIENT_ID=your-google-client-id
+   GOOGLE_CLIENT_SECRET=your-google-client-secret
+   STRIPE_SECRET_KEY=your-stripe-secret-key
+   STRIPE_WEBHOOK_SECRET=your-webhook-secret
    ```
+
+3. **Build and start the application:**
+   ```bash
+   npm run docker:dev:build
+   ```
+
+4. **Access the application:**
+   - Frontend: `http://localhost:3005`
+   - API: `http://localhost:3005/api`
+
+### Important Notes
+
+**React Environment Variables:**
+- All `REACT_APP_*` variables are **baked into the JavaScript bundle at build time**
+- They are **NOT available at runtime** - they must be set when building the Docker image
+- The `docker-compose.dev.yml` passes these as build arguments to Docker
+- **Do NOT mount a local `client/build` directory** - it will override the Docker-built version
+- If you need to rebuild the client with new env vars, run: `npm run docker:dev:build`
+
+**Development Workflow:**
+- Server code changes: Hot-reloaded automatically (no restart needed)
+- Client code changes: Rebuild required (`npm run docker:dev:build`)
+- Environment variable changes: Rebuild required (`npm run docker:dev:build`)
+
+### Running Locally (Without Docker)
+
+1. Install server dependencies:
+   ```bash
    cd server
    npm install
    ```
 
-3. Install client dependencies:
-   ```
+2. Install client dependencies:
+   ```bash
    cd ../client
    npm install
    ```
 
-4. Set up environment variables:
-   Create a `.env` file in the `server/` directory with the following content:
-   ```
-   OPENSKY_USER=<your-opensky-username>
-   OPENSKY_PASS=<your-opensky-password>
-   PORT=3002
-   ```
+3. Set up environment variables in `.env` files (see above)
 
-5. Configure database connections:
-   - Update the PostgreSQL connection string in `server/database/database.js`
-   - Set up AWS credentials for DynamoDB in `server/database/dynamoDBConnection.js`
-
-### Running the Application
-
-1. Start the backend server:
-   ```
+4. Start the backend server:
+   ```bash
    cd server
    npm run dev
    ```
 
-2. Start the frontend development server:
-   ```
+5. Start the frontend development server:
+   ```bash
    cd client
-   npm start
+   REACT_APP_GOOGLE_CLIENT_ID=your-id npm start
    ```
-
-3. Access the application in your web browser at `http://localhost:3000`
 
 ### API Endpoints
 

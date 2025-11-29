@@ -130,6 +130,22 @@ export interface AuthConfig {
   devKeyAllowedEmails: string[];
 }
 
+export interface StripeConfig {
+  secretKey?: string;
+  publishableKey?: string;
+  webhookSecret?: string;
+  apiVersion: string;
+  successUrl: string;
+  cancelUrl: string;
+  prices: {
+    flightTrackingPro?: string;
+    efbBasic?: string;
+    efbPro?: string;
+    apiStarter?: string;
+    apiProfessional?: string;
+  };
+}
+
 export interface FeederConfig {
   circuitBreaker: {
     failureThreshold: number;
@@ -164,4 +180,5 @@ export interface AppConfig {
   webhooks: WebhookConfig;
   feeders: FeederConfig;
   auth: AuthConfig;
+  stripe: StripeConfig;
 }

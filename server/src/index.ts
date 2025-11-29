@@ -26,6 +26,8 @@ import healthRoutes from './routes/health.routes';
 import feederRoutes from './routes/feeder.routes';
 import portalRoutes from './routes/portal.routes';
 import webhookRoutes from './routes/webhook.routes';
+import stripeRoutes from './routes/stripe.routes';
+import subscriptionRoutes from './routes/subscription.routes';
 
 const app = express();
 const server = createServer(app);
@@ -72,6 +74,8 @@ app.use(
 );
 
 // Middleware
+// Note: Stripe webhook route needs raw body for signature verification
+app.use('/api/stripe/webhooks', express.raw({ type: 'application/json' }));
 app.use(express.json());
 app.use(requestLogger);
 
@@ -112,6 +116,8 @@ app.use('/api', healthRoutes);
 app.use('/api', feederRoutes);
 app.use('/api/portal', portalRoutes);
 app.use('/api/webhooks', webhookRoutes);
+app.use('/api/stripe', stripeRoutes);
+app.use('/api/subscriptions', subscriptionRoutes);
 
 // Metrics endpoint (if enabled)
 if (config.features.metricsEnabled) {

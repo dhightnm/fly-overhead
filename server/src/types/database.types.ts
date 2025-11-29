@@ -111,6 +111,9 @@ export interface User {
   is_premium: boolean;
   premium_expires_at: Date | null;
   is_feeder_provider: boolean;
+  is_efb: boolean;
+  is_api: boolean;
+  stripe_customer_id: string | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -282,4 +285,71 @@ export interface WebhookDelivery {
   response_body: string | null;
   created_at: Date;
   updated_at: Date;
+}
+
+export interface Subscription {
+  id: number;
+  user_id: number;
+  stripe_customer_id: string;
+  stripe_subscription_id: string | null;
+  stripe_price_id: string;
+  product_type: 'flight_tracking' | 'efb' | 'api';
+  tier_name: string;
+  status: 'active' | 'canceled' | 'past_due' | 'unpaid' | 'trialing' | 'paused';
+  current_period_start: Date;
+  current_period_end: Date;
+  cancel_at_period_end: boolean;
+  canceled_at: Date | null;
+  trial_start: Date | null;
+  trial_end: Date | null;
+  metadata: Record<string, any> | null;
+  created_at: Date;
+  updated_at: Date;
+}
+
+export interface PaymentMethod {
+  id: number;
+  user_id: number;
+  stripe_payment_method_id: string;
+  stripe_customer_id: string;
+  type: 'card' | 'bank_account';
+  is_default: boolean;
+  card_brand: string | null;
+  card_last4: string | null;
+  card_exp_month: number | null;
+  card_exp_year: number | null;
+  billing_details: Record<string, any> | null;
+  metadata: Record<string, any> | null;
+  created_at: Date;
+  updated_at: Date;
+}
+
+export interface Invoice {
+  id: number;
+  user_id: number;
+  subscription_id: number | null;
+  stripe_invoice_id: string;
+  stripe_customer_id: string;
+  amount: number;
+  currency: string;
+  status: 'draft' | 'open' | 'paid' | 'uncollectible' | 'void';
+  hosted_invoice_url: string | null;
+  invoice_pdf: string | null;
+  period_start: Date | null;
+  period_end: Date | null;
+  paid_at: Date | null;
+  metadata: Record<string, any> | null;
+  created_at: Date;
+  updated_at: Date;
+}
+
+export interface StripeWebhookEvent {
+  id: number;
+  stripe_event_id: string;
+  event_type: string;
+  processed: boolean;
+  processing_error: string | null;
+  event_data: Record<string, any>;
+  created_at: Date;
+  processed_at: Date | null;
 }

@@ -6,6 +6,7 @@ import bcrypt from 'bcryptjs';
 import axios from 'axios';
 import postgresRepository from '../repositories/PostgresRepository';
 import logger from '../utils/logger';
+import userSubscriptionService from '../services/UserSubscriptionService';
 
 const router = Router();
 
@@ -101,6 +102,9 @@ router.post('/register', async (req: Request, res: Response, next: NextFunction)
 
     const token = jwt.sign({ userId: user.id, email: user.email }, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
 
+    // Calculate subscription flags (will be false for new users)
+    const flags = await userSubscriptionService.calculateUserFlags(user.id);
+
     logger.info('User registered', { email, userId: user.id });
 
     return res.status(201).json({
@@ -109,7 +113,10 @@ router.post('/register', async (req: Request, res: Response, next: NextFunction)
         id: user.id,
         email: user.email,
         name: user.name,
-        isPremium: user.is_premium,
+        isPremium: flags.isPremium || user.is_premium,
+        isFeederProvider: false,
+        isEFB: flags.isEFB,
+        isAPI: flags.isAPI,
       },
     });
   } catch (error) {
@@ -135,12 +142,29 @@ router.post('/login', async (req: Request, res: Response, next: NextFunction) =>
       return res.status(401).json({ error: 'Invalid email or password' });
     }
 
+    // Check if user has a password (Google users might not have one)
+    if (!user.password) {
+      return res.status(401).json({ error: 'Invalid email or password. Please use Google sign-in for this account.' });
+    }
+
     const isValidPassword = await bcrypt.compare(password, user.password);
     if (!isValidPassword) {
       return res.status(401).json({ error: 'Invalid email or password' });
     }
 
     const token = jwt.sign({ userId: user.id, email: user.email }, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
+
+    // Calculate subscription flags (with error handling)
+    let flags = { isPremium: false, isEFB: false, isAPI: false };
+    try {
+      flags = await userSubscriptionService.calculateUserFlags(user.id);
+    } catch (flagError) {
+      logger.warn('Failed to calculate user flags, using defaults', {
+        error: (flagError as Error).message,
+        userId: user.id,
+      });
+      // Use defaults if calculation fails
+    }
 
     logger.info('User logged in', { email, userId: user.id });
 
@@ -150,7 +174,10 @@ router.post('/login', async (req: Request, res: Response, next: NextFunction) =>
         id: user.id,
         email: user.email,
         name: user.name,
-        isPremium: user.is_premium,
+        isPremium: flags.isPremium || user.is_premium || false,
+        isFeederProvider: user.is_feeder_provider || false,
+        isEFB: flags.isEFB || false,
+        isAPI: flags.isAPI || false,
       },
     });
   } catch (error) {
@@ -234,6 +261,9 @@ router.post('/google', async (req: Request, res: Response, next: NextFunction) =
 
     const token = jwt.sign({ userId: user.id, email: user.email }, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
 
+    // Calculate subscription flags
+    const flags = await userSubscriptionService.calculateUserFlags(user.id);
+
     logger.info('User logged in with Google', { email: user.email, userId: user.id });
 
     return res.json({
@@ -242,7 +272,10 @@ router.post('/google', async (req: Request, res: Response, next: NextFunction) =
         id: user.id,
         email: user.email,
         name: user.name,
-        isPremium: user.is_premium,
+        isPremium: flags.isPremium || user.is_premium,
+        isFeederProvider: user.is_feeder_provider || false,
+        isEFB: flags.isEFB,
+        isAPI: flags.isAPI,
       },
     });
   } catch (error) {
@@ -262,14 +295,17 @@ router.get('/me', authenticateToken, async (req: AuthenticatedRequest, res: Resp
       return res.status(404).json({ error: 'User not found' });
     }
 
+    // Calculate subscription flags
+    const flags = await userSubscriptionService.calculateUserFlags(user.id);
+
     return res.json({
       id: user.id,
       email: user.email,
       name: user.name,
-      isPremium: user.is_premium,
+      isPremium: flags.isPremium || user.is_premium,
       isFeederProvider: user.is_feeder_provider || false,
-      isEFB: false, // TODO: Derive from subscription type
-      isAPI: false, // TODO: Derive from subscription type
+      isEFB: flags.isEFB,
+      isAPI: flags.isAPI,
     });
   } catch (error) {
     const err = error as Error;

@@ -1,4 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { useHistory } from 'react-router-dom';
+import { useAuth } from '../../contexts/AuthContext';
+import { createCheckoutSession } from '../../services/stripe.service';
+import { getTierConfig, isCustomPricingTier } from '../../utils/stripePricing';
 import './Tiers.css';
 
 interface Tier {
@@ -129,9 +133,12 @@ const efbTiers: EFBTier[] = [
 ];
 
 const Tiers: React.FC = () => {
+  const { isAuthenticated } = useAuth();
+  const history = useHistory();
   const [selectedTier, setSelectedTier] = useState<string | null>(null);
   const [selectedEFBTier, setSelectedEFBTier] = useState<string | null>(null);
   const [visibleTiers, setVisibleTiers] = useState<Set<string>>(new Set());
+  const [loading, setLoading] = useState<string | null>(null);
   const tierRefs = useRef<Map<string, HTMLDivElement>>(new Map());
 
   useEffect(() => {
@@ -164,12 +171,50 @@ const Tiers: React.FC = () => {
     };
   }, []);
 
-  const handleSelectTier = (tierId: string) => {
-    setSelectedTier(tierId);
-    // Navigate to payment page (to be implemented)
-    // For now, just log
-    console.log('Selected tier:', tierId);
-    // window.location.href = `/payment?tier=${tierId}`;
+  const handleSelectTier = async (tierId: string) => {
+    if (tierId === 'free') {
+      // Free tier - just redirect to signup if not authenticated
+      if (!isAuthenticated) {
+        // Trigger signup modal (you may need to adjust this based on your modal implementation)
+        window.location.href = '/';
+        return;
+      }
+      return;
+    }
+
+    if (isCustomPricingTier(tierId)) {
+      // Enterprise/custom pricing - contact sales
+      alert('Please contact sales for enterprise pricing: sales@flyoverhead.com');
+      return;
+    }
+
+    if (!isAuthenticated) {
+      alert('Please sign in to continue with checkout');
+      history.push('/');
+      return;
+    }
+
+    const config = getTierConfig(tierId);
+    if (!config || !config.priceId) {
+      alert('This plan is not available yet. Please contact support.');
+      return;
+    }
+
+    try {
+      setLoading(tierId);
+      const { url } = await createCheckoutSession({
+        productType: config.productType,
+        tierName: config.tierName,
+        priceId: config.priceId,
+      });
+      
+      // Redirect to Stripe checkout
+      window.location.href = url;
+    } catch (error) {
+      console.error('Checkout error:', error);
+      alert('Failed to start checkout. Please try again.');
+      setLoading(null);
+    }
   };
 
   return (
@@ -239,8 +284,9 @@ const Tiers: React.FC = () => {
                 <button
                   className={`tier-button ${tier.popular ? 'popular' : ''} ${tier.highlight ? 'enterprise' : ''}`}
                   onClick={() => handleSelectTier(tier.id)}
+                  disabled={loading === tier.id}
                 >
-                  {tier.id === 'free' ? 'Get Started' : tier.id === 'enterprise' ? 'Contact Sales' : 'Select Plan'}
+                  {loading === tier.id ? 'Loading...' : tier.id === 'free' ? 'Get Started' : tier.id === 'enterprise' ? 'Contact Sales' : 'Select Plan'}
                 </button>
               </div>
             </div>
@@ -289,8 +335,9 @@ const Tiers: React.FC = () => {
               <button
                 className={`comparison-tier-button ${tier.popular ? 'popular' : ''} ${tier.highlight ? 'enterprise' : ''}`}
                 onClick={() => handleSelectTier(tier.id)}
+                disabled={loading === tier.id}
               >
-                {tier.id === 'free' ? 'Get Started' : tier.id === 'enterprise' ? 'Contact Sales' : 'Select Plan'}
+                {loading === tier.id ? 'Loading...' : tier.id === 'free' ? 'Get Started' : tier.id === 'enterprise' ? 'Contact Sales' : 'Select Plan'}
               </button>
             </div>
           ))}
@@ -357,9 +404,10 @@ const Tiers: React.FC = () => {
 
                   <button
                     className={`tier-button ${tier.popular ? 'popular' : ''} ${tier.highlight ? 'enterprise' : ''}`}
-                    onClick={() => setSelectedEFBTier(tier.id)}
+                    onClick={() => handleSelectTier(tier.id)}
+                    disabled={loading === tier.id}
                   >
-                    {tier.id === 'efb-enterprise' ? 'Contact Sales' : 'Select Plan'}
+                    {loading === tier.id ? 'Loading...' : tier.id === 'efb-enterprise' ? 'Contact Sales' : 'Select Plan'}
                   </button>
                 </div>
               </div>
@@ -377,16 +425,18 @@ const Tiers: React.FC = () => {
               <button
                 className="btn-primary-large"
                 onClick={() => handleSelectTier(selectedTier)}
+                disabled={loading === selectedTier}
               >
-                Continue to Payment
+                {loading === selectedTier ? 'Loading...' : 'Continue to Payment'}
               </button>
             )}
             {selectedEFBTier && (
               <button
                 className="btn-primary-large"
-                onClick={() => console.log('Selected EFB tier:', selectedEFBTier)}
+                onClick={() => handleSelectTier(selectedEFBTier)}
+                disabled={loading === selectedEFBTier}
               >
-                Continue to EFB Payment
+                {loading === selectedEFBTier ? 'Loading...' : 'Continue to EFB Payment'}
               </button>
             )}
           </div>

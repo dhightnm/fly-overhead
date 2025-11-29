@@ -341,6 +341,21 @@ const config: AppConfig = {
   auth: {
     devKeyAllowedEmails,
   },
+  stripe: {
+    secretKey: process.env.STRIPE_SECRET_KEY,
+    publishableKey: process.env.STRIPE_PUBLISHABLE_KEY,
+    webhookSecret: process.env.STRIPE_WEBHOOK_SECRET,
+    apiVersion: process.env.STRIPE_API_VERSION || '2024-11-20.acacia',
+    successUrl: process.env.STRIPE_SUCCESS_URL || 'http://localhost:3000/subscriptions/success',
+    cancelUrl: process.env.STRIPE_CANCEL_URL || 'http://localhost:3000/subscriptions/cancel',
+    prices: {
+      flightTrackingPro: process.env.STRIPE_PRICE_FLIGHT_TRACKING_PRO,
+      efbBasic: process.env.STRIPE_PRICE_EFB_BASIC,
+      efbPro: process.env.STRIPE_PRICE_EFB_PRO,
+      apiStarter: process.env.STRIPE_PRICE_API_STARTER,
+      apiProfessional: process.env.STRIPE_PRICE_API_PRO,
+    },
+  },
 };
 
 export default config;

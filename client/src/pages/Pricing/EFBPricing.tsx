@@ -1,5 +1,8 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useHistory } from 'react-router-dom';
+import { useAuth } from '../../contexts/AuthContext';
+import { createCheckoutSession } from '../../services/stripe.service';
+import { getTierConfig, isCustomPricingTier } from '../../utils/stripePricing';
 import './Pricing.css';
 
 interface PricingTier {
@@ -71,10 +74,48 @@ const efbTiers: PricingTier[] = [
 
 const EFBPricing: React.FC = () => {
   const history = useHistory();
+  const { isAuthenticated } = useAuth();
+  const [loading, setLoading] = useState<string | null>(null);
 
-  const handleSelectTier = (tierId: string) => {
-    console.log('Selected tier:', tierId);
-    // Navigate to payment page (to be implemented)
+  const handleSelectTier = async (tierId: string) => {
+    if (isCustomPricingTier(tierId)) {
+      alert('Please contact sales for enterprise pricing: sales@flyoverhead.com');
+      return;
+    }
+
+    if (!isAuthenticated) {
+      alert('Please sign in to continue with checkout');
+      history.push('/');
+      return;
+    }
+
+    const config = getTierConfig(tierId);
+    if (!config) {
+      console.error('Tier config not found for:', tierId);
+      alert('This plan is not available yet. Please contact support.');
+      return;
+    }
+
+    if (!config.priceId) {
+      console.error('Price ID not found for tier:', tierId, 'Config:', config);
+      alert(`This plan (${config.tierName}) is not available yet. The Stripe price ID needs to be configured. Please contact support.`);
+      return;
+    }
+
+    try {
+      setLoading(tierId);
+      const { url } = await createCheckoutSession({
+        productType: config.productType,
+        tierName: config.tierName,
+        priceId: config.priceId,
+      });
+      
+      window.location.href = url;
+    } catch (error) {
+      console.error('Checkout error:', error);
+      alert('Failed to start checkout. Please try again.');
+      setLoading(null);
+    }
   };
 
   return (
@@ -129,8 +170,9 @@ const EFBPricing: React.FC = () => {
               <button
                 className={`pricing-card-button ${tier.popular ? 'popular' : ''} ${tier.highlight ? 'enterprise' : ''}`}
                 onClick={() => handleSelectTier(tier.id)}
+                disabled={loading === tier.id}
               >
-                {tier.id === 'efb-enterprise' ? 'Contact Sales' : 'Select Plan'}
+                {loading === tier.id ? 'Loading...' : tier.id === 'efb-enterprise' ? 'Contact Sales' : 'Select Plan'}
               </button>
             </div>
           ))}

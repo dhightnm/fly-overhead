@@ -1,5 +1,8 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useHistory } from 'react-router-dom';
+import { useAuth } from '../../contexts/AuthContext';
+import { createCheckoutSession } from '../../services/stripe.service';
+import { getTierConfig, isCustomPricingTier } from '../../utils/stripePricing';
 import './Pricing.css';
 
 interface PricingTier {
@@ -71,10 +74,49 @@ const flightTrackingTiers: PricingTier[] = [
 
 const FlightTrackingPricing: React.FC = () => {
   const history = useHistory();
+  const { isAuthenticated } = useAuth();
+  const [loading, setLoading] = useState<string | null>(null);
 
-  const handleSelectTier = (tierId: string) => {
-    console.log('Selected tier:', tierId);
-    // Navigate to payment page (to be implemented)
+  const handleSelectTier = async (tierId: string) => {
+    if (tierId === 'free') {
+      if (!isAuthenticated) {
+        window.location.href = '/';
+        return;
+      }
+      return;
+    }
+
+    if (isCustomPricingTier(tierId)) {
+      alert('Please contact sales for enterprise pricing: sales@flyoverhead.com');
+      return;
+    }
+
+    if (!isAuthenticated) {
+      alert('Please sign in to continue with checkout');
+      history.push('/');
+      return;
+    }
+
+    const config = getTierConfig(tierId);
+    if (!config || !config.priceId) {
+      alert('This plan is not available yet. Please contact support.');
+      return;
+    }
+
+    try {
+      setLoading(tierId);
+      const { url } = await createCheckoutSession({
+        productType: config.productType,
+        tierName: config.tierName,
+        priceId: config.priceId,
+      });
+      
+      window.location.href = url;
+    } catch (error) {
+      console.error('Checkout error:', error);
+      alert('Failed to start checkout. Please try again.');
+      setLoading(null);
+    }
   };
 
   return (
@@ -132,8 +174,9 @@ const FlightTrackingPricing: React.FC = () => {
               <button
                 className={`pricing-card-button ${tier.popular ? 'popular' : ''} ${tier.highlight ? 'enterprise' : ''}`}
                 onClick={() => handleSelectTier(tier.id)}
+                disabled={loading === tier.id}
               >
-                {tier.id === 'free' ? 'Get Started' : tier.id === 'enterprise' ? 'Contact Sales' : 'Select Plan'}
+                {loading === tier.id ? 'Loading...' : tier.id === 'free' ? 'Get Started' : tier.id === 'enterprise' ? 'Contact Sales' : 'Select Plan'}
               </button>
             </div>
           ))}

@@ -12,6 +12,7 @@ import API from "./pages/Products/API";
 import FlightTrackingPricing from "./pages/Pricing/FlightTrackingPricing";
 import EFBPricing from "./pages/Pricing/EFBPricing";
 import APIPricing from "./pages/Pricing/APIPricing";
+import Subscriptions from "./pages/Subscriptions/Subscriptions";
 import NavBar from "./components/NavBar";
 import { PlaneProvider } from "./contexts/PlaneContext";
 import { AuthProvider } from "./contexts/AuthContext";
@@ -55,6 +56,9 @@ const AppContent = () => {
               </Route>
               <Route path="/pricing/api">
                 <APIPricing />
+              </Route>
+              <Route path="/subscriptions">
+                <Subscriptions />
               </Route>
             </Switch>
           </div>

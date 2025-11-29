@@ -37,6 +37,12 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  const refreshUser = async () => {
+    if (token) {
+      await fetchUser();
+    }
+  };
+
   const login = async (email, password) => {
     try {
       const { token: newToken, user: userData } = await authService.login({ email, password });
@@ -111,6 +117,7 @@ export const AuthProvider = ({ children }) => {
     signup,
     loginWithGoogle,
     logout,
+    refreshUser,
     isPremium,
     isEFB,
     isAPI,
