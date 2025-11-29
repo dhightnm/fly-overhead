@@ -4,9 +4,10 @@ import './FeederStatus.css';
 
 interface FeederStatusProps {
   feeders: Feeder[];
+  isFeederProvider?: boolean;
 }
 
-const FeederStatus: React.FC<FeederStatusProps> = ({ feeders }) => {
+const FeederStatus: React.FC<FeederStatusProps> = ({ feeders, isFeederProvider = false }) => {
   const getStatusBadge = (status: string) => {
     switch (status.toLowerCase()) {
       case 'active':
@@ -73,7 +74,16 @@ const FeederStatus: React.FC<FeederStatusProps> = ({ feeders }) => {
 
         {feeders.length === 0 ? (
           <div className="empty-state">
-            <p>No feeders registered. Register a feeder to start tracking aircraft.</p>
+            <div className="empty-state-icon">📡</div>
+            <h3>No Feeders Registered</h3>
+            <p>Register a feeder to start contributing aircraft tracking data to the network.</p>
+            {!isFeederProvider && (
+              <div className="empty-state-actions">
+                <a href="/pricing/flight-tracking" className="upgrade-link">
+                  Learn More About Feeders →
+                </a>
+              </div>
+            )}
           </div>
         ) : (
           <div className="feeders-list">

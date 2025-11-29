@@ -42,7 +42,7 @@ const getCachedPlanes = (): UserPlane[] => {
 };
 
 const Portal: React.FC = () => {
-  const { user, isAuthenticated } = useAuth();
+  const { user, isAuthenticated, isEFB, isAPI, isFeederProvider } = useAuth();
   const [activeSection, setActiveSection] =
     useState<SidebarSection>("dashboard");
   const [aircraft, setAircraft] = useState<Aircraft[]>([]);
@@ -228,12 +228,44 @@ const Portal: React.FC = () => {
           </div>
         );
       case "feeders":
-        return <FeederStatus feeders={feeders} />;
+        return <FeederStatus feeders={feeders} isFeederProvider={isFeederProvider()} />;
       case "aircraft":
+        if (!isEFB()) {
+          return (
+            <div className="efb-placeholder portal-card">
+              <div className="placeholder-header">
+                <h2>Aircraft Fleet</h2>
+                <p className="placeholder-subtitle">
+                  EFB subscription required
+                </p>
+              </div>
+              <div className="placeholder-content">
+                <p>Aircraft fleet management is available with an EFB subscription.</p>
+                <a href="/pricing/efb" className="upgrade-link">View EFB Pricing →</a>
+              </div>
+            </div>
+          );
+        }
         return <AircraftTable aircraft={aircraft} compact={false} />;
       case "api-keys":
-        return <ApiKeysSection />;
+        return <ApiKeysSection isAPI={isAPI()} />;
       case "flight-plan":
+        if (!isEFB()) {
+          return (
+            <div className="efb-placeholder portal-card">
+              <div className="placeholder-header">
+                <h2>Flight Plan</h2>
+                <p className="placeholder-subtitle">
+                  EFB subscription required
+                </p>
+              </div>
+              <div className="placeholder-content">
+                <p>Flight planning is available with an EFB subscription.</p>
+                <a href="/pricing/efb" className="upgrade-link">View EFB Pricing →</a>
+              </div>
+            </div>
+          );
+        }
         return (
           <div className="efb-placeholder portal-card">
             <div className="placeholder-header">
@@ -256,6 +288,22 @@ const Portal: React.FC = () => {
           </div>
         );
       case "flights":
+        if (!isEFB()) {
+          return (
+            <div className="efb-placeholder portal-card">
+              <div className="placeholder-header">
+                <h2>Flights</h2>
+                <p className="placeholder-subtitle">
+                  EFB subscription required
+                </p>
+              </div>
+              <div className="placeholder-content">
+                <p>Flight tracking is available with an EFB subscription.</p>
+                <a href="/pricing/efb" className="upgrade-link">View EFB Pricing →</a>
+              </div>
+            </div>
+          );
+        }
         return (
           <div className="efb-placeholder portal-card">
             <div className="placeholder-header">
@@ -299,6 +347,22 @@ const Portal: React.FC = () => {
           </div>
         );
       case "logbook":
+        if (!isEFB()) {
+          return (
+            <div className="efb-placeholder portal-card">
+              <div className="placeholder-header">
+                <h2>Logbook</h2>
+                <p className="placeholder-subtitle">
+                  EFB subscription required
+                </p>
+              </div>
+              <div className="placeholder-content">
+                <p>Digital logbook is available with an EFB subscription.</p>
+                <a href="/pricing/efb" className="upgrade-link">View EFB Pricing →</a>
+              </div>
+            </div>
+          );
+        }
         return (
           <div className="efb-placeholder portal-card">
             <div className="placeholder-header">
@@ -319,6 +383,22 @@ const Portal: React.FC = () => {
           </div>
         );
       case "debriefs":
+        if (!isEFB()) {
+          return (
+            <div className="efb-placeholder portal-card">
+              <div className="placeholder-header">
+                <h2>3D Flight Debriefs</h2>
+                <p className="placeholder-subtitle">
+                  EFB subscription required
+                </p>
+              </div>
+              <div className="placeholder-content">
+                <p>3D flight debriefs are available with an EFB subscription.</p>
+                <a href="/pricing/efb" className="upgrade-link">View EFB Pricing →</a>
+              </div>
+            </div>
+          );
+        }
         return (
           <div className="efb-placeholder portal-card">
             <div className="placeholder-header">
@@ -341,6 +421,22 @@ const Portal: React.FC = () => {
           </div>
         );
       case "checklist":
+        if (!isEFB()) {
+          return (
+            <div className="efb-placeholder portal-card">
+              <div className="placeholder-header">
+                <h2>Checklists</h2>
+                <p className="placeholder-subtitle">
+                  EFB subscription required
+                </p>
+              </div>
+              <div className="placeholder-content">
+                <p>Customizable checklists are available with an EFB subscription.</p>
+                <a href="/pricing/efb" className="upgrade-link">View EFB Pricing →</a>
+              </div>
+            </div>
+          );
+        }
         return (
           <div className="efb-placeholder portal-card">
             <div className="placeholder-header">

@@ -17,9 +17,12 @@ const NavBar = () => {
   const [showSignupModal, setShowSignupModal] = useState(false);
   const [showPremiumModal, setShowPremiumModal] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
+  const [showProductsMenu, setShowProductsMenu] = useState(false);
   const { setSearchLatlng } = useContext(PlaneContext);
   const { user, logout, isPremium, isAuthenticated } = useAuth();
   const userMenuRef = useRef(null);
+  const productsMenuRef = useRef(null);
+  const productsMenuTimeoutRef = useRef(null);
   const history = useHistory();
 
   useEffect(() => {
@@ -27,10 +30,18 @@ const NavBar = () => {
       if (userMenuRef.current && !userMenuRef.current.contains(event.target)) {
         setShowUserMenu(false);
       }
+      if (productsMenuRef.current && !productsMenuRef.current.contains(event.target)) {
+        setShowProductsMenu(false);
+      }
     };
 
     document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      if (productsMenuTimeoutRef.current) {
+        clearTimeout(productsMenuTimeoutRef.current);
+      }
+    };
   }, []);
 
   const handleSearch = async () => {
@@ -146,9 +157,128 @@ const NavBar = () => {
   return (
     <>
       <nav className="navbar">
-        <a href="/" className="site-title">
-          Fly Overhead
-        </a>
+        <div className="navbar-left-group">
+          <a href="/" className="site-title">
+            Fly Overhead
+          </a>
+          <div className="navbar-left" ref={productsMenuRef}>
+            <button 
+              className="products-menu-button"
+              onMouseEnter={() => {
+                if (productsMenuTimeoutRef.current) {
+                  clearTimeout(productsMenuTimeoutRef.current);
+                  productsMenuTimeoutRef.current = null;
+                }
+                setShowProductsMenu(true);
+              }}
+              onMouseLeave={() => {
+                productsMenuTimeoutRef.current = setTimeout(() => {
+                  setShowProductsMenu(false);
+                }, 150);
+              }}
+            >
+              Products
+              <span className={`products-arrow ${showProductsMenu ? 'open' : ''}`}>▼</span>
+            </button>
+            {showProductsMenu && (
+              <div 
+                className="products-dropdown"
+                onMouseEnter={() => {
+                  if (productsMenuTimeoutRef.current) {
+                    clearTimeout(productsMenuTimeoutRef.current);
+                    productsMenuTimeoutRef.current = null;
+                  }
+                  setShowProductsMenu(true);
+                }}
+                onMouseLeave={() => {
+                  productsMenuTimeoutRef.current = setTimeout(() => {
+                    setShowProductsMenu(false);
+                  }, 150);
+                }}
+              >
+                <div className="products-dropdown-content">
+                  <div className="products-dropdown-section">
+                    <div 
+                      className="product-item"
+                      onClick={() => {
+                        history.push('/pricing/flight-tracking');
+                        setShowProductsMenu(false);
+                      }}
+                    >
+                      <div className="product-item-icon-wrapper">
+                        <svg className="product-item-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path d="M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z"/>
+                        </svg>
+                      </div>
+                      <div className="product-item-content">
+                        <div className="product-item-title">Flight Tracking</div>
+                        <div className="product-item-description">Real-time aircraft tracking and data</div>
+                      </div>
+                      <div className="product-item-arrow">→</div>
+                    </div>
+                    <div 
+                      className="product-item"
+                      onClick={() => {
+                        history.push('/pricing/efb');
+                        setShowProductsMenu(false);
+                      }}
+                    >
+                      <div className="product-item-icon-wrapper">
+                        <svg className="product-item-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <rect x="5" y="2" width="14" height="20" rx="2" ry="2"/>
+                          <line x1="12" y1="18" x2="12" y2="18"/>
+                        </svg>
+                      </div>
+                      <div className="product-item-content">
+                        <div className="product-item-title">EFB</div>
+                        <div className="product-item-description">Electronic Flight Bag with AI assistance</div>
+                      </div>
+                      <div className="product-item-arrow">→</div>
+                    </div>
+                    <div 
+                      className="product-item"
+                      onClick={() => {
+                        history.push('/pricing/api');
+                        setShowProductsMenu(false);
+                      }}
+                    >
+                      <div className="product-item-icon-wrapper">
+                        <svg className="product-item-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <polyline points="16 18 22 12 16 6"/>
+                          <polyline points="8 6 2 12 8 18"/>
+                        </svg>
+                      </div>
+                      <div className="product-item-content">
+                        <div className="product-item-title">API</div>
+                        <div className="product-item-description">Developer API for flight data</div>
+                      </div>
+                      <div className="product-item-arrow">→</div>
+                    </div>
+                  </div>
+                  <div className="products-dropdown-divider"></div>
+                  <div className="products-dropdown-section">
+                    <div className="product-item coming-soon">
+                      <div className="product-item-icon-wrapper">
+                        <svg className="product-item-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                          <circle cx="9" cy="9" r="2"/>
+                          <path d="M21 15l-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/>
+                        </svg>
+                      </div>
+                      <div className="product-item-content">
+                        <div className="product-item-title">
+                          RightSeat AI Copilot
+                          <span className="coming-soon-badge">Beta</span>
+                        </div>
+                        <div className="product-item-description">AI-powered flight assistance in EFB</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
         
         <div className="navbar-center">
           <div className="search-container">

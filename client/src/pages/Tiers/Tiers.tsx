@@ -65,8 +65,72 @@ const tiers: Tier[] = [
   },
 ];
 
+interface EFBTier {
+  id: string;
+  name: string;
+  price: string;
+  period: string;
+  description: string;
+  features: string[];
+  highlight?: boolean;
+  popular?: boolean;
+}
+
+const efbTiers: EFBTier[] = [
+  {
+    id: 'efb-basic',
+    name: 'EFB Basic',
+    price: '$49',
+    period: 'month',
+    description: 'Essential EFB features for general aviation',
+    features: [
+      'Flight planning tools',
+      'Weather integration',
+      'Basic charts',
+      'Flight logbook',
+      'Route optimization',
+    ],
+  },
+  {
+    id: 'efb-pro',
+    name: 'EFB Professional',
+    price: '$99',
+    period: 'month',
+    description: 'Advanced features for professional pilots',
+    features: [
+      'Everything in Basic',
+      'Advanced weather radar',
+      'IFR/VFR charts',
+      'Terrain awareness',
+      'Traffic awareness',
+      'RightSeat AI Copilot (Beta)',
+      'Advanced flight planning',
+    ],
+    popular: true,
+  },
+  {
+    id: 'efb-enterprise',
+    name: 'EFB Enterprise',
+    price: 'Custom',
+    period: 'pricing',
+    description: 'Full-featured EFB with AI-powered RightSeat copilot',
+    features: [
+      'Everything in Professional',
+      'AI-powered RightSeat Copilot',
+      'Real-time flight assistance',
+      'Automated checklists',
+      'Custom integrations',
+      'Priority support',
+      'Fleet management',
+      'Custom training',
+    ],
+    highlight: true,
+  },
+];
+
 const Tiers: React.FC = () => {
   const [selectedTier, setSelectedTier] = useState<string | null>(null);
+  const [selectedEFBTier, setSelectedEFBTier] = useState<string | null>(null);
   const [visibleTiers, setVisibleTiers] = useState<Set<string>>(new Set());
   const tierRefs = useRef<Map<string, HTMLDivElement>>(new Map());
 
@@ -184,6 +248,126 @@ const Tiers: React.FC = () => {
         })}
       </div>
 
+      {/* Side-by-side Comparison Section */}
+      <div className="tiers-comparison-section">
+        <div className="tiers-comparison-header">
+          <h2 className="comparison-title">Compare Plans</h2>
+          <p className="comparison-subtitle">See all features side by side</p>
+        </div>
+        <div className="tiers-comparison-grid">
+          {tiers.map((tier) => (
+            <div key={tier.id} className="comparison-tier-card">
+              <div className="comparison-tier-header">
+                {tier.popular && (
+                  <div className="comparison-badge popular">Most Popular</div>
+                )}
+                {tier.highlight && (
+                  <div className="comparison-badge enterprise">Enterprise</div>
+                )}
+                <h3 className="comparison-tier-name">{tier.name}</h3>
+                <div className="comparison-tier-price">
+                  <span className="comparison-price-amount">{tier.price}</span>
+                  {tier.period !== 'forever' && tier.period !== 'pricing' && (
+                    <span className="comparison-price-period">/{tier.period}</span>
+                  )}
+                </div>
+                {tier.period === 'forever' && (
+                  <span className="comparison-price-period">Free forever</span>
+                )}
+                {tier.period === 'pricing' && (
+                  <span className="comparison-price-period">Contact us</span>
+                )}
+              </div>
+              <ul className="comparison-features-list">
+                {tier.features.map((feature, idx) => (
+                  <li key={idx} className="comparison-feature-item">
+                    <span className="comparison-feature-icon">✓</span>
+                    <span className="comparison-feature-text">{feature}</span>
+                  </li>
+                ))}
+              </ul>
+              <button
+                className={`comparison-tier-button ${tier.popular ? 'popular' : ''} ${tier.highlight ? 'enterprise' : ''}`}
+                onClick={() => handleSelectTier(tier.id)}
+              >
+                {tier.id === 'free' ? 'Get Started' : tier.id === 'enterprise' ? 'Contact Sales' : 'Select Plan'}
+              </button>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* EFB Pricing Section */}
+      <div className="efb-pricing-section">
+        <div className="efb-pricing-header">
+          <h2 className="efb-section-title">EFB Pricing</h2>
+          <p className="efb-section-subtitle">
+            Electronic Flight Bag solutions with AI-powered assistance
+          </p>
+        </div>
+        <div className="efb-tiers-container">
+          {efbTiers.map((tier, index) => {
+            const isVisible = visibleTiers.has(`efb-${tier.id}`);
+            const slideDirection = index % 2 === 0 ? 'left' : 'right';
+
+            return (
+              <div
+                key={tier.id}
+                ref={(el) => {
+                  if (el) tierRefs.current.set(`efb-${tier.id}`, el);
+                }}
+                data-tier-id={`efb-${tier.id}`}
+                className={`tier-section ${isVisible ? 'visible' : ''} ${slideDirection}`}
+              >
+                <div className="tier-content">
+                  <div className="tier-header">
+                    {tier.popular && (
+                      <div className="tier-badge popular">Most Popular</div>
+                    )}
+                    {tier.highlight && (
+                      <div className="tier-badge enterprise">Enterprise</div>
+                    )}
+                    <h2 className="tier-name">{tier.name}</h2>
+                    <p className="tier-description">{tier.description}</p>
+                  </div>
+
+                  <div className="tier-pricing">
+                    <div className="tier-price">
+                      <span className="price-amount">{tier.price}</span>
+                      {tier.period !== 'forever' && tier.period !== 'pricing' && (
+                        <span className="price-period">/{tier.period}</span>
+                      )}
+                    </div>
+                    {tier.period === 'pricing' && (
+                      <span className="price-period">Contact us for pricing</span>
+                    )}
+                  </div>
+
+                  <div className="tier-features">
+                    <h3 className="features-title">What's Included</h3>
+                    <ul className="features-list">
+                      {tier.features.map((feature, featureIndex) => (
+                        <li key={featureIndex} className="feature-item">
+                          <span className="feature-icon">✓</span>
+                          <span className="feature-text">{feature}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+
+                  <button
+                    className={`tier-button ${tier.popular ? 'popular' : ''} ${tier.highlight ? 'enterprise' : ''}`}
+                    onClick={() => setSelectedEFBTier(tier.id)}
+                  >
+                    {tier.id === 'efb-enterprise' ? 'Contact Sales' : 'Select Plan'}
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
       <div className="tiers-footer">
         <div className="tiers-footer-content">
           <h2>Ready to Get Started?</h2>
@@ -195,6 +379,14 @@ const Tiers: React.FC = () => {
                 onClick={() => handleSelectTier(selectedTier)}
               >
                 Continue to Payment
+              </button>
+            )}
+            {selectedEFBTier && (
+              <button
+                className="btn-primary-large"
+                onClick={() => console.log('Selected EFB tier:', selectedEFBTier)}
+              >
+                Continue to EFB Payment
               </button>
             )}
           </div>

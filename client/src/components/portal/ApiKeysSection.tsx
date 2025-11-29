@@ -15,7 +15,11 @@ interface ApiKey {
   expiresAt: string | null;
 }
 
-const ApiKeysSection: React.FC = () => {
+interface ApiKeysSectionProps {
+  isAPI?: boolean;
+}
+
+const ApiKeysSection: React.FC<ApiKeysSectionProps> = ({ isAPI = false }) => {
   const [apiKeys, setApiKeys] = useState<ApiKey[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -129,7 +133,30 @@ const ApiKeysSection: React.FC = () => {
         <div className="loading-state">Loading API keys...</div>
       ) : apiKeys.length === 0 ? (
         <div className="empty-state">
-          <p>No API keys found. Create your first API key to get started.</p>
+          <div className="empty-state-icon">🔑</div>
+          <h3>No API Keys</h3>
+          {!isAPI ? (
+            <>
+              <p>API access requires an API subscription. Get started with our API plans.</p>
+              <div className="empty-state-actions">
+                <a href="/pricing/api" className="upgrade-link">
+                  View API Pricing →
+                </a>
+              </div>
+            </>
+          ) : (
+            <>
+              <p>Create your first API key to start using the API.</p>
+              <div className="empty-state-actions">
+                <button 
+                  className="create-key-btn-primary"
+                  onClick={() => setShowCreateModal(true)}
+                >
+                  Create API Key
+                </button>
+              </div>
+            </>
+          )}
         </div>
       ) : (
         <div className="api-keys-list">

@@ -333,7 +333,7 @@ function requireAdmin(req: AuthenticatedRequest, res: Response, next: NextFuncti
     return;
   }
 
-  const allowedEmails = config.auth.devKeyAllowedEmails.map(email => email.trim().toLowerCase());
+  const allowedEmails = config.auth.devKeyAllowedEmails.map((email) => email.trim().toLowerCase());
   const normalizedUserEmail = userEmail.trim().toLowerCase();
   if (!allowedEmails.includes(normalizedUserEmail)) {
     logger.warn('Unauthorized admin access attempt', { email: userEmail });

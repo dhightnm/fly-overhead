@@ -8,6 +8,9 @@ export interface User {
   name?: string;
   isPremium: boolean;
   premiumExpiresAt?: string | null;
+  isEFB?: boolean;
+  isAPI?: boolean;
+  isFeederProvider?: boolean;
 }
 
 export interface LoginResponse {

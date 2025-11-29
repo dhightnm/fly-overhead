@@ -268,6 +268,8 @@ router.get('/me', authenticateToken, async (req: AuthenticatedRequest, res: Resp
       name: user.name,
       isPremium: user.is_premium,
       isFeederProvider: user.is_feeder_provider || false,
+      isEFB: false, // TODO: Derive from subscription type
+      isAPI: false, // TODO: Derive from subscription type
     });
   } catch (error) {
     const err = error as Error;

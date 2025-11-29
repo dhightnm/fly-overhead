@@ -92,6 +92,18 @@ export const AuthProvider = ({ children }) => {
     return user?.isPremium === true;
   };
 
+  const isEFB = () => {
+    return user?.isEFB === true;
+  };
+
+  const isAPI = () => {
+    return user?.isAPI === true;
+  };
+
+  const isFeederProvider = () => {
+    return user?.isFeederProvider === true;
+  };
+
   const value = {
     user,
     loading,
@@ -100,6 +112,9 @@ export const AuthProvider = ({ children }) => {
     loginWithGoogle,
     logout,
     isPremium,
+    isEFB,
+    isAPI,
+    isFeederProvider,
     isAuthenticated: !!user,
   };
 

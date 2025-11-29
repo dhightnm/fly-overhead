@@ -6,6 +6,12 @@ import Home from "./pages/Home/Home";
 import Portal from "./pages/Portal/Portal";
 import Admin from "./pages/Admin/Admin";
 import Tiers from "./pages/Tiers/Tiers";
+import FlightTracking from "./pages/Products/FlightTracking";
+import EFB from "./pages/Products/EFB";
+import API from "./pages/Products/API";
+import FlightTrackingPricing from "./pages/Pricing/FlightTrackingPricing";
+import EFBPricing from "./pages/Pricing/EFBPricing";
+import APIPricing from "./pages/Pricing/APIPricing";
 import NavBar from "./components/NavBar";
 import { PlaneProvider } from "./contexts/PlaneContext";
 import { AuthProvider } from "./contexts/AuthContext";
@@ -31,6 +37,24 @@ const AppContent = () => {
               </Route>
               <Route path="/tiers">
                 <Tiers />
+              </Route>
+              <Route path="/products/flight-tracking">
+                <FlightTracking />
+              </Route>
+              <Route path="/products/efb">
+                <EFB />
+              </Route>
+              <Route path="/products/api">
+                <API />
+              </Route>
+              <Route path="/pricing/flight-tracking">
+                <FlightTrackingPricing />
+              </Route>
+              <Route path="/pricing/efb">
+                <EFBPricing />
+              </Route>
+              <Route path="/pricing/api">
+                <APIPricing />
               </Route>
             </Switch>
           </div>
