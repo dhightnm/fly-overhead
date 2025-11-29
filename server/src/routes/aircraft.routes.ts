@@ -274,8 +274,7 @@ router.get(
         : [];
 
       let aircraftStates: DbAircraftRow[] = [];
-      const shouldQueryDb =
-        !config.liveState.enabled
+      const shouldQueryDb = !config.liveState.enabled
         || liveStateSamples.length < liveStateStore.getMinResultsBeforeFallback();
 
       if (shouldQueryDb) {
