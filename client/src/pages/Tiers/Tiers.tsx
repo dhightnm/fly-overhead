@@ -135,8 +135,6 @@ const efbTiers: EFBTier[] = [
 const Tiers: React.FC = () => {
   const { isAuthenticated } = useAuth();
   const history = useHistory();
-  const [selectedTier, setSelectedTier] = useState<string | null>(null);
-  const [selectedEFBTier, setSelectedEFBTier] = useState<string | null>(null);
   const [visibleTiers, setVisibleTiers] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState<string | null>(null);
   const tierRefs = useRef<Map<string, HTMLDivElement>>(new Map());
@@ -416,32 +414,6 @@ const Tiers: React.FC = () => {
         </div>
       </div>
 
-      <div className="tiers-footer">
-        <div className="tiers-footer-content">
-          <h2>Ready to Get Started?</h2>
-          <p>All plans include our core features. Choose the one that fits your needs.</p>
-          <div className="tiers-footer-actions">
-            {selectedTier && (
-              <button
-                className="btn-primary-large"
-                onClick={() => handleSelectTier(selectedTier)}
-                disabled={loading === selectedTier}
-              >
-                {loading === selectedTier ? 'Loading...' : 'Continue to Payment'}
-              </button>
-            )}
-            {selectedEFBTier && (
-              <button
-                className="btn-primary-large"
-                onClick={() => handleSelectTier(selectedEFBTier)}
-                disabled={loading === selectedEFBTier}
-              >
-                {loading === selectedEFBTier ? 'Loading...' : 'Continue to EFB Payment'}
-              </button>
-            )}
-          </div>
-        </div>
-      </div>
     </div>
   );
 };
