@@ -89,7 +89,7 @@ export const ENDPOINT_SCOPES: Record<string, string[]> = {
   'GET /api/area/*': [API_SCOPES.AIRCRAFT_READ, API_SCOPES.READ],
   'POST /api/area/fetch/*': [API_SCOPES.AIRCRAFT_READ, API_SCOPES.READ],
   'GET /api/planes/*': [API_SCOPES.AIRCRAFT_READ, API_SCOPES.READ],
-  'GET /api/route/*': [API_SCOPES.ROUTES_READ, API_SCOPES.READ],
+  'GET /api/aircraft/route/*': [API_SCOPES.ROUTES_READ, API_SCOPES.READ],
 
   // History endpoints
   'GET /api/history/*': [API_SCOPES.HISTORY_READ, API_SCOPES.READ],
@@ -105,7 +105,7 @@ export const ENDPOINT_SCOPES: Record<string, string[]> = {
   'GET /api/flightplan/*': [API_SCOPES.FLIGHTPLAN_READ, API_SCOPES.READ],
 
   // Route stats
-  'GET /api/routes/stats': [API_SCOPES.ROUTES_READ, API_SCOPES.READ],
+  'GET /api/aircraft/routes/stats': [API_SCOPES.ROUTES_READ, API_SCOPES.READ],
 
   // Feeder endpoints
   'POST /api/feeder/aircraft': [API_SCOPES.FEEDER_WRITE, API_SCOPES.AIRCRAFT_WRITE],

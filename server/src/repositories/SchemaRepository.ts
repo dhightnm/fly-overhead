@@ -1038,6 +1038,23 @@ class SchemaRepository {
   }
 
   /**
+   * Ensure legacy databases have the picture column required by auth flows
+   */
+  async ensureUserPictureColumn(): Promise<void> {
+    try {
+      await this.db.query(`
+        ALTER TABLE users
+        ADD COLUMN IF NOT EXISTS picture TEXT;
+      `);
+      logger.info('Ensured picture column exists on users table');
+    } catch (error) {
+      const err = error as Error;
+      logger.error('Failed to ensure picture column on users table', { error: err.message });
+      throw err;
+    }
+  }
+
+  /**
    * Webhook subscription registry
    */
   async createWebhookSubscriptionsTable(): Promise<void> {

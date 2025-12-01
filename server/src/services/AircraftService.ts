@@ -771,6 +771,7 @@ class AircraftService {
       await postgresRepository.createHistoryTableIndexes(); // Performance indexes
       await postgresRepository.createFlightRoutesTable();
       await postgresRepository.createUsersTable();
+      await postgresRepository.ensureUserPictureColumn();
       // Feeder service tables
       await postgresRepository.createFeedersTable();
       await postgresRepository.createFeederStatsTable();

@@ -105,6 +105,10 @@ class PostgresRepository {
     return this.schema.addFeederProviderColumnToUsers();
   }
 
+  async ensureUserPictureColumn(): Promise<void> {
+    return this.schema.ensureUserPictureColumn();
+  }
+
   async createWebhookSubscriptionsTable(): Promise<void> {
     return this.schema.createWebhookSubscriptionsTable();
   }
