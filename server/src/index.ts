@@ -22,12 +22,14 @@ import metricsService from './services/MetricsService';
 import authRoutes from './routes/auth.routes';
 import adminRoutes from './routes/admin.routes';
 import aircraftRoutes from './routes/aircraft.routes';
+import airportsRoutes from './routes/airports.routes';
 import healthRoutes from './routes/health.routes';
 import feederRoutes from './routes/feeder.routes';
 import portalRoutes from './routes/portal.routes';
 import webhookRoutes from './routes/webhook.routes';
 import stripeRoutes from './routes/stripe.routes';
 import subscriptionRoutes from './routes/subscription.routes';
+import weatherRoutes from './routes/weather.routes';
 
 const app = express();
 const server = createServer(app);
@@ -88,16 +90,18 @@ const buildExists = fs.existsSync(buildPath);
 if (buildExists) {
   // In development, disable caching to see changes immediately
   // In production, use default Express static caching (ETags, Last-Modified)
-  const staticOptions = process.env.NODE_ENV === 'development' ? {
-    etag: false, // Disable ETag generation in dev
-    lastModified: false, // Disable Last-Modified in dev
-    setHeaders: (res: Response) => {
-      // Disable all caching in development
-      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
-      res.setHeader('Pragma', 'no-cache');
-      res.setHeader('Expires', '0');
-    },
-  } : {};
+  const staticOptions = process.env.NODE_ENV === 'development'
+    ? {
+      etag: false, // Disable ETag generation in dev
+      lastModified: false, // Disable Last-Modified in dev
+      setHeaders: (res: Response) => {
+        // Disable all caching in development
+        res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+        res.setHeader('Pragma', 'no-cache');
+        res.setHeader('Expires', '0');
+      },
+    }
+    : {};
 
   app.use(express.static(buildPath, staticOptions));
   logger.info('Serving static files from React build', {
@@ -111,13 +115,15 @@ if (buildExists) {
 
 app.use('/api/auth', authRoutes);
 app.use('/api/admin', adminRoutes);
-app.use('/api', aircraftRoutes);
+app.use('/api/aircraft', aircraftRoutes);
+app.use('/api/airports', airportsRoutes);
 app.use('/api', healthRoutes);
 app.use('/api', feederRoutes);
 app.use('/api/portal', portalRoutes);
 app.use('/api/webhooks', webhookRoutes);
 app.use('/api/stripe', stripeRoutes);
 app.use('/api/subscriptions', subscriptionRoutes);
+app.use('/api/weather', weatherRoutes);
 
 // Metrics endpoint (if enabled)
 if (config.features.metricsEnabled) {
@@ -160,10 +166,7 @@ async function startServer(): Promise<void> {
     await aircraftService.initializeDatabase();
 
     const {
-      backgroundJobsEnabled,
-      conusPollingEnabled,
-      backfillEnabled,
-      metricsEnabled,
+      backgroundJobsEnabled, conusPollingEnabled, backfillEnabled, metricsEnabled,
     } = config.features;
 
     // Initialize metrics service
@@ -355,18 +358,24 @@ async function gracefulShutdown(signal: string): Promise<void> {
 
   const stopTasks: Promise<any>[] = [];
   if (ingestionWorkerStarted) {
-    stopTasks.push(stopAircraftIngestionWorker().catch((error: Error) => {
-      logger.warn('Error stopping ingestion worker', { error: error.message });
-    }));
+    stopTasks.push(
+      stopAircraftIngestionWorker().catch((error: Error) => {
+        logger.warn('Error stopping ingestion worker', { error: error.message });
+      }),
+    );
   }
   if (webhookDispatcherStarted) {
-    stopTasks.push(stopWebhookDispatcher().catch((error: Error) => {
-      logger.warn('Error stopping webhook dispatcher', { error: error.message });
-    }));
+    stopTasks.push(
+      stopWebhookDispatcher().catch((error: Error) => {
+        logger.warn('Error stopping webhook dispatcher', { error: error.message });
+      }),
+    );
   }
-  stopTasks.push(realTimeEventService.stop().catch((error: Error) => {
-    logger.warn('Error stopping real-time event service', { error: error.message });
-  }));
+  stopTasks.push(
+    realTimeEventService.stop().catch((error: Error) => {
+      logger.warn('Error stopping real-time event service', { error: error.message });
+    }),
+  );
 
   const closeServer = new Promise<void>((resolve) => {
     if (!server.listening) {

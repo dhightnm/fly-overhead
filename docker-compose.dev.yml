@@ -10,6 +10,11 @@ services:
     ports:
       - "5433:5432"
     volumes:
+      # CRITICAL: Named volume persists airport data, weather data, and all database content
+      # NEVER use 'docker-compose down -v' unless you intend to DELETE ALL DATA
+      # To stop containers: 'docker-compose down' (preserves data)
+      # To restart: 'docker-compose restart' or 'docker-compose up -d'
+      # Airport data (83K+ airports) is imported once and stored here - DO NOT DROP THIS VOLUME
       - db-data:/var/lib/postgresql/data
       - ./server/database/initdb:/docker-entrypoint-initdb.d:ro
     healthcheck:
@@ -34,7 +39,6 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-      # Force rebuild on code changes
       args:
         - BUILD_DATE=${BUILD_DATE:-$(date -u +'%Y-%m-%dT%H:%M:%SZ')}
         - REACT_APP_API_URL=${REACT_APP_API_URL:-http://localhost:3005}
@@ -52,18 +56,14 @@ services:
     env_file:
       - ./.env
     environment:
-      # Use local database for dev (switch to prod DB only when specifically testing)
       - POSTGRES_URL=postgresql://postgres:postgres@db:5432/fly_overhead
       - REDIS_URL=redis://redis:6379
-      # To test with production DB, set POSTGRES_URL in .env file
       - PORT=3005
       - NODE_ENV=development
-      # API keys should be set in .env file, not hardcoded here
       - AVIATION_EDGE_API_KEY=${AVIATION_EDGE_API_KEY:-}
       - FLIGHTAWARE_API_KEY=${FLIGHTAWARE_API_KEY:-}
       - OPENSKY_USER=${OPENSKY_USER:-}
       - OPENSKY_PASS=${OPENSKY_PASS:-}
-    # Mount only the working source files for hot reload while keeping container build artifacts
     volumes:
       - ./server/src:/app/server/src
       - ./server/tsconfig.json:/app/server/tsconfig.json
@@ -71,11 +71,7 @@ services:
       - ./server/tsconfig.test.json:/app/server/tsconfig.test.json
       - ./server/package.json:/app/server/package.json
       - ./server/package-lock.json:/app/server/package-lock.json
-      # NOTE: Client build is created inside Docker with proper environment variables
-      # Do NOT mount local client/build as it may override Docker-built version with missing env vars
-      # If you need to use a local build, ensure it's built with all REACT_APP_* variables set
-      # - ./client/build:/app/server/client/build:ro
-      # Anonymous volume to preserve node_modules installed in container
+      - ./data:/app/data:ro
       - /app/server/node_modules
     depends_on:
       db:

@@ -39,13 +39,16 @@ class AircraftService {
     // Clamp to max radius (250nm per airplanes.live API limit)
     const clampedRadius = Math.min(Math.ceil(radiusNm), 250);
 
-    const response = await api.get<{ aircraft: Aircraft[] }>("/api/flights", {
-      params: {
-        lat: centerLat,
-        lon: centerLng,
-        radius: clampedRadius,
-      },
-    });
+    const response = await api.get<{ aircraft: Aircraft[] }>(
+      "/api/aircraft/flights",
+      {
+        params: {
+          lat: centerLat,
+          lon: centerLng,
+          radius: clampedRadius,
+        },
+      }
+    );
 
     return (response.data.aircraft || []).map((plane) => ({
       ...plane,
@@ -113,7 +116,7 @@ class AircraftService {
   ): Promise<StarlinkSatellite[]> {
     try {
       const response = await api.get<{ above: StarlinkSatellite[] }>(
-        `/api/starlink/${lat}/${lng}/${altitude}/`
+        `/api/aircraft/starlink/${lat}/${lng}/${altitude}/`
       );
       return response.data.above || [];
     } catch (error) {
@@ -158,6 +161,21 @@ class AircraftService {
     } catch (error) {
       console.error("Error searching airports:", error);
       return [];
+    }
+  }
+
+  /**
+   * Get airport by code (includes full runway and frequency data)
+   */
+  async getAirportByCode(code: string): Promise<AirportSearchResult | null> {
+    try {
+      const response = await api.get<AirportSearchResult>(
+        `/api/airports/${code}`
+      );
+      return response.data;
+    } catch (error) {
+      console.error("Error fetching airport:", error);
+      return null;
     }
   }
 }

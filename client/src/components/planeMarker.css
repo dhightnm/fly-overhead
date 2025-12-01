@@ -46,16 +46,21 @@
     gap: 6px;
 }
 
-.loading-spinner {
+.plane-popup .loading-spinner {
     display: inline-block;
-    animation: spin 1s linear infinite;
+    animation: hourglass-turn 1.2s ease-in-out infinite;
+    width: auto;
+    height: auto;
+    border: none;
+    border-radius: 0;
+    margin: 0;
 }
 
-@keyframes spin {
-    from {
+@keyframes hourglass-turn {
+    0%, 100% {
         transform: rotate(0deg);
     }
-    to {
-        transform: rotate(360deg);
+    50% {
+        transform: rotate(180deg);
     }
 }

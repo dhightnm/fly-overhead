@@ -1214,103 +1214,143 @@ router.get(
 );
 
 /**
- * Airport Data Endpoints
+ * TEST ENDPOINT: Add test METAR data for an airport
+ * POST /api/aircraft/weather/test/metar
+ * Body: { airport_ident: string, raw_text: string, observation_time?: string, ... }
+ *
+ * Example:
+ * {
+ *   "airport_ident": "KABQ",
+ *   "raw_text": "KABQ 011153Z 36010KT 10SM CLR 12/M03 A3001",
+ *   "observation_time": "2024-12-01T11:53:00Z",
+ *   "temperature_c": 12,
+ *   "dewpoint_c": -3,
+ *   "wind_dir_deg": 360,
+ *   "wind_speed_kt": 10,
+ *   "visibility_statute_mi": 10,
+ *   "altim_in_hg": 30.01,
+ *   "flight_category": "VFR"
+ * }
  */
-
-/**
- * Find airports near a location
- * Requires API key authentication with rate limiting
- */
-router.get(
-  '/airports/near/:lat/:lon',
+router.post(
+  '/weather/test/metar',
   requireApiKeyAuth,
-  requireAircraftRead,
+  allowSameOriginOrApiKey(API_SCOPES.AIRCRAFT_READ, API_SCOPES.READ),
   rateLimitMiddleware,
   async (req: Request, res: Response, next: NextFunction) => {
-    const { lat, lon } = req.params;
-    const { radius = 50, type } = req.query;
-
     try {
-      const airports = await postgresRepository.findAirportsNearPoint(
-        parseFloat(lat),
-        parseFloat(lon),
-        parseFloat(radius as string),
-        type as string | undefined,
-      );
+      const {
+        airport_ident,
+        raw_text,
+        observation_time,
+        temperature_c,
+        dewpoint_c,
+        wind_dir_deg,
+        wind_speed_kt,
+        wind_gust_kt,
+        visibility_statute_mi,
+        altim_in_hg,
+        sea_level_pressure_mb,
+        sky_condition,
+        flight_category,
+        metar_type,
+        elevation_m,
+      } = req.body;
 
-      return res.json({
-        center: { latitude: parseFloat(lat), longitude: parseFloat(lon) },
-        radius: parseFloat(radius as string),
-        count: airports.length,
-        airports,
-      });
-    } catch (err) {
-      return next(err);
-    }
-  },
-);
-
-/**
- * Get airports within bounding box (for map viewport)
- * Requires API key authentication with rate limiting
- */
-router.get(
-  '/airports/bounds/:latmin/:lonmin/:latmax/:lonmax',
-  optionalApiKeyAuth,
-  allowSameOriginOrApiKey(API_SCOPES.AIRPORTS_READ, API_SCOPES.READ),
-  rateLimitMiddleware,
-  async (req: Request, res: Response, next: NextFunction) => {
-    const {
-      latmin, lonmin, latmax, lonmax,
-    } = req.params;
-    const { type, limit = 100 } = req.query;
-
-    try {
-      const airports = await postgresRepository.findAirportsInBounds(
-        parseFloat(latmin),
-        parseFloat(lonmin),
-        parseFloat(latmax),
-        parseFloat(lonmax),
-        (type as string | undefined) || null,
-        parseInt(limit as string, 10),
-      );
-
-      return res.json({
-        bounds: {
-          latmin: parseFloat(latmin),
-          lonmin: parseFloat(lonmin),
-          latmax: parseFloat(latmax),
-          lonmax: parseFloat(lonmax),
-        },
-        count: airports.length,
-        airports,
-      });
-    } catch (err) {
-      return next(err);
-    }
-  },
-);
-
-/**
- * Get airport by IATA/ICAO code (includes runways and frequencies)
- * Requires API key authentication with rate limiting
- */
-router.get(
-  '/airports/:code',
-  requireApiKeyAuth,
-  requireAircraftRead,
-  rateLimitMiddleware,
-  async (req: Request, res: Response, next: NextFunction) => {
-    const { code } = req.params;
-
-    try {
-      const airport = await postgresRepository.findAirportByCode(code);
-
-      if (!airport) {
-        return res.status(404).json({ error: 'Airport not found' });
+      if (!airport_ident || !raw_text) {
+        return res.status(400).json({
+          error: 'Missing required fields: airport_ident and raw_text are required',
+        });
       }
 
-      return res.json(airport);
+      // Verify airport exists
+      const airport = await postgresRepository.findAirportByCode(airport_ident);
+      if (!airport) {
+        return res.status(404).json({
+          error: `Airport not found: ${airport_ident}`,
+        });
+      }
+
+      const db = postgresRepository.getDb();
+      const obsTime = observation_time ? new Date(observation_time) : new Date();
+
+      // Insert METAR observation
+      const metarQuery = `
+        INSERT INTO metar_observations (
+          airport_ident,
+          observation_time,
+          raw_text,
+          temperature_c,
+          dewpoint_c,
+          wind_dir_deg,
+          wind_speed_kt,
+          wind_gust_kt,
+          visibility_statute_mi,
+          altim_in_hg,
+          sea_level_pressure_mb,
+          sky_condition,
+          flight_category,
+          metar_type,
+          elevation_m
+        ) VALUES (
+          $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15
+        )
+        RETURNING id, airport_ident, observation_time, raw_text, created_at;
+      `;
+
+      const metarResult = await db.one(metarQuery, [
+        airport_ident,
+        obsTime,
+        raw_text,
+        temperature_c || null,
+        dewpoint_c || null,
+        wind_dir_deg || null,
+        wind_speed_kt || null,
+        wind_gust_kt || null,
+        visibility_statute_mi || null,
+        altim_in_hg || null,
+        sea_level_pressure_mb || null,
+        sky_condition ? JSON.stringify(sky_condition) : '[]',
+        flight_category || null,
+        metar_type || null,
+        elevation_m || null,
+      ]);
+
+      // Update or create weather cache entry
+      const cacheQuery = `
+        INSERT INTO airport_weather_cache (
+          airport_ident,
+          latest_metar_id,
+          last_updated,
+          next_update_due
+        ) VALUES ($1, $2, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP + INTERVAL '30 minutes')
+        ON CONFLICT (airport_ident)
+        DO UPDATE SET
+          latest_metar_id = EXCLUDED.latest_metar_id,
+          last_updated = CURRENT_TIMESTAMP,
+          next_update_due = CURRENT_TIMESTAMP + INTERVAL '30 minutes';
+      `;
+
+      await db.none(cacheQuery, [airport_ident, metarResult.id]);
+
+      logger.info('Test METAR data added', {
+        airport_ident,
+        metar_id: metarResult.id,
+        observation_time: obsTime.toISOString(),
+      });
+
+      return res.status(201).json({
+        success: true,
+        message: 'METAR data added successfully',
+        data: {
+          metar: metarResult,
+          airport: {
+            ident: airport.ident,
+            name: airport.name,
+            iata_code: airport.iata_code,
+          },
+        },
+      });
     } catch (err) {
       return next(err);
     }
@@ -1416,6 +1456,92 @@ router.get(
       }
 
       return res.json(flightPlanRoute);
+    } catch (err) {
+      return next(err);
+    }
+  },
+);
+
+/**
+ * TEST ENDPOINT: Fetch METAR from AWC and save to database
+ * GET /api/weather/test/fetch-metar/:icao
+ */
+router.get(
+  '/weather/test/fetch-metar/:icao',
+  requireApiKeyAuth,
+  allowSameOriginOrApiKey(API_SCOPES.AIRCRAFT_READ, API_SCOPES.READ),
+  rateLimitMiddleware,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { icao } = req.params;
+      const weatherService = (await import('../services/WeatherService')).default;
+
+      const metar = await weatherService.getMETAR(icao.toUpperCase(), false);
+
+      if (!metar) {
+        return res.status(404).json({
+          error: `No METAR data available for ${icao}`,
+        });
+      }
+
+      return res.json({
+        success: true,
+        message: 'METAR fetched from AWC and saved',
+        data: {
+          metar: {
+            id: metar.id,
+            airport_ident: metar.airport_ident,
+            observation_time: metar.observation_time,
+            raw_text: metar.raw_text,
+            temperature_c: metar.temperature_c,
+            wind_dir_deg: metar.wind_dir_deg,
+            wind_speed_kt: metar.wind_speed_kt,
+            flight_category: metar.flight_category,
+          },
+        },
+      });
+    } catch (err) {
+      return next(err);
+    }
+  },
+);
+
+/**
+ * TEST ENDPOINT: Fetch TAF from AWC and save to database
+ * GET /api/weather/test/fetch-taf/:icao
+ */
+router.get(
+  '/weather/test/fetch-taf/:icao',
+  requireApiKeyAuth,
+  allowSameOriginOrApiKey(API_SCOPES.AIRCRAFT_READ, API_SCOPES.READ),
+  rateLimitMiddleware,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { icao } = req.params;
+      const weatherService = (await import('../services/WeatherService')).default;
+
+      const taf = await weatherService.getTAF(icao.toUpperCase(), false);
+
+      if (!taf) {
+        return res.status(404).json({
+          error: `No TAF data available for ${icao}`,
+        });
+      }
+
+      return res.json({
+        success: true,
+        message: 'TAF fetched from AWC and saved',
+        data: {
+          taf: {
+            id: taf.id,
+            airport_ident: taf.airport_ident,
+            issue_time: taf.issue_time,
+            valid_time_from: taf.valid_time_from,
+            valid_time_to: taf.valid_time_to,
+            raw_text: taf.raw_text,
+          },
+        },
+      });
     } catch (err) {
       return next(err);
     }

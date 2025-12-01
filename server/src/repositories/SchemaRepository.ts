@@ -1182,6 +1182,8 @@ class SchemaRepository {
     await this.createFlightRoutesTable();
     await this.createUsersTable();
     await this.addPasswordColumnToUsers(); // Migration for existing tables
+    // User subscription flags must be added immediately after users table creation
+    await this.addUserSubscriptionFlags();
     await this.createFeedersTable();
     await this.createFeederStatsTable();
     await this.addFeederColumnsToAircraftStates();
@@ -1204,7 +1206,9 @@ class SchemaRepository {
 
     // Stripe migrations
     await this.addStripeTables();
-    await this.addUserSubscriptionFlags();
+
+    // Weather tables migration
+    await this.addWeatherTables();
 
     logger.info('Database initialized successfully with performance indexes');
   }
@@ -1300,13 +1304,45 @@ class SchemaRepository {
    */
   async addUserSubscriptionFlags(): Promise<void> {
     try {
-      const migrationPath = path.join(__dirname, '../../migrations/008_add_user_subscription_flags.sql');
-      const migrationSQL = fs.readFileSync(migrationPath, 'utf8');
+      // Execute migration SQL directly (fallback if file not found)
+      const migrationSQL = `
+        BEGIN;
+        
+        ALTER TABLE users 
+          ADD COLUMN IF NOT EXISTS is_efb BOOLEAN DEFAULT false,
+          ADD COLUMN IF NOT EXISTS is_api BOOLEAN DEFAULT false,
+          ADD COLUMN IF NOT EXISTS stripe_customer_id TEXT UNIQUE;
+        
+        CREATE INDEX IF NOT EXISTS idx_users_stripe_customer_id ON users(stripe_customer_id);
+        CREATE INDEX IF NOT EXISTS idx_users_is_efb ON users(is_efb);
+        CREATE INDEX IF NOT EXISTS idx_users_is_api ON users(is_api);
+        
+        COMMENT ON COLUMN users.is_efb IS 'User has active EFB subscription';
+        COMMENT ON COLUMN users.is_api IS 'User has active API subscription';
+        COMMENT ON COLUMN users.stripe_customer_id IS 'Stripe customer ID for payment processing';
+        
+        COMMIT;
+      `;
       await this.db.query(migrationSQL);
       logger.info('User subscription flags migration (008) completed');
     } catch (error) {
       const err = error as Error;
       logger.warn('User subscription flags migration (008) issue', { error: err.message });
+    }
+  }
+
+  /**
+   * Add weather tables (migration 009)
+   */
+  async addWeatherTables(): Promise<void> {
+    try {
+      const migrationPath = path.join(__dirname, '../../migrations/009_add_weather_tables.sql');
+      const migrationSQL = fs.readFileSync(migrationPath, 'utf8');
+      await this.db.query(migrationSQL);
+      logger.info('Weather tables migration (009) completed');
+    } catch (error) {
+      const err = error as Error;
+      logger.warn('Weather tables migration (009) issue', { error: err.message });
     }
   }
 }

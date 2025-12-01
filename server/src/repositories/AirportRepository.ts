@@ -1,6 +1,7 @@
 import pgPromise from 'pg-promise';
 import type { Airport, Navaid } from '../types/database.types';
 import PostGISService from '../services/PostGISService';
+import logger from '../utils/logger';
 
 /**
  * Repository for airport and navaid queries
@@ -47,19 +48,36 @@ class AirportRepository {
 
     query += ' ORDER BY distance_km ASC LIMIT 50;';
 
-    const results = await this.db.query<Airport>(query, params) as unknown as Airport[];
+    const results = (await this.db.query<Airport>(query, params)) as unknown as Airport[];
     return results;
   }
 
   async findAirportByCode(code: string): Promise<Airport | null> {
+    // Handle null values properly - use IS NOT NULL checks
     const query = `
       SELECT * FROM airports
-      WHERE UPPER(iata_code) = UPPER($1)
-         OR UPPER(gps_code) = UPPER($1)
-         OR UPPER(ident) = UPPER($1)
+      WHERE (iata_code IS NOT NULL AND UPPER(iata_code) = UPPER($1))
+         OR (gps_code IS NOT NULL AND UPPER(gps_code) = UPPER($1))
+         OR (ident IS NOT NULL AND UPPER(ident) = UPPER($1))
       LIMIT 1;
     `;
-    return this.db.oneOrNone<Airport>(query, [code]);
+    try {
+      logger.debug('Executing findAirportByCode query', { code });
+      const result = await this.db.oneOrNone<Airport>(query, [code]);
+      logger.debug('findAirportByCode query result', {
+        code,
+        found: !!result,
+        resultIdent: result?.ident,
+        resultGpsCode: result?.gps_code,
+        resultIataCode: result?.iata_code,
+        resultName: result?.name,
+      });
+      return result;
+    } catch (error) {
+      const err = error as Error;
+      logger.error('Error in findAirportByCode', { code, error: err.message, stack: err.stack });
+      throw error;
+    }
   }
 
   /**
@@ -136,7 +154,7 @@ class AirportRepository {
       params.push(limit);
     }
 
-    const results = await this.db.query<Airport>(query, params) as unknown as Airport[];
+    const results = (await this.db.query<Airport>(query, params)) as unknown as Airport[];
     return results;
   }
 
@@ -170,7 +188,7 @@ class AirportRepository {
 
     query += ' ORDER BY distance_km ASC LIMIT 50;';
 
-    const results = await this.db.query<Navaid>(query, params) as unknown as Navaid[];
+    const results = (await this.db.query<Navaid>(query, params)) as unknown as Navaid[];
     return results;
   }
 
@@ -192,7 +210,11 @@ class AirportRepository {
         name
       LIMIT $3;
     `;
-    const results = await this.db.query<Airport>(query, [`%${searchTerm}%`, searchTerm, limit]) as unknown as Airport[];
+    const results = (await this.db.query<Airport>(query, [
+      `%${searchTerm}%`,
+      searchTerm,
+      limit,
+    ])) as unknown as Airport[];
     return results;
   }
 }

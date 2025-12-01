@@ -388,10 +388,11 @@ export async function requireApiKeyAuth(req: AuthenticatedRequest, res: Response
         keyType: 'webapp',
         scopes: WEBAPP_SCOPES,
       };
-      logger.debug('Same-origin request allowed without API key', {
+      logger.info('requireApiKeyAuth: Same-origin request allowed', {
         path: req.path,
         origin: req.headers.origin,
         referer: req.headers.referer,
+        isSameOrigin: req.isSameOrigin,
       });
       next();
       return;

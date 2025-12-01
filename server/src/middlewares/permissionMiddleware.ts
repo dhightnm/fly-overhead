@@ -212,7 +212,19 @@ export function optionalPermissionCheck(...requiredScopes: string[]) {
 export function allowSameOriginOrApiKey(...requiredScopes: string[]) {
   return async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
     try {
+      logger.info('allowSameOriginOrApiKey: Checking request', {
+        path: req.path,
+        isSameOrigin: req.isSameOrigin,
+        authAuthenticated: req.auth?.authenticated,
+        authType: req.auth?.type,
+        hasApiKey: !!req.apiKey,
+      });
+      // Allow same-origin requests (from React webapp)
       if (req.isSameOrigin) {
+        logger.info('allowSameOriginOrApiKey: Allowing same-origin request', {
+          path: req.path,
+          isSameOrigin: req.isSameOrigin,
+        });
         next();
         return;
       }

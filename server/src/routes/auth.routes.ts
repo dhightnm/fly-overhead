@@ -175,9 +175,9 @@ router.post('/login', async (req: Request, res: Response, next: NextFunction) =>
         email: user.email,
         name: user.name,
         isPremium: flags.isPremium || user.is_premium || false,
+        isEFB: flags.isEFB || user.is_efb || false,
+        isAPI: flags.isAPI || user.is_api || false,
         isFeederProvider: user.is_feeder_provider || false,
-        isEFB: flags.isEFB || false,
-        isAPI: flags.isAPI || false,
       },
     });
   } catch (error) {
@@ -302,10 +302,10 @@ router.get('/me', authenticateToken, async (req: AuthenticatedRequest, res: Resp
       id: user.id,
       email: user.email,
       name: user.name,
-      isPremium: flags.isPremium || user.is_premium,
+      isPremium: flags.isPremium || user.is_premium || false,
       isFeederProvider: user.is_feeder_provider || false,
-      isEFB: flags.isEFB,
-      isAPI: flags.isAPI,
+      isEFB: flags.isEFB || user.is_efb || false,
+      isAPI: flags.isAPI || user.is_api || false,
     });
   } catch (error) {
     const err = error as Error;

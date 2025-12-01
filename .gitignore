@@ -68,9 +68,13 @@ DOCKER_VS_*.md
 # Misc
 *.md.bak
 fly-overhead-feeder-service/
+*.mdc
 
 # Large data files (one-time backfill only)
 data/ourairports/*.csv
+
+# Cursor rules (local development only)
+.cursor/rules/*.mdc
 
 # Scripts directory (utility scripts, not part of main codebase)
 scripts/

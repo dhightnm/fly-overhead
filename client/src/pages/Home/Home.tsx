@@ -23,6 +23,9 @@ import MapDataFetcher from "./MapDataFetcher";
 import { useRouteData } from "../../hooks/useRouteData";
 import { useAircraftData } from "../../hooks/useAircraftData";
 import { aircraftService } from "../../services";
+import { weatherService } from "../../services/weather.service";
+import WeatherSummary from "../../components/weather/WeatherSummary";
+import type { WeatherSummary as WeatherSummaryType } from "../../services/weather.service";
 import { mergePlaneRecords } from "../../utils/aircraftMerge";
 import type { Aircraft, StarlinkSatellite, Route } from "../../types";
 import type { AirportSearchResult } from "../../types";
@@ -33,7 +36,7 @@ const MOVING_VELOCITY_THRESHOLD = 2; // knots
 const STALE_SEARCH_THRESHOLD_SECONDS = 6 * 60 * 60; // 6 hours
 
 const Home: React.FC = () => {
-  const { isPremium } = useAuth();
+  const { isPremium, isEFB } = useAuth();
 
   // Use hooks for data management
   const {
@@ -93,6 +96,10 @@ const Home: React.FC = () => {
   const [showClosedAirports, setShowClosedAirports] = useState(false);
   const [selectedAirport, setSelectedAirport] =
     useState<AirportSearchResult | null>(null);
+  const [airportWeather, setAirportWeather] =
+    useState<WeatherSummaryType | null>(null);
+  const [weatherLoading, setWeatherLoading] = useState(false);
+  const [weatherError, setWeatherError] = useState<string | null>(null);
   const [showHeatmap, setShowHeatmap] = useState(false);
   const [historyModalOpen, setHistoryModalOpen] = useState(false);
   const [selectedAircraft, setSelectedAircraft] = useState<{
@@ -645,7 +652,7 @@ const Home: React.FC = () => {
     }
   };
 
-  const handleAirportSelect = (airport: AirportSearchResult) => {
+  const handleAirportSelect = async (airport: AirportSearchResult) => {
     if (airport && airport.latitude_deg && airport.longitude_deg) {
       contextValue.setSearchLatlng([
         airport.latitude_deg,
@@ -653,7 +660,60 @@ const Home: React.FC = () => {
       ]);
       setAirportSearch("");
       setAirportSearchResults([]);
-      setSelectedAirport(airport);
+
+      // Fetch full airport data with runways and frequencies
+      // Use gps_code (ICAO) for API, fallback to ident, icao, or iata - never use id
+      const airportCode =
+        airport.gps_code ||
+        airport.ident ||
+        airport.icao ||
+        airport.iata ||
+        airport.iata_code;
+
+      console.log("handleAirportSelect - airport object:", {
+        id: airport.id,
+        gps_code: airport.gps_code,
+        ident: airport.ident,
+        icao: airport.icao,
+        iata: airport.iata,
+        iata_code: airport.iata_code,
+      });
+      console.log("handleAirportSelect - determined airportCode:", airportCode);
+
+      if (airportCode) {
+        try {
+          const response = await aircraftService.getAirportByCode(airportCode);
+          console.log("getAirportByCode response:", {
+            id: response?.id,
+            gps_code: response?.gps_code,
+            ident: response?.ident,
+          });
+          if (response && (response.gps_code || response.ident)) {
+            setSelectedAirport(response);
+          } else {
+            console.warn(
+              "Response missing gps_code/ident, using original airport"
+            );
+            setSelectedAirport(airport);
+          }
+        } catch (error) {
+          console.error("Failed to fetch full airport data:", error);
+          setSelectedAirport(airport);
+        }
+      } else {
+        console.error(
+          "No airport code available - cannot fetch full data. Airport:",
+          airport
+        );
+        // If we have an id but no code, try to look it up by id (but this shouldn't happen)
+        if (airport.id) {
+          console.error(
+            "WARNING: Airport has ID but no code. This should not happen."
+          );
+        }
+        setSelectedAirport(airport);
+      }
+
       if (!showAirports) {
         setShowAirports(true);
       }
@@ -662,7 +722,104 @@ const Home: React.FC = () => {
 
   const handleCloseAirportDetail = () => {
     setSelectedAirport(null);
+    setAirportWeather(null);
+    setWeatherError(null);
   };
+
+  // Fetch weather when airport is selected
+  useEffect(() => {
+    if (!selectedAirport) {
+      setAirportWeather(null);
+      setWeatherError(null);
+      return;
+    }
+
+    // Use gps_code (ICAO) for weather API, fallback to ident, icao, or iata - never use id
+    // CRITICAL: Extract airport code - NEVER use ID
+    // Priority: gps_code > ident > icao > iata > iata_code
+    let airportCode: string | undefined = undefined;
+
+    if (selectedAirport.gps_code) {
+      airportCode = String(selectedAirport.gps_code).trim();
+    } else if (selectedAirport.ident) {
+      airportCode = String(selectedAirport.ident).trim();
+    } else if (selectedAirport.icao) {
+      airportCode = String(selectedAirport.icao).trim();
+    } else if (selectedAirport.iata) {
+      airportCode = String(selectedAirport.iata).trim();
+    } else if (selectedAirport.iata_code) {
+      airportCode = String(selectedAirport.iata_code).trim();
+    }
+
+    // CRITICAL: Never use ID - it won't work with weather API
+    if (!airportCode) {
+      console.error(
+        "❌ Cannot fetch weather: No airport code (gps_code/ident/icao/iata) available.",
+        "Airport ID:",
+        selectedAirport.id,
+        "Airport object:",
+        selectedAirport
+      );
+      return;
+    }
+
+    // Convert to uppercase and validate format
+    const airportCodeStr = airportCode.toUpperCase();
+
+    // Safety check: Ensure we're not accidentally using the ID
+    const airportIdStr = selectedAirport.id ? String(selectedAirport.id) : "";
+    if (airportCodeStr === airportIdStr) {
+      console.error(
+        "❌ BLOCKED: Attempted to use airport ID instead of code!",
+        "ID:",
+        selectedAirport.id,
+        "This would fail. Airport object:",
+        selectedAirport
+      );
+      return;
+    }
+
+    // Final validation: airport code should be 3-4 characters (ICAO/IATA format)
+    // IDs are typically 5+ digits, so this catches them
+    if (
+      airportCodeStr.length < 3 ||
+      airportCodeStr.length > 4 ||
+      /^\d+$/.test(airportCodeStr)
+    ) {
+      console.error(
+        "❌ Invalid airport code format:",
+        airportCodeStr,
+        "(looks like an ID). Airport object:",
+        selectedAirport
+      );
+      return;
+    }
+
+    console.log("✅ Using airport code for weather API:", airportCodeStr);
+
+    const fetchWeather = async () => {
+      setWeatherLoading(true);
+      setWeatherError(null);
+      try {
+        // Use the validated string code
+        const weather = await weatherService.getWeatherSummary(airportCodeStr);
+        setAirportWeather(weather);
+      } catch (error: any) {
+        console.error("Failed to fetch weather:", error);
+        if (error.response?.status === 403) {
+          setWeatherError("upgrade_required");
+        } else if (error.response?.status === 404) {
+          setWeatherError("not_available");
+        } else {
+          setWeatherError("error");
+        }
+      } finally {
+        setWeatherLoading(false);
+      }
+    };
+
+    fetchWeather();
+  }, [selectedAirport]);
 
   // Debounced airport search
   useEffect(() => {
@@ -1010,7 +1167,10 @@ const Home: React.FC = () => {
                     <span className="airport-iata">{selectedAirport.iata}</span>
                   )}
                   <span className="airport-icao">
-                    {selectedAirport.icao || selectedAirport.id}
+                    {selectedAirport.gps_code ||
+                      selectedAirport.ident ||
+                      selectedAirport.icao ||
+                      selectedAirport.id}
                   </span>
                 </div>
               </div>
@@ -1047,6 +1207,173 @@ const Home: React.FC = () => {
                     </span>
                   </div>
                 </div>
+
+                {/* Runways Section */}
+                {selectedAirport.runways &&
+                  selectedAirport.runways.length > 0 && (
+                    <div className="airport-info-group">
+                      <h4 className="info-group-title">Runways</h4>
+                      <div className="runways-list">
+                        {selectedAirport.runways.map(
+                          (runway: any, idx: number) => {
+                            const runwayName =
+                              runway.low_end?.ident && runway.high_end?.ident
+                                ? `${runway.low_end.ident}/${runway.high_end.ident}`
+                                : runway.low_end?.ident ||
+                                  runway.high_end?.ident ||
+                                  `Runway ${idx + 1}`;
+                            return (
+                              <div key={idx} className="runway-item">
+                                <div className="runway-header">
+                                  <span className="runway-name">
+                                    {runwayName}
+                                  </span>
+                                  {runway.length_ft && (
+                                    <span className="runway-length">
+                                      {runway.length_ft.toLocaleString()} ft
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="runway-details">
+                                  {runway.width_ft && (
+                                    <span className="runway-width">
+                                      Width: {runway.width_ft} ft
+                                    </span>
+                                  )}
+                                  {runway.surface && (
+                                    <span className="runway-surface">
+                                      {runway.surface}
+                                    </span>
+                                  )}
+                                  {runway.lighted && (
+                                    <span className="runway-lighted">
+                                      ● Lighted
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          }
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                {/* Frequencies Section */}
+                {selectedAirport.frequencies &&
+                  selectedAirport.frequencies.length > 0 && (
+                    <div className="airport-info-group">
+                      <h4 className="info-group-title">
+                        Frequencies
+                        {!(isPremium() || isEFB()) && (
+                          <span
+                            className="premium-badge"
+                            style={{ marginLeft: "8px", fontSize: "10px" }}
+                          >
+                            Premium/EFB
+                          </span>
+                        )}
+                      </h4>
+                      {isPremium() || isEFB() ? (
+                        <div className="frequencies-list">
+                          {selectedAirport.frequencies.map(
+                            (freq: any, idx: number) => (
+                              <div key={idx} className="frequency-item">
+                                <span className="frequency-type">
+                                  {freq.type || "N/A"}
+                                </span>
+                                <span className="frequency-value">
+                                  {freq.frequency_mhz} MHz
+                                </span>
+                                {freq.description && (
+                                  <span className="frequency-desc">
+                                    {freq.description}
+                                  </span>
+                                )}
+                              </div>
+                            )
+                          )}
+                        </div>
+                      ) : (
+                        <div
+                          className="upgrade-prompt"
+                          style={{
+                            padding: "12px",
+                            background: "#fef3c7",
+                            borderRadius: "6px",
+                            textAlign: "center",
+                          }}
+                        >
+                          <p
+                            style={{
+                              margin: "0 0 8px 0",
+                              fontSize: "12px",
+                              color: "#92400e",
+                            }}
+                          >
+                            Upgrade to Premium or EFB to view airport
+                            frequencies
+                          </p>
+                          <button
+                            className="upgrade-button"
+                            onClick={() => setShowPremiumModal(true)}
+                            style={{
+                              padding: "6px 12px",
+                              fontSize: "11px",
+                              background: "#f59e0b",
+                              color: "white",
+                              border: "none",
+                              borderRadius: "4px",
+                              cursor: "pointer",
+                            }}
+                          >
+                            View Plans
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+              </div>
+
+              {/* Weather Section */}
+              <div className="airport-weather-section">
+                {weatherLoading && (
+                  <div className="weather-loading-state">
+                    Loading weather data...
+                  </div>
+                )}
+                {weatherError === "upgrade_required" && (
+                  <div className="weather-upgrade-prompt">
+                    <h4>Weather Data</h4>
+                    <p>
+                      Upgrade to Premium or EFB to access real-time METAR and
+                      TAF data.
+                    </p>
+                    <button
+                      className="upgrade-button"
+                      onClick={() => {
+                        setShowPremiumModal(true);
+                      }}
+                    >
+                      View Plans
+                    </button>
+                  </div>
+                )}
+                {weatherError === "not_available" && (
+                  <div className="weather-unavailable-message">
+                    <h4>Weather Data</h4>
+                    <p>No weather data available for this airport.</p>
+                  </div>
+                )}
+                {weatherError === "error" && (
+                  <div className="weather-error-message">
+                    <h4>Weather Data</h4>
+                    <p>Failed to load weather data. Please try again later.</p>
+                  </div>
+                )}
+                {airportWeather && !weatherLoading && !weatherError && (
+                  <WeatherSummary weather={airportWeather} />
+                )}
               </div>
             </div>
           </div>
@@ -1208,12 +1535,12 @@ const Home: React.FC = () => {
                     try {
                       bounds = map.getBounds();
                       if (!bounds || !bounds.isValid()) {
-                        console.warn('Map bounds not ready for fallback fetch');
+                        console.warn("Map bounds not ready for fallback fetch");
                         return;
                       }
                       wrapBounds = map.wrapLatLngBounds(bounds);
                     } catch (error) {
-                      console.warn('Map not ready for fallback fetch', error);
+                      console.warn("Map not ready for fallback fetch", error);
                       return;
                     }
 
@@ -1327,7 +1654,7 @@ const Home: React.FC = () => {
                   // Handle incremental updates - use upsertPlane for each updated aircraft
                   const updatedAircraft = update.data.updated || [];
                   const addedAircraft = update.data.added || [];
-                  
+
                   // Process updated aircraft
                   updatedAircraft.forEach((plane: Aircraft) => {
                     const normalizedPlane: Aircraft = {
@@ -1351,7 +1678,10 @@ const Home: React.FC = () => {
                   });
 
                   // Handle removed aircraft
-                  if (update.data.removed && Array.isArray(update.data.removed)) {
+                  if (
+                    update.data.removed &&
+                    Array.isArray(update.data.removed)
+                  ) {
                     setPlanes((prevPlanes) =>
                       prevPlanes.filter(
                         (p) => !update.data.removed.includes(p.icao24)

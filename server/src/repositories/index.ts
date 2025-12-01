@@ -7,6 +7,7 @@ import UserRepository from './UserRepository';
 import FeederRepository from './FeederRepository';
 import ApiKeyRepository from './ApiKeyRepository';
 import AirportRepository from './AirportRepository';
+import WeatherRepository from './WeatherRepository';
 import PostGISService from '../services/PostGISService';
 import WebhookRepository, {
   CreateDeliveryInput,
@@ -39,6 +40,8 @@ class PostgresRepository {
   private _apiKey: ApiKeyRepository | null = null;
 
   private _airport: AirportRepository | null = null;
+
+  private _weather: WeatherRepository | null = null;
 
   private _webhook: WebhookRepository | null = null;
 
@@ -171,6 +174,13 @@ class PostgresRepository {
       this._airport = new AirportRepository(this.db, this.postgis);
     }
     return this._airport;
+  }
+
+  private get weather(): WeatherRepository {
+    if (!this._weather) {
+      this._weather = new WeatherRepository(this.db);
+    }
+    return this._weather;
   }
 
   private get webhook(): WebhookRepository {
@@ -457,6 +467,40 @@ class PostgresRepository {
 
   async searchAirports(searchTerm: string, limit?: number): Promise<any> {
     return this.airport.searchAirports(searchTerm, limit);
+  }
+
+  // Delegate weather methods
+  async saveMETAR(metar: any): Promise<any> {
+    return this.weather.saveMETAR(metar);
+  }
+
+  async getLatestMETAR(airportIdent: string): Promise<any> {
+    return this.weather.getLatestMETAR(airportIdent);
+  }
+
+  async getMETARHistory(airportIdent: string, hours?: number): Promise<any[]> {
+    return this.weather.getMETARHistory(airportIdent, hours);
+  }
+
+  async saveTAF(taf: any): Promise<any> {
+    return this.weather.saveTAF(taf);
+  }
+
+  async getLatestTAF(airportIdent: string): Promise<any> {
+    return this.weather.getLatestTAF(airportIdent);
+  }
+
+  async updateWeatherCache(
+    airportIdent: string,
+    metarId?: number | null,
+    tafId?: number | null,
+    nextUpdateMinutes?: number,
+  ): Promise<void> {
+    return this.weather.updateWeatherCache(airportIdent, metarId, tafId, nextUpdateMinutes);
+  }
+
+  async getWeatherCache(airportIdent: string): Promise<any> {
+    return this.weather.getWeatherCache(airportIdent);
   }
 
   async close(): Promise<void> {
