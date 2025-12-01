@@ -58,7 +58,6 @@ COPY server/src/ ./src/
 COPY server/config/ ./config/
 COPY server/utils/ ./utils/
 COPY server/database/ ./database/
-COPY server/migrations/ ./migrations/
 
 # Build TypeScript to JavaScript
 RUN npm run build
