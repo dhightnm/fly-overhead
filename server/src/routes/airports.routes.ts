@@ -7,6 +7,7 @@ import { requireApiKeyAuth, optionalApiKeyAuth } from '../middlewares/apiKeyAuth
 import { rateLimitMiddleware } from '../middlewares/rateLimitMiddleware';
 import { allowSameOriginOrApiKey, requireScopes } from '../middlewares/permissionMiddleware';
 import { API_SCOPES } from '../config/scopes';
+import { decodeMETAR, decodeTAF } from '../utils/weatherDecoder';
 
 const router = Router();
 const requireAirportsRead = requireScopes(API_SCOPES.AIRPORTS_READ, API_SCOPES.READ);
@@ -150,6 +151,7 @@ router.get(
                     wind_speed_kt: metar.wind_speed_kt,
                     visibility_statute_mi: metar.visibility_statute_mi,
                     flight_category: metar.flight_category,
+                    decoded: decodeMETAR(metar),
                   }
                   : null,
                 taf: taf
@@ -158,6 +160,7 @@ router.get(
                     valid_time_from: taf.valid_time_from,
                     valid_time_to: taf.valid_time_to,
                     raw_text: taf.raw_text,
+                    decoded: decodeTAF(taf),
                   }
                   : null,
               };

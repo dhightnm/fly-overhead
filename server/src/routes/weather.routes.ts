@@ -3,6 +3,7 @@ import {
 } from 'express';
 import weatherService from '../services/WeatherService';
 import postgresRepository from '../repositories/PostgresRepository';
+import { decodeMETAR, decodeTAF } from '../utils/weatherDecoder';
 import { requireApiKeyAuth } from '../middlewares/apiKeyAuth';
 import { rateLimitMiddleware } from '../middlewares/rateLimitMiddleware';
 import { allowSameOriginOrApiKey } from '../middlewares/permissionMiddleware';
@@ -82,6 +83,7 @@ router.get(
           metar_type: metar.metar_type,
           elevation_m: metar.elevation_m,
           created_at: metar.created_at,
+          decoded: decodeMETAR(metar),
         },
       });
     } catch (err) {
@@ -151,6 +153,7 @@ router.get(
           raw_text: taf.raw_text,
           forecast_data: taf.forecast_data,
           created_at: taf.created_at,
+          decoded: decodeTAF(taf),
         },
       });
     } catch (err) {
@@ -284,24 +287,30 @@ router.get(
           latitude_deg: airport.latitude_deg,
           longitude_deg: airport.longitude_deg,
         },
-        current: metar ? {
-          observation_time: metar.observation_time,
-          raw_text: metar.raw_text,
-          temperature_c: metar.temperature_c,
-          dewpoint_c: metar.dewpoint_c,
-          wind_dir_deg: metar.wind_dir_deg,
-          wind_speed_kt: metar.wind_speed_kt,
-          wind_gust_kt: metar.wind_gust_kt,
-          visibility_statute_mi: metar.visibility_statute_mi,
-          altim_in_hg: metar.altim_in_hg,
-          flight_category: metar.flight_category,
-        } : null,
-        forecast: taf ? {
-          issue_time: taf.issue_time,
-          valid_time_from: taf.valid_time_from,
-          valid_time_to: taf.valid_time_to,
-          raw_text: taf.raw_text,
-        } : null,
+        current: metar
+          ? {
+            observation_time: metar.observation_time,
+            raw_text: metar.raw_text,
+            temperature_c: metar.temperature_c,
+            dewpoint_c: metar.dewpoint_c,
+            wind_dir_deg: metar.wind_dir_deg,
+            wind_speed_kt: metar.wind_speed_kt,
+            wind_gust_kt: metar.wind_gust_kt,
+            visibility_statute_mi: metar.visibility_statute_mi,
+            altim_in_hg: metar.altim_in_hg,
+            flight_category: metar.flight_category,
+            decoded: decodeMETAR(metar),
+          }
+          : null,
+        forecast: taf
+          ? {
+            issue_time: taf.issue_time,
+            valid_time_from: taf.valid_time_from,
+            valid_time_to: taf.valid_time_to,
+            raw_text: taf.raw_text,
+            decoded: decodeTAF(taf),
+          }
+          : null,
         available: {
           metar: !!metar,
           taf: !!taf,

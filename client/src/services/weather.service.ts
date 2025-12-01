@@ -23,6 +23,17 @@ export interface METARData {
   created_at: string;
 }
 
+export interface DecodedMETAR {
+  temperature: string;
+  dewpoint: string;
+  wind: string;
+  visibility: string;
+  altimeter: string;
+  clouds: string[];
+  flightCategoryLabel: string | null;
+  summary: string;
+}
+
 export interface TAFData {
   id: number;
   airport_ident: string;
@@ -32,6 +43,11 @@ export interface TAFData {
   raw_text: string;
   forecast_data?: any;
   created_at: string;
+}
+
+export interface DecodedTAF {
+  validPeriod: string;
+  summary: string;
 }
 
 export interface WeatherSummary {
@@ -54,12 +70,14 @@ export interface WeatherSummary {
     visibility_statute_mi?: number;
     altim_in_hg?: number;
     flight_category?: string;
+    decoded?: DecodedMETAR | null;
   } | null;
   forecast: {
     issue_time: string;
     valid_time_from: string;
     valid_time_to: string;
     raw_text: string;
+    decoded?: DecodedTAF | null;
   } | null;
   available: {
     metar: boolean;
@@ -133,4 +151,3 @@ class WeatherService {
 }
 
 export const weatherService = new WeatherService();
-
