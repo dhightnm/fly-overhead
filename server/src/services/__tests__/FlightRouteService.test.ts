@@ -21,6 +21,7 @@ jest.mock('../../repositories/PostgresRepository', () => ({
   __esModule: true,
   default: {
     cacheRoute: jest.fn(),
+    getCachedRoute: jest.fn(),
     updateAircraftCallsign: jest.fn(),
     storeRouteHistory: jest.fn(),
     getDb: jest.fn(() => ({ oneOrNone: jest.fn() })),
@@ -31,6 +32,9 @@ jest.mock('../../repositories/PostgresRepository', () => ({
 const aerodataboxMock = aerodataboxService as jest.Mocked<typeof aerodataboxService>;
 const cacheRouteRepoMock = postgresRepository.cacheRoute as jest.MockedFunction<
   typeof postgresRepository.cacheRoute
+>;
+const getCachedRouteMock = postgresRepository.getCachedRoute as jest.MockedFunction<
+  typeof postgresRepository.getCachedRoute
 >;
 const updateAircraftCallsignMock = postgresRepository.updateAircraftCallsign as jest.MockedFunction<
   typeof postgresRepository.updateAircraftCallsign
@@ -66,6 +70,7 @@ describe('FlightRouteService - Aerodatabox integration', () => {
   beforeEach(() => {
     aerodataboxMock.getFlightByIcao24.mockReset();
     cacheRouteRepoMock.mockReset();
+    getCachedRouteMock.mockReset().mockResolvedValue(null);
     updateAircraftCallsignMock.mockReset();
     storeRouteHistoryMock.mockReset();
     dbOneOrNoneMock.mockReset().mockResolvedValue(null);

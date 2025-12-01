@@ -161,6 +161,7 @@ const ROUTE_CACHE_MAX_AGE_HOURS = Number.parseInt(process.env.ROUTE_CACHE_MAX_AG
 const ROUTE_CACHE_MAX_AGE_MS = Number.isFinite(ROUTE_CACHE_MAX_AGE_HOURS)
   ? ROUTE_CACHE_MAX_AGE_HOURS * 60 * 60 * 1000
   : 3 * 60 * 60 * 1000;
+const LANDED_CACHE_MAX_AGE_MS = 30 * 60 * 1000;
 
 const hasArrivalData = (route?: Route | null): boolean => !!(
   route?.arrivalAirport?.icao || route?.arrivalAirport?.iata
@@ -293,74 +294,85 @@ export class FlightRouteService {
   ): Promise<Route | null> {
     const cacheKey = `${callsign || icao24}`;
 
-    if (!allowExpensiveApis && this.cache.has(cacheKey)) {
-      const cachedRoute = this.cache.get(cacheKey)!;
-      const ageMs = getRouteAgeMs(cachedRoute);
-      if (ageMs <= ROUTE_CACHE_MAX_AGE_MS && hasArrivalData(cachedRoute)) {
-        logger.debug('Route cache HIT (in-memory) - skipping API call', {
+    const lookupCachedRoute = (route: Route | null): Route | null => {
+      if (!route) return null;
+      const normalizedRoute: Route = { ...route };
+      const ageMs = getRouteAgeMs(normalizedRoute);
+      const isComplete = hasArrivalData(normalizedRoute);
+      if (ageMs > ROUTE_CACHE_MAX_AGE_MS && isComplete) {
+        logger.debug('Cached route expired (complete route)', { cacheKey, ageMs });
+        return null;
+      }
+      if (!isComplete) {
+        const maxAge = route.source === 'inference' ? 30 * 60 * 1000 : 90 * 60 * 1000;
+        if (ageMs > maxAge) {
+          logger.debug('Cached incomplete route expired', { cacheKey, source: route.source, ageMs });
+          return null;
+        }
+      }
+      if (normalizedRoute.aircraft?.type) {
+        const aircraftInfo = mapAircraftType(normalizedRoute.aircraft.type, normalizedRoute.aircraft.model);
+        normalizedRoute.aircraft = {
+          ...normalizedRoute.aircraft,
+          model: aircraftInfo.model,
+          type: aircraftInfo.type,
+          category: aircraftInfo.category,
+        };
+      }
+      return normalizedRoute;
+    };
+
+    if (this.cache.has(cacheKey)) {
+      const cached = lookupCachedRoute(this.cache.get(cacheKey)!);
+      if (cached) {
+        logger.debug('Route cache HIT (in-memory)', {
           cacheKey,
           icao24,
           callsign,
-          ageMs,
+          source: cached.source,
         });
-        if (cachedRoute.aircraft?.type) {
-          const aircraftInfo = mapAircraftType(cachedRoute.aircraft.type, cachedRoute.aircraft.model);
-          cachedRoute.aircraft = {
-            ...cachedRoute.aircraft,
-            model: aircraftInfo.model,
-            type: aircraftInfo.type,
-            category: aircraftInfo.category,
-          };
-        }
-        return cachedRoute;
+        return cached;
       }
-      logger.debug('In-memory route cache entry stale or incomplete. Evicting.', {
-        cacheKey,
-        hasArrival: hasArrivalData(cachedRoute),
-        ageMs,
-      });
       this.cache.delete(cacheKey);
     }
 
-    if (!allowExpensiveApis) {
-      const cachedRoute = await postgresRepository.getCachedRoute(cacheKey);
-      if (cachedRoute) {
-        const ageMs = getRouteAgeMs(cachedRoute);
-        if (cachedRoute.aircraft?.type) {
-          const aircraftInfo = mapAircraftType(cachedRoute.aircraft.type, cachedRoute.aircraft.model);
-          cachedRoute.aircraft = {
-            ...cachedRoute.aircraft,
-            model: aircraftInfo.model,
-            type: aircraftInfo.type,
-            category: aircraftInfo.category,
-          };
-        }
-
-        logger.debug('Route cache HIT (database) - skipping API call', {
+    const dbCachedRoute = await postgresRepository.getCachedRoute(cacheKey);
+    if (dbCachedRoute) {
+      const usableRoute = lookupCachedRoute({
+        ...dbCachedRoute,
+        cachedAt: dbCachedRoute.cachedAt || new Date(),
+      });
+      if (usableRoute) {
+        logger.debug('Route cache HIT (database)', {
           cacheKey,
           icao24,
           callsign,
-          source: cachedRoute.source || 'unknown',
-          hasAircraft: !!cachedRoute.aircraft,
           allowExpensiveApis,
-          ageMs,
+          source: usableRoute.source,
         });
-        const cachedRouteWithTimestamp: Route = {
-          ...cachedRoute,
-          cachedAt: cachedRoute.cachedAt || new Date(),
-        };
-        this.cache.set(cacheKey, cachedRouteWithTimestamp);
-        return cachedRouteWithTimestamp;
+        this.cache.set(cacheKey, usableRoute);
+        if (allowExpensiveApis && !hasArrivalData(usableRoute)) {
+          logger.debug('Route incomplete but returning cached result while refreshing in background', {
+            cacheKey,
+          });
+        }
+        return usableRoute;
       }
-    } else {
-      logger.debug('Skipping database cache for user-initiated request (allowExpensiveApis=true)', {
+    }
+
+    const historyRoute = await this.getRouteFromHistory(icao24, callsign, cacheKey);
+    if (historyRoute) {
+      logger.debug('Route history HIT (recent)', {
         cacheKey,
         icao24,
         callsign,
+        source: historyRoute.source,
       });
+      this.cache.set(cacheKey, historyRoute);
+      return historyRoute;
     }
 
-    logger.debug('Route cache MISS - fetching from API', {
+    logger.debug('Route cache/history MISS - fetching from API', {
       cacheKey,
       icao24,
       callsign,
@@ -497,7 +509,24 @@ export class FlightRouteService {
       logger.debug('Skipping OpenSky for current flight (saves 4-8 seconds)', { icao24, callsign });
     }
 
-    if (this.flightAwareApiKey && resolvedCallsign && allowExpensiveApis) {
+    let skipFlightAware = false;
+    if (allowExpensiveApis && resolvedCallsign) {
+      const landingStatus = await this.hasFlightLanded(resolvedCallsign);
+      if (
+        landingStatus.hasLanded
+        && landingStatus.lastArrival
+        && Date.now() - landingStatus.lastArrival < LANDED_CACHE_MAX_AGE_MS
+      ) {
+        skipFlightAware = true;
+        logger.debug('Skipping FlightAware lookup (flight recently landed)', {
+          icao24,
+          callsign: resolvedCallsign,
+          lastArrival: new Date(landingStatus.lastArrival).toISOString(),
+        });
+      }
+    }
+
+    if (this.flightAwareApiKey && resolvedCallsign && allowExpensiveApis && !skipFlightAware) {
       logger.info('Trying FlightAware AeroAPI for route (user-initiated request)', {
         icao24,
         callsign: resolvedCallsign,
@@ -736,91 +765,9 @@ export class FlightRouteService {
       logger.debug('Skipping FlightAware (background job) - using inference', { icao24, callsign });
     }
 
-    if (icao24) {
-      const existingRoute = await postgresRepository.getDb().oneOrNone<{
-        callsign: string | null;
-        departure_icao: string | null;
-        departure_iata: string | null;
-        departure_name: string | null;
-        arrival_icao: string | null;
-        arrival_iata: string | null;
-        arrival_name: string | null;
-        source: string | null;
-        actual_flight_start: Date | null;
-        actual_flight_end: Date | null;
-        created_at: Date;
-      }>(
-        `SELECT callsign, departure_icao, departure_iata, departure_name,
-                arrival_icao, arrival_iata, arrival_name, source,
-                actual_flight_start, actual_flight_end, created_at
-         FROM flight_routes_history
-         WHERE icao24 = $1
-           AND departure_icao IS NOT NULL
-           AND arrival_icao IS NOT NULL
-         ORDER BY 
-           CASE WHEN actual_flight_end IS NULL THEN 0 ELSE 1 END ASC,
-           CASE WHEN actual_flight_start IS NOT NULL 
-                AND actual_flight_start > NOW() - INTERVAL '24 hours' 
-                THEN 0 ELSE 1 END ASC,
-           actual_flight_start DESC NULLS LAST,
-           created_at DESC
-         LIMIT 1`,
-        [icao24.toLowerCase()],
-      );
-
-      if (existingRoute) {
-        logger.info('Found route from flight_routes_history', {
-          icao24,
-          callsign: existingRoute.callsign,
-          departure: existingRoute.departure_icao,
-          arrival: existingRoute.arrival_icao,
-          source: existingRoute.source,
-        });
-
-        const depAirport = existingRoute.departure_icao
-          ? await postgresRepository.findAirportByCode(existingRoute.departure_icao)
-          : null;
-
-        const arrAirport = existingRoute.arrival_icao
-          ? await postgresRepository.findAirportByCode(existingRoute.arrival_icao)
-          : null;
-
-        const routeData: Route = {
-          departureAirport: {
-            iata: existingRoute.departure_iata || depAirport?.iata_code || null,
-            icao: existingRoute.departure_icao || null,
-            name: existingRoute.departure_name || depAirport?.name || null,
-            location: depAirport
-              ? {
-                lat: parseFloat(depAirport.latitude_deg),
-                lng: parseFloat(depAirport.longitude_deg),
-              }
-              : null,
-          },
-          arrivalAirport: {
-            iata: existingRoute.arrival_iata || arrAirport?.iata_code || null,
-            icao: existingRoute.arrival_icao || null,
-            name: existingRoute.arrival_name || arrAirport?.name || null,
-            location: arrAirport
-              ? {
-                lat: parseFloat(arrAirport.latitude_deg),
-                lng: parseFloat(arrAirport.longitude_deg),
-              }
-              : null,
-          },
-          source: existingRoute.source || 'flight_routes_history',
-        };
-
-        const resolvedCallsignLocal = callsign || existingRoute.callsign;
-
-        await this.cacheRoute(cacheKey, {
-          ...routeData,
-          callsign: resolvedCallsignLocal,
-          icao24: icao24 || null,
-        });
-
-        return { ...routeData, callsign: resolvedCallsignLocal, icao24: icao24 || null };
-      }
+    const historyFallback = await this.getRouteFromHistory(icao24, callsign, cacheKey);
+    if (historyFallback) {
+      return historyFallback;
     }
 
     const inferredRoute = await this.inferRouteFromPosition(icao24 || '');
@@ -1076,6 +1023,123 @@ export class FlightRouteService {
       logger.debug('Error fetching route from OpenSky', { icao24, error: err.message });
       return null;
     }
+  }
+
+  private async getRouteFromHistory(
+    icao24: string | null | undefined,
+    callsign: string | null | undefined,
+    cacheKey?: string,
+  ): Promise<Route | null> {
+    if (!icao24) {
+      return null;
+    }
+
+    const existingRoute = await postgresRepository.getDb().oneOrNone<{
+      callsign: string | null;
+      departure_icao: string | null;
+      departure_iata: string | null;
+      departure_name: string | null;
+      arrival_icao: string | null;
+      arrival_iata: string | null;
+      arrival_name: string | null;
+      source: string | null;
+      actual_flight_start: Date | null;
+      actual_flight_end: Date | null;
+      created_at: Date;
+    }>(
+      `SELECT callsign, departure_icao, departure_iata, departure_name,
+              arrival_icao, arrival_iata, arrival_name, source,
+              actual_flight_start, actual_flight_end, created_at
+       FROM flight_routes_history
+       WHERE icao24 = $1
+         AND departure_icao IS NOT NULL
+         AND arrival_icao IS NOT NULL
+       ORDER BY 
+         CASE WHEN actual_flight_end IS NULL THEN 0 ELSE 1 END ASC,
+         CASE WHEN actual_flight_start IS NOT NULL 
+              AND actual_flight_start > NOW() - INTERVAL '24 hours' 
+              THEN 0 ELSE 1 END ASC,
+         actual_flight_start DESC NULLS LAST,
+         created_at DESC
+       LIMIT 1`,
+      [icao24.toLowerCase()],
+    );
+
+    if (!existingRoute) {
+      return null;
+    }
+
+    logger.info('Found route from flight_routes_history', {
+      icao24,
+      callsign: existingRoute.callsign,
+      departure: existingRoute.departure_icao,
+      arrival: existingRoute.arrival_icao,
+      source: existingRoute.source,
+    });
+
+    const depAirport = existingRoute.departure_icao
+      ? await postgresRepository.findAirportByCode(existingRoute.departure_icao)
+      : null;
+
+    const arrAirport = existingRoute.arrival_icao
+      ? await postgresRepository.findAirportByCode(existingRoute.arrival_icao)
+      : null;
+
+    const parseCoord = (value?: string | number | null): number | null => {
+      if (typeof value === 'number') return value;
+      if (typeof value === 'string') {
+        const parsed = parseFloat(value);
+        return Number.isFinite(parsed) ? parsed : null;
+      }
+      return null;
+    };
+
+    const routeData: Route = {
+      departureAirport: {
+        iata: existingRoute.departure_iata || depAirport?.iata_code || null,
+        icao: existingRoute.departure_icao || null,
+        name: existingRoute.departure_name || depAirport?.name || null,
+        location: depAirport
+          ? {
+            lat: parseCoord(depAirport.latitude_deg),
+            lng: parseCoord(depAirport.longitude_deg),
+          }
+          : null,
+      },
+      arrivalAirport: {
+        iata: existingRoute.arrival_iata || arrAirport?.iata_code || null,
+        icao: existingRoute.arrival_icao || null,
+        name: existingRoute.arrival_name || arrAirport?.name || null,
+        location: arrAirport
+          ? {
+            lat: parseCoord(arrAirport.latitude_deg),
+            lng: parseCoord(arrAirport.longitude_deg),
+          }
+          : null,
+      },
+      source: existingRoute.source || 'flight_routes_history',
+    };
+
+    const resolvedCallsignLocal = callsign || existingRoute.callsign || null;
+    const payload: Route = {
+      ...routeData,
+      callsign: resolvedCallsignLocal,
+      icao24: icao24 || null,
+    };
+
+    if (cacheKey) {
+      try {
+        await this.cacheRoute(cacheKey, payload);
+      } catch (err) {
+        const error = err as Error;
+        logger.debug('Failed to cache history route', { cacheKey, error: error.message });
+      }
+    } else if (payload.callsign || payload.icao24) {
+      const derivedKey = payload.callsign || payload.icao24 || 'route-history';
+      this.cache.set(derivedKey, { ...payload, cachedAt: new Date() });
+    }
+
+    return payload;
   }
 
   /**

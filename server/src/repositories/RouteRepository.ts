@@ -35,6 +35,7 @@ class RouteRepository {
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
         ON CONFLICT (cache_key) DO UPDATE SET
           last_used = CURRENT_TIMESTAMP,
+          created_at = CURRENT_TIMESTAMP,
           departure_iata = EXCLUDED.departure_iata,
           departure_icao = EXCLUDED.departure_icao,
           departure_name = EXCLUDED.departure_name,
