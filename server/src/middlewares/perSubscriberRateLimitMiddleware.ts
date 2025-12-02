@@ -6,6 +6,13 @@ import logger from '../utils/logger';
 import type { AuthenticatedRequest } from './apiKeyAuth';
 import type { SubscriberType } from '../services/PerSubscriberRateLimitService';
 
+const buildBreakerConfig = (subscriberType: SubscriberType) => ({
+  ...(subscriberType === 'feeder'
+    ? config.feeders.circuitBreaker
+    : config.webhooks.circuitBreaker),
+  redisUrl: config.redisUrl,
+});
+
 /**
  * Per-Subscriber Rate Limit Middleware
  * Enforces rate limits on a per-subscriber basis (feeder, webhook subscription, etc.)
@@ -31,9 +38,7 @@ export function createPerSubscriberRateLimitMiddleware(
       }
 
       // Check circuit breaker first
-      const breakerConfig = subscriberType === 'feeder'
-        ? config.feeders.circuitBreaker
-        : config.webhooks.circuitBreaker;
+      const breakerConfig = buildBreakerConfig(subscriberType);
 
       const breakerStatus = await circuitBreakerService.getBreakerStatus(
         subscriberType,
@@ -71,6 +76,7 @@ export function createPerSubscriberRateLimitMiddleware(
         subscriberId,
         undefined, // Use default from config
         endpoint,
+        config.redisUrl,
       );
 
       // Set rate limit headers
@@ -131,9 +137,7 @@ export async function recordSubscriberSuccess(
   subscriberId: string | number,
 ): Promise<void> {
   try {
-    const breakerConfig = subscriberType === 'feeder'
-      ? config.feeders.circuitBreaker
-      : config.webhooks.circuitBreaker;
+    const breakerConfig = buildBreakerConfig(subscriberType);
 
     await circuitBreakerService.recordSuccess(subscriberType, subscriberId, breakerConfig);
   } catch (error) {
@@ -154,9 +158,7 @@ export async function recordSubscriberFailure(
   subscriberId: string | number,
 ): Promise<void> {
   try {
-    const breakerConfig = subscriberType === 'feeder'
-      ? config.feeders.circuitBreaker
-      : config.webhooks.circuitBreaker;
+    const breakerConfig = buildBreakerConfig(subscriberType);
 
     const breakerStatus = await circuitBreakerService.recordFailure(
       subscriberType,

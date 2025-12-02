@@ -170,6 +170,7 @@ export interface AppConfig {
   server: ServerConfig;
   database: DatabaseConfig;
   aws: AwsConfig;
+  redisUrl: string;
   external: ExternalApiConfig;
   cors: CorsConfig;
   aircraft: AircraftConfig;

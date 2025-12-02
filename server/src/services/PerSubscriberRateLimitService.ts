@@ -22,9 +22,10 @@ class PerSubscriberRateLimitService {
   private redisClients: Map<string, Redis> = new Map();
 
   private getRedis(clientName: string, redisUrl?: string): Redis {
-    const key = `${clientName}:${redisUrl || 'default'}`;
+    const resolvedUrl = redisUrl || config.redisUrl;
+    const key = `${clientName}:${resolvedUrl || 'default'}`;
     if (!this.redisClients.has(key)) {
-      const client = redisClientManager.getClient(clientName, redisUrl);
+      const client = redisClientManager.getClient(clientName, resolvedUrl);
       this.redisClients.set(key, client);
     }
     return this.redisClients.get(key)!;

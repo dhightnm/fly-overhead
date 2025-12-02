@@ -25,25 +25,14 @@ class RouteRepository {
         routeDataKeys: Object.keys(routeData),
       });
 
-      const query = `
+      const insertQuery = `
         INSERT INTO flight_routes_cache (
           cache_key, callsign, icao24,
           departure_iata, departure_icao, departure_name,
           arrival_iata, arrival_icao, arrival_name,
           source, aircraft_type
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-        ON CONFLICT (cache_key) DO UPDATE SET
-          last_used = CURRENT_TIMESTAMP,
-          created_at = CURRENT_TIMESTAMP,
-          departure_iata = EXCLUDED.departure_iata,
-          departure_icao = EXCLUDED.departure_icao,
-          departure_name = EXCLUDED.departure_name,
-          arrival_iata = EXCLUDED.arrival_iata,
-          arrival_icao = EXCLUDED.arrival_icao,
-          arrival_name = EXCLUDED.arrival_name,
-          source = EXCLUDED.source,
-          aircraft_type = EXCLUDED.aircraft_type;
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11);
       `;
 
       const sourceValue = routeData.source || null;
@@ -62,19 +51,22 @@ class RouteRepository {
         hasType: !!routeData.aircraft?.type,
       });
 
-      await this.db.query(query, [
-        cacheKey,
-        routeData.callsign || null,
-        routeData.icao24 || null,
-        routeData.departureAirport?.iata || null,
-        routeData.departureAirport?.icao || null,
-        routeData.departureAirport?.name || null,
-        routeData.arrivalAirport?.iata || null,
-        routeData.arrivalAirport?.icao || null,
-        routeData.arrivalAirport?.name || null,
-        sourceValue,
-        aircraftType,
-      ]);
+      await this.db.tx(async (t) => {
+        await t.none('DELETE FROM flight_routes_cache WHERE cache_key = $1', [cacheKey]);
+        await t.none(insertQuery, [
+          cacheKey,
+          routeData.callsign || null,
+          routeData.icao24 || null,
+          routeData.departureAirport?.iata || null,
+          routeData.departureAirport?.icao || null,
+          routeData.departureAirport?.name || null,
+          routeData.arrivalAirport?.iata || null,
+          routeData.arrivalAirport?.icao || null,
+          routeData.arrivalAirport?.name || null,
+          sourceValue,
+          aircraftType,
+        ]);
+      });
 
       logger.debug('Route cached successfully', { cacheKey, source: sourceValue });
     } catch (error) {
@@ -399,7 +391,7 @@ class RouteRepository {
         $35, $36, $37,
         $38, $39
       )
-      ON CONFLICT ON CONSTRAINT uniq_flight_routes_history_flight_key DO NOTHING;
+      ON CONFLICT ON CONSTRAINT flight_routes_history_flight_key_created_at_key DO NOTHING;
     `;
 
     try {
@@ -447,7 +439,10 @@ class RouteRepository {
     } catch (error) {
       const err = error as Error;
       // Ignore duplicate key errors (expected when same flight already stored)
-      if (err.message?.includes('duplicate key') || err.message?.includes('uniq_flight_routes_history_flight_key')) {
+      if (
+        err.message?.includes('duplicate key')
+        || err.message?.includes('flight_routes_history_flight_key_created_at_key')
+      ) {
         logger.debug('Flight already exists in history (duplicate key)', {
           callsign: callsignNorm,
           icao24: icao24Norm,

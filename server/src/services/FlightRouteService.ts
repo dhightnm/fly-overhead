@@ -627,7 +627,7 @@ export class FlightRouteService {
                 const err = storeErr as Error;
                 if (
                   !err.message?.includes('duplicate key')
-                  && !err.message?.includes('uniq_flight_routes_history_flight_key')
+                  && !err.message?.includes('flight_routes_history_flight_key_created_at_key')
                 ) {
                   logger.warn('Failed to store FlightAware flight in history', {
                     callsign,
