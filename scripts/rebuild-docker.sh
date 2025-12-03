@@ -16,6 +16,11 @@ if [ "$MODE" = "dev" ]; then
     echo "Starting dev containers..."
     docker compose -f docker-compose.dev.yml up -d
     
+    if [ -x ./scripts/db-manager.sh ]; then
+        echo "Running database migrations..."
+        ./scripts/db-manager.sh migrate
+    fi
+    
     echo "✅ Dev containers rebuilt and started!"
 else
     echo "Stopping production containers..."
@@ -26,6 +31,11 @@ else
     
     echo "Starting production containers..."
     docker compose up -d
+    
+    if [ -x ./scripts/db-manager.sh ]; then
+        echo "Running database migrations..."
+        ./scripts/db-manager.sh migrate
+    fi
     
     echo "✅ Production containers rebuilt and started!"
 fi

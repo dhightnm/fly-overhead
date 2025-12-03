@@ -19,6 +19,11 @@ if ($Mode -eq "dev") {
     Write-Host "Starting dev containers..." -ForegroundColor Yellow
     docker compose -f docker-compose.dev.yml up -d
     
+    if (Test-Path "./scripts/db-manager.sh") {
+        Write-Host "Running database migrations..." -ForegroundColor Yellow
+        bash ./scripts/db-manager.sh migrate
+    }
+    
     Write-Host "✅ Dev containers rebuilt and started!" -ForegroundColor Green
 } else {
     Write-Host "Stopping production containers..." -ForegroundColor Yellow
@@ -29,6 +34,11 @@ if ($Mode -eq "dev") {
     
     Write-Host "Starting production containers..." -ForegroundColor Yellow
     docker compose up -d
+    
+    if (Test-Path "./scripts/db-manager.sh") {
+        Write-Host "Running database migrations..." -ForegroundColor Yellow
+        bash ./scripts/db-manager.sh migrate
+    }
     
     Write-Host "✅ Production containers rebuilt and started!" -ForegroundColor Green
 }
