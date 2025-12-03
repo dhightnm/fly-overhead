@@ -527,118 +527,124 @@ const withTimeout = async <T>(promise: Promise<T>, timeoutMs: number): Promise<T
  * Get flight route for an aircraft
  * Requires API key authentication with rate limiting
  */
-router.get(
-  '/route/:identifier',
-  optionalApiKeyAuth,
-  allowSameOriginOrApiKey(API_SCOPES.AIRCRAFT_READ, API_SCOPES.READ),
-  rateLimitMiddleware,
-  async (req: Request, res: Response, next: NextFunction) => {
-    const { identifier } = req.params;
-    const { icao24, callsign, refresh } = req.query;
+const getRouteHandler = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  const { identifier } = req.params;
+  const { icao24, callsign, refresh } = req.query;
 
-    try {
-      let aircraftIcao24 = (icao24 as string) || identifier;
-      let aircraftCallsign = callsign as string | undefined;
-      let currentAircraft: any = null;
+  try {
+    let aircraftIcao24 = (icao24 as string) || identifier;
+    let aircraftCallsign = callsign as string | undefined;
+    let currentAircraft: any = null;
 
-      const aircraft = await aircraftService.getAircraftByIdentifier(identifier);
-      if (aircraft) {
-        aircraftIcao24 = aircraft.icao24;
-        aircraftCallsign = aircraft.callsign;
-        currentAircraft = aircraft;
-      }
+    const aircraft = await aircraftService.getAircraftByIdentifier(identifier);
+    if (aircraft) {
+      aircraftIcao24 = aircraft.icao24;
+      aircraftCallsign = aircraft.callsign;
+      currentAircraft = aircraft;
+    }
 
-      const isCurrentFlight = true;
-      const prefersFreshLookup = refresh === 'true';
+    const isCurrentFlight = true;
+    const prefersFreshLookup = refresh === 'true';
 
-      logger.info('Fetching route (assumed current - visible/trackable aircraft)', {
-        icao24: aircraftIcao24,
-        callsign: aircraftCallsign,
-        hasAircraftData: !!aircraft,
-        prefersFreshLookup,
-      });
+    logger.info('Fetching route (assumed current - visible/trackable aircraft)', {
+      icao24: aircraftIcao24,
+      callsign: aircraftCallsign,
+      hasAircraftData: !!aircraft,
+      prefersFreshLookup,
+    });
 
-      const cachedRoute = await flightRouteService.getFlightRoute(
-        aircraftIcao24,
-        aircraftCallsign,
-        isCurrentFlight,
-        false,
-      );
-      const cacheHasArrival = hasArrivalData(cachedRoute);
-      const cacheAgeMs = getRouteAgeMs(cachedRoute);
-      const cacheFresh = cacheAgeMs <= ROUTE_CACHE_MAX_AGE_MS;
-      const cacheUsable = cachedRoute && cacheHasArrival && cacheFresh;
+    const cachedRoute = await flightRouteService.getFlightRoute(
+      aircraftIcao24,
+      aircraftCallsign,
+      isCurrentFlight,
+      false,
+    );
+    const cacheHasArrival = hasArrivalData(cachedRoute);
+    const cacheAgeMs = getRouteAgeMs(cachedRoute);
+    const cacheFresh = cacheAgeMs <= ROUTE_CACHE_MAX_AGE_MS;
+    const cacheUsable = cachedRoute && cacheHasArrival && cacheFresh;
 
-      if (cacheUsable && !prefersFreshLookup) {
-        return respondWithRoute(res, cachedRoute, aircraftIcao24, currentAircraft);
-      }
+    if (cacheUsable && !prefersFreshLookup) {
+      await respondWithRoute(res, cachedRoute, aircraftIcao24, currentAircraft);
+      return;
+    }
 
-      const fallbackRoute = cacheHasArrival ? cachedRoute : null;
+    const fallbackRoute = cacheHasArrival ? cachedRoute : null;
 
-      if (!cacheUsable) {
-        // Cache is missing, stale, or incomplete – block until we get fresh data
-        const freshRoute = await flightRouteService.getFlightRoute(
-          aircraftIcao24,
-          aircraftCallsign,
-          isCurrentFlight,
-          true,
-        );
-
-        if (freshRoute) {
-          return respondWithRoute(res, freshRoute, aircraftIcao24, currentAircraft);
-        }
-
-        if (fallbackRoute) {
-          logger.warn('Returning stale route data due to upstream failure', {
-            icao24: aircraftIcao24,
-            callsign: aircraftCallsign,
-          });
-          return respondWithRoute(res, fallbackRoute, aircraftIcao24, currentAircraft);
-        }
-
-        return res.status(404).json({ error: 'Flight route not found' });
-      }
-
-      // We have a usable cache but the caller requested a refresh. Respond fast,
-      // but still kick off a refresh and try to include it if it finishes quickly.
-      const freshRoutePromise = flightRouteService.getFlightRoute(
+    if (!cacheUsable) {
+      const freshRoute = await flightRouteService.getFlightRoute(
         aircraftIcao24,
         aircraftCallsign,
         isCurrentFlight,
         true,
       );
 
-      const freshRoute = await withTimeout(freshRoutePromise, ROUTE_LOOKUP_TIMEOUT_MS);
-
-      if (freshRoute && hasArrivalData(freshRoute)) {
-        return respondWithRoute(res, freshRoute, aircraftIcao24, currentAircraft);
+      if (freshRoute) {
+        await respondWithRoute(res, freshRoute, aircraftIcao24, currentAircraft);
+        return;
       }
 
-      freshRoutePromise
-        .then((routeData) => {
-          if (routeData) {
-            logger.info('Background route refresh completed', {
-              icao24: aircraftIcao24,
-              callsign: aircraftCallsign,
-            });
-          }
-        })
-        .catch((error: Error) => {
-          logger.warn('Background route refresh failed', {
+      if (fallbackRoute) {
+        logger.warn('Returning stale route data due to upstream failure', {
+          icao24: aircraftIcao24,
+          callsign: aircraftCallsign,
+        });
+        await respondWithRoute(res, fallbackRoute, aircraftIcao24, currentAircraft);
+        return;
+      }
+
+      res.status(404).json({ error: 'Flight route not found' });
+      return;
+    }
+
+    const freshRoutePromise = flightRouteService.getFlightRoute(
+      aircraftIcao24,
+      aircraftCallsign,
+      isCurrentFlight,
+      true,
+    );
+
+    const freshRoute = await withTimeout(freshRoutePromise, ROUTE_LOOKUP_TIMEOUT_MS);
+
+    if (freshRoute && hasArrivalData(freshRoute)) {
+      await respondWithRoute(res, freshRoute, aircraftIcao24, currentAircraft);
+      return;
+    }
+
+    freshRoutePromise
+      .then((routeData) => {
+        if (routeData) {
+          logger.info('Background route refresh completed', {
             icao24: aircraftIcao24,
             callsign: aircraftCallsign,
-            error: error.message,
           });
+        }
+      })
+      .catch((error: Error) => {
+        logger.warn('Background route refresh failed', {
+          icao24: aircraftIcao24,
+          callsign: aircraftCallsign,
+          error: error.message,
         });
+      });
 
-      if (!cachedRoute) {
-        return res.status(500).json({ error: 'Unable to load route from cache' });
-      }
-      return respondWithRoute(res, cachedRoute, aircraftIcao24, currentAircraft);
-    } catch (err) {
-      return next(err);
+    if (!cachedRoute) {
+      res.status(500).json({ error: 'Unable to load route from cache' });
+      return;
     }
-  },
+
+    await respondWithRoute(res, cachedRoute, aircraftIcao24, currentAircraft);
+  } catch (err) {
+    next(err);
+  }
+};
+
+router.get(
+  '/route/:identifier',
+  optionalApiKeyAuth,
+  allowSameOriginOrApiKey(API_SCOPES.AIRCRAFT_READ, API_SCOPES.READ),
+  rateLimitMiddleware,
+  getRouteHandler,
 );
 
 /**
@@ -1421,45 +1427,48 @@ router.get(
  * Get flight plan route waypoints for an aircraft
  * Requires API key authentication with rate limiting
  */
+const getFlightPlanRouteHandler = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> => {
+  const { identifier } = req.params;
+  const { icao24, callsign } = req.query;
+
+  try {
+    const aircraft = await aircraftService.getAircraftByIdentifier(identifier);
+    const aircraftIcao24 = (icao24 as string) || aircraft?.icao24 || identifier;
+    const aircraftCallsign = (callsign as string) || aircraft?.callsign;
+
+    logger.info('Fetching flight plan route', {
+      identifier,
+      icao24: aircraftIcao24,
+      callsign: aircraftCallsign,
+    });
+
+    const flightPlanRoute = await flightPlanRouteService.getFlightPlanRoute(aircraftIcao24, aircraftCallsign);
+
+    if (!flightPlanRoute) {
+      res.status(404).json({
+        error: 'Flight plan route not found',
+        message: 'No route data available for this aircraft',
+        available: false,
+      });
+      return;
+    }
+
+    res.json(flightPlanRoute);
+  } catch (err) {
+    next(err);
+  }
+};
+
 router.get(
   '/flightplan/:identifier',
   requireApiKeyAuth,
   requireAircraftRead,
   rateLimitMiddleware,
-  async (req: Request, res: Response, next: NextFunction) => {
-    const { identifier } = req.params;
-    const { icao24, callsign } = req.query;
-
-    try {
-      const aircraft = await aircraftService.getAircraftByIdentifier(identifier);
-      const aircraftIcao24 = (icao24 as string) || aircraft?.icao24 || identifier;
-      const aircraftCallsign = (callsign as string) || aircraft?.callsign;
-
-      logger.info('Fetching flight plan route', {
-        identifier,
-        icao24: aircraftIcao24,
-        callsign: aircraftCallsign,
-      });
-
-      const flightPlanRoute = await flightPlanRouteService.getFlightPlanRoute(aircraftIcao24, aircraftCallsign);
-
-      if (!flightPlanRoute) {
-        return res.status(404).json({
-          error: 'Flight plan route not found',
-          message: 'No route data available for this aircraft',
-          available: false,
-        });
-      }
-
-      if (flightPlanRoute.available === false) {
-        return res.json(flightPlanRoute);
-      }
-
-      return res.json(flightPlanRoute);
-    } catch (err) {
-      return next(err);
-    }
-  },
+  getFlightPlanRouteHandler,
 );
 
 /**
@@ -1687,5 +1696,23 @@ router.get('/diagnostics/network', async (_req: Request, res: Response, next: Ne
     return next(err);
   }
 });
+
+export const legacyAircraftRouter = Router();
+
+legacyAircraftRouter.get(
+  '/route/:identifier',
+  optionalApiKeyAuth,
+  allowSameOriginOrApiKey(API_SCOPES.AIRCRAFT_READ, API_SCOPES.READ),
+  rateLimitMiddleware,
+  getRouteHandler,
+);
+
+legacyAircraftRouter.get(
+  '/flightplan/:identifier',
+  requireApiKeyAuth,
+  requireAircraftRead,
+  rateLimitMiddleware,
+  getFlightPlanRouteHandler,
+);
 
 export default router;

@@ -94,6 +94,17 @@ Key files:
    - Frontend: `http://localhost:3005`
    - API: `http://localhost:3005/api`
 
+#### Preserving the Timescale/Postgres volume
+
+- The development stack stores **all PostgreSQL/Timescale data** (airports, weather cache, aircraft history, etc.) in the named volume `db-data` defined in `docker-compose.dev.yml`.
+- This volume is **never removed** by normal `docker compose up`, `down`, or `restart` commands.  
+- **Do NOT run** `docker compose down -v` (or `docker system prune --volumes`) unless you intentionally want to wipe the database. Doing so will delete the imported OurAirports data and any cached flight data.
+- To rebuild the app while keeping data intact, use:
+  - `npm run docker:dev:build` (rebuild images, keep volume)
+  - `docker compose -f docker-compose.dev.yml down` (stop containers, keep volume)
+  - `docker compose -f docker-compose.dev.yml up -d` (start containers again)
+  - `docker compose -f docker-compose.dev.yml restart server` (restart the Node server only)
+
 ### Important Notes
 
 **React Environment Variables:**

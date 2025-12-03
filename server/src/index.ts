@@ -21,7 +21,7 @@ import metricsService from './services/MetricsService';
 // API Routes - All migrated to TypeScript
 import authRoutes from './routes/auth.routes';
 import adminRoutes from './routes/admin.routes';
-import aircraftRoutes from './routes/aircraft.routes';
+import aircraftRoutes, { legacyAircraftRouter } from './routes/aircraft.routes';
 import airportsRoutes from './routes/airports.routes';
 import healthRoutes from './routes/health.routes';
 import feederRoutes from './routes/feeder.routes';
@@ -119,6 +119,7 @@ app.use('/api/aircraft', aircraftRoutes);
 app.use('/api/airports', airportsRoutes);
 app.use('/api', healthRoutes);
 app.use('/api', feederRoutes);
+app.use('/api', legacyAircraftRouter);
 app.use('/api/portal', portalRoutes);
 app.use('/api/webhooks', webhookRoutes);
 app.use('/api/stripe', stripeRoutes);

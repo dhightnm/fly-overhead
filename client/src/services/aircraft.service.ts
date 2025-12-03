@@ -62,7 +62,7 @@ class AircraftService {
    */
   async getRoute(icao24: string, callsign?: string | null): Promise<Route> {
     const identifier = callsign || icao24;
-    const response = await api.get<Route>(`/api/route/${identifier}`, {
+    const response = await api.get<Route>(`/api/aircraft/route/${identifier}`, {
       params: {
         icao24,
         callsign: callsign || undefined,
@@ -80,7 +80,7 @@ class AircraftService {
   ): Promise<FlightPlanRoute> {
     const identifier = callsign || icao24;
     const response = await api.get<FlightPlanRoute>(
-      `/api/flightplan/${identifier}`,
+      `/api/aircraft/flightplan/${identifier}`,
       {
         params: {
           icao24,

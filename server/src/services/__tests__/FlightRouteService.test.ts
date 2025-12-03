@@ -146,6 +146,19 @@ describe('FlightRouteService - Aerodatabox integration', () => {
 
     inferSpy.mockRestore();
   });
+
+  it('does not call Aerodatabox when expensive API calls are not allowed', async () => {
+    const inferSpy = jest
+      .spyOn(flightRouteService as any, 'inferRouteFromPosition')
+      .mockResolvedValue(null);
+
+    const route = await flightRouteService.getFlightRoute('A9034C', null, true, false);
+
+    expect(route).toBeNull();
+    expect(aerodataboxMock.getFlightByIcao24).not.toHaveBeenCalled();
+
+    inferSpy.mockRestore();
+  });
 });
 
 describe('shouldFilterAsLanded', () => {
