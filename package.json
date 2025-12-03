@@ -4,17 +4,17 @@
   "description": "Fly Overhead - Aircraft tracking application",
   "scripts": {
     "docker:dev": "docker compose -f docker-compose.dev.yml up -d",
-    "docker:dev:build": "docker compose -f docker-compose.dev.yml build --no-cache server && docker compose -f docker-compose.dev.yml up -d",
-    "docker:dev:rebuild": "docker compose -f docker-compose.dev.yml down && docker compose -f docker-compose.dev.yml build --no-cache --pull && docker compose -f docker-compose.dev.yml up -d",
-    "docker:dev:down": "docker compose -f docker-compose.dev.yml down",
+    "docker:dev:build": "docker compose -f docker-compose.dev.yml up -d --build server",
+    "docker:dev:rebuild": "docker compose -f docker-compose.dev.yml up -d --build --force-recreate",
+    "docker:dev:down": "docker compose -f docker-compose.dev.yml stop",
     "docker:dev:restart": "docker compose -f docker-compose.dev.yml restart server",
-    "docker:dev:client:rebuild": "cd client && REACT_APP_GOOGLE_CLIENT_ID=$(grep REACT_APP_GOOGLE_CLIENT_ID ../.env | cut -d '=' -f2) npm run build && cd .. && docker compose -f docker-compose.dev.yml restart server",
+    "docker:dev:client:rebuild": "./scripts/sync-frontend-build.sh --copy",
     "docker:dev:client:sync": "./scripts/sync-frontend-build.sh",
     "docker:dev:client:sync:copy": "./scripts/sync-frontend-build.sh --copy",
     "docker:prod": "docker compose up -d",
-    "docker:prod:build": "docker compose build --no-cache server && docker compose up -d",
-    "docker:prod:down": "docker compose down",
+    "docker:prod:build": "docker compose up -d --build",
+    "docker:prod:down": "docker compose stop",
     "docker:prod:restart": "docker compose restart server",
-    "docker:rebuild": "docker compose down && docker compose build --no-cache --pull && docker compose up -d"
+    "docker:rebuild": "docker compose up -d --build --force-recreate"
   }
 }

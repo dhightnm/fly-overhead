@@ -162,6 +162,7 @@ const ROUTE_CACHE_MAX_AGE_MS = Number.isFinite(ROUTE_CACHE_MAX_AGE_HOURS)
   ? ROUTE_CACHE_MAX_AGE_HOURS * 60 * 60 * 1000
   : 3 * 60 * 60 * 1000;
 const LANDED_CACHE_MAX_AGE_MS = 30 * 60 * 1000;
+const EXTERNAL_ROUTE_TIMEOUT_MS = Number.parseInt(process.env.ROUTE_EXTERNAL_TIMEOUT_MS || '7000', 10);
 
 const hasArrivalData = (route?: Route | null): boolean => !!(
   route?.arrivalAirport?.icao || route?.arrivalAirport?.iata
@@ -322,16 +323,28 @@ export class FlightRouteService {
       return normalizedRoute;
     };
 
+    let partialCachedRoute: Route | null = null;
+
     if (this.cache.has(cacheKey)) {
       const cached = lookupCachedRoute(this.cache.get(cacheKey)!);
       if (cached) {
-        logger.debug('Route cache HIT (in-memory)', {
-          cacheKey,
-          icao24,
-          callsign,
-          source: cached.source,
-        });
-        return cached;
+        if (allowExpensiveApis && !hasArrivalData(cached)) {
+          partialCachedRoute = cached;
+          logger.debug('Route cache HIT (in-memory) but incomplete, refreshing', {
+            cacheKey,
+            icao24,
+            callsign,
+            source: cached.source,
+          });
+        } else {
+          logger.debug('Route cache HIT (in-memory)', {
+            cacheKey,
+            icao24,
+            callsign,
+            source: cached.source,
+          });
+          return cached;
+        }
       }
       this.cache.delete(cacheKey);
     }
@@ -343,20 +356,26 @@ export class FlightRouteService {
         cachedAt: dbCachedRoute.cachedAt || new Date(),
       });
       if (usableRoute) {
-        logger.debug('Route cache HIT (database)', {
-          cacheKey,
-          icao24,
-          callsign,
-          allowExpensiveApis,
-          source: usableRoute.source,
-        });
-        this.cache.set(cacheKey, usableRoute);
         if (allowExpensiveApis && !hasArrivalData(usableRoute)) {
-          logger.debug('Route incomplete but returning cached result while refreshing in background', {
+          partialCachedRoute = partialCachedRoute || usableRoute;
+          logger.debug('Route cache HIT (database) but incomplete, refreshing', {
             cacheKey,
+            icao24,
+            callsign,
+            allowExpensiveApis,
+            source: usableRoute.source,
           });
+        } else {
+          logger.debug('Route cache HIT (database)', {
+            cacheKey,
+            icao24,
+            callsign,
+            allowExpensiveApis,
+            source: usableRoute.source,
+          });
+          this.cache.set(cacheKey, usableRoute);
+          return usableRoute;
         }
-        return usableRoute;
       }
     }
 
@@ -372,15 +391,8 @@ export class FlightRouteService {
       return historyRoute;
     }
 
-    logger.debug('Route cache/history MISS - fetching from API', {
-      cacheKey,
-      icao24,
-      callsign,
-      isCurrentFlight,
-    });
-
     let resolvedCallsign = callsign;
-    if (!resolvedCallsign && icao24 && allowExpensiveApis) {
+    if (!resolvedCallsign && icao24) {
       const callsignFromHistory = await postgresRepository.getDb().oneOrNone<{ callsign: string }>(
         `SELECT callsign 
          FROM flight_routes_history
@@ -403,366 +415,24 @@ export class FlightRouteService {
       }
     }
 
-    let aerodataboxRoute: Route | null = null;
+    logger.debug('Route cache/history MISS - fetching from external APIs', {
+      cacheKey,
+      icao24,
+      callsign,
+      isCurrentFlight,
+    });
 
-    if (icao24 && allowExpensiveApis) {
-      try {
-        const aerodataboxData = await aerodataboxService.getFlightByIcao24(icao24.toLowerCase());
-        if (aerodataboxData) {
-          const { routeData, callsign: aerodataboxCallsign } = aerodataboxData;
-          const mappedRoute: Route = {
-            departureAirport: routeData.departureAirport || undefined,
-            arrivalAirport: routeData.arrivalAirport || undefined,
-            flightData: routeData.flightData,
-            aircraft: routeData.aircraft
-              ? {
-                model: routeData.aircraft.model || null,
-                type: routeData.aircraft.type || null,
-                category: null,
-              }
-              : undefined,
-            flightStatus: routeData.flightStatus || null,
-            registration: routeData.registration || null,
-            source: routeData.source || 'aerodatabox',
-            callsign: routeData.callsign || null,
-            icao24: routeData.icao24 || (icao24 ? icao24.toLowerCase() : null),
-          };
+    const externalRoute = await this.fetchRouteFromExternalSources({
+      icao24,
+      callsign,
+      resolvedCallsign,
+      cacheKey,
+      isCurrentFlight,
+      allowExpensiveApis,
+    });
 
-          if (aerodataboxCallsign) {
-            try {
-              await postgresRepository.updateAircraftCallsign(icao24, aerodataboxCallsign);
-            } catch (err) {
-              const error = err as Error;
-              logger.debug('Failed to persist callsign from Aerodatabox', { icao24, error: error.message });
-            }
-          }
-
-          try {
-            await this.cacheRoute(cacheKey, mappedRoute);
-          } catch (err) {
-            const error = err as Error;
-            logger.debug('Failed to cache Aerodatabox route', { icao24, error: error.message });
-          }
-
-          try {
-            await postgresRepository.storeRouteHistory({ ...routeData, source: mappedRoute.source });
-          } catch (err) {
-            const error = err as Error;
-            logger.debug('Failed to store Aerodatabox route history', { icao24, error: error.message });
-          }
-
-          aerodataboxRoute = mappedRoute;
-
-          if (hasArrivalData(mappedRoute)) {
-            logger.info('Returning route from Aerodatabox (preferred source)', {
-              icao24,
-              callsign: mappedRoute.callsign || aerodataboxCallsign,
-            });
-            return mappedRoute;
-          }
-
-          if (!resolvedCallsign && aerodataboxCallsign) {
-            resolvedCallsign = aerodataboxCallsign;
-          }
-        }
-      } catch (err) {
-        const error = err as Error;
-        logger.debug('Aerodatabox enrichment failed', { icao24, error: error.message });
-      }
-    }
-
-    if (!isCurrentFlight) {
-      logger.info('Trying OpenSky for route data (historical flights only)', { icao24, callsign });
-      try {
-        const route = await this.fetchRouteFromOpenSky(icao24 || '', isCurrentFlight);
-        if (route) {
-          logger.info('Found route from OpenSky (historical data)', {
-            icao24,
-            callsign,
-            departure: route.departureAirport?.icao || route.departureAirport?.iata,
-            arrival: route.arrivalAirport?.icao || route.arrivalAirport?.iata,
-          });
-          await this.cacheRoute(cacheKey, {
-            ...route,
-            callsign,
-            icao24: icao24 || null,
-            source: 'opensky',
-          });
-
-          await postgresRepository.storeRouteHistory({
-            ...route,
-            callsign,
-            icao24: icao24 || null,
-            source: 'opensky',
-          });
-
-          return { ...route, source: 'opensky' };
-        }
-      } catch (error) {
-        const err = error as Error;
-        logger.debug('OpenSky flight route not available', {
-          icao24,
-          error: err.message,
-        });
-      }
-    } else {
-      logger.debug('Skipping OpenSky for current flight (saves 4-8 seconds)', { icao24, callsign });
-    }
-
-    let skipFlightAware = false;
-    if (allowExpensiveApis && resolvedCallsign) {
-      const landingStatus = await this.hasFlightLanded(resolvedCallsign);
-      if (
-        landingStatus.hasLanded
-        && landingStatus.lastArrival
-        && Date.now() - landingStatus.lastArrival < LANDED_CACHE_MAX_AGE_MS
-      ) {
-        skipFlightAware = true;
-        logger.debug('Skipping FlightAware lookup (flight recently landed)', {
-          icao24,
-          callsign: resolvedCallsign,
-          lastArrival: new Date(landingStatus.lastArrival).toISOString(),
-        });
-      }
-    }
-
-    if (this.flightAwareApiKey && resolvedCallsign && allowExpensiveApis && !skipFlightAware) {
-      logger.info('Trying FlightAware AeroAPI for route (user-initiated request)', {
-        icao24,
-        callsign: resolvedCallsign,
-      });
-      try {
-        const routeResult = await this.fetchRouteFromFlightAware(resolvedCallsign);
-        if (routeResult) {
-          const routes = Array.isArray(routeResult) ? routeResult : [routeResult];
-
-          if (routes.length === 0) {
-            logger.info('FlightAware returned empty route array', { icao24, callsign });
-          } else {
-            const activeRoutes = routes.filter((r) => {
-              const status = r.flightStatus?.toLowerCase() || '';
-              return (
-                (status.includes('en route')
-                  || status.includes('in flight')
-                  || status === 'scheduled'
-                  || status === 'departed')
-                && !r.cancelled
-                && !r.diverted
-                && !r.flightData?.actualArrival
-              );
-            });
-
-            const inFlightRoutes = activeRoutes.filter((r) => {
-              const status = r.flightStatus?.toLowerCase() || '';
-              return status.includes('en route') || status.includes('in flight');
-            });
-
-            let mostRecentRoute = routes[0];
-            if (inFlightRoutes.length > 0) {
-              [mostRecentRoute] = inFlightRoutes;
-            } else if (activeRoutes.length > 0) {
-              [mostRecentRoute] = activeRoutes;
-            }
-
-            logger.info('Successfully fetched route from FlightAware', {
-              icao24,
-              callsign: resolvedCallsign,
-              numFlights: routes.length,
-              activeFlights: activeRoutes.length,
-              departure: mostRecentRoute.departureAirport?.icao || mostRecentRoute.departureAirport?.iata,
-              arrival: mostRecentRoute.arrivalAirport?.icao || mostRecentRoute.arrivalAirport?.iata,
-              flightStatus: mostRecentRoute.flightStatus,
-            });
-
-            const enrichedRoute = { ...mostRecentRoute };
-            if (mostRecentRoute.aircraft?.type) {
-              const aircraftType = mostRecentRoute.aircraft.type;
-              let aircraftInfo;
-
-              if (aircraftType === 'Plane' && mostRecentRoute.aircraft.model) {
-                aircraftInfo = mapAircraftType(mostRecentRoute.aircraft.model, null);
-                if (!aircraftInfo.model) {
-                  aircraftInfo = {
-                    model: mostRecentRoute.aircraft.model,
-                    type: aircraftType,
-                    category: null,
-                  };
-                }
-              } else {
-                aircraftInfo = mapAircraftType(aircraftType, mostRecentRoute.aircraft.model);
-              }
-
-              enrichedRoute.aircraft = {
-                ...mostRecentRoute.aircraft,
-                model: aircraftInfo.model || mostRecentRoute.aircraft.model,
-                type: aircraftInfo.type || aircraftType,
-                category: aircraftInfo.category,
-              };
-            }
-
-            await this.cacheRoute(cacheKey, {
-              ...enrichedRoute,
-              callsign: resolvedCallsign,
-              icao24: icao24 || null,
-              source: 'flightaware',
-            });
-
-            for (const route of routes) {
-              try {
-                await postgresRepository.storeRouteHistory({
-                  ...route,
-                  callsign,
-                  icao24: icao24 || null,
-                  source: 'flightaware',
-                });
-                logger.debug('Stored FlightAware flight in history', {
-                  callsign,
-                  icao24,
-                  departure: route.departureAirport?.icao || route.departureAirport?.iata,
-                  arrival: route.arrivalAirport?.icao || route.arrivalAirport?.iata,
-                  hasScheduledStart: !!route.flightData?.scheduledDeparture,
-                  hasActualStart: !!route.flightData?.actualDeparture,
-                });
-              } catch (storeErr) {
-                const err = storeErr as Error;
-                if (
-                  !err.message?.includes('duplicate key')
-                  && !err.message?.includes('uniq_flight_routes_history_flight_key')
-                ) {
-                  logger.warn('Failed to store FlightAware flight in history', {
-                    callsign,
-                    icao24,
-                    error: err.message,
-                  });
-                }
-              }
-            }
-
-            return {
-              ...enrichedRoute,
-              callsign: resolvedCallsign,
-              icao24: icao24 || null,
-              source: 'flightaware',
-            };
-          }
-        }
-
-        logger.info('FlightAware returned no route data by callsign, trying by icao24', {
-          icao24,
-          callsign: resolvedCallsign,
-        });
-
-        try {
-          const searchResponse = await httpClient.get(`${this.flightAwareBaseUrl}/flights/search`, {
-            params: {
-              query: `-ident ${icao24}`,
-              max_pages: 1,
-            },
-            headers: {
-              Accept: 'application/json; charset=UTF-8',
-              'x-apikey': this.flightAwareApiKey,
-            },
-            timeout: 8000,
-            retry: true,
-          });
-
-          if (searchResponse.data?.results && searchResponse.data.results.length > 0) {
-            const flights = searchResponse.data.results as FlightAwareFlight[];
-            const activeFlights = flights.filter((f) => {
-              const status = f.status?.toLowerCase() || '';
-              return (
-                (status.includes('en route')
-                  || status.includes('in flight')
-                  || status === 'scheduled'
-                  || status === 'departed')
-                && !f.cancelled
-                && !f.diverted
-                && f.origin
-                && f.destination
-              );
-            });
-
-            if (activeFlights.length > 0) {
-              const flight = activeFlights[0];
-              const mappedRoute: Route = {
-                departureAirport: {
-                  iata: flight.origin?.code_iata || null,
-                  icao: flight.origin?.code_icao || flight.origin?.code || null,
-                  name: flight.origin?.name || null,
-                },
-                arrivalAirport: {
-                  iata: flight.destination?.code_iata || null,
-                  icao: flight.destination?.code_icao || flight.destination?.code || null,
-                  name: flight.destination?.name || null,
-                },
-                aircraft: flight.aircraft_type
-                  ? {
-                    type: flight.aircraft_type || null,
-                    model: flight.aircraft_type || null,
-                  }
-                  : undefined,
-                flightStatus: flight.status || null,
-              };
-
-              logger.info('Found route from FlightAware by icao24', {
-                icao24,
-                callsign: flight.ident || resolvedCallsign,
-                departure: mappedRoute.departureAirport?.icao,
-                arrival: mappedRoute.arrivalAirport?.icao,
-              });
-
-              const foundCallsign = flight.ident || resolvedCallsign;
-
-              await this.cacheRoute(cacheKey, {
-                ...mappedRoute,
-                callsign: foundCallsign,
-                icao24: icao24 || null,
-                source: 'flightaware',
-              });
-
-              return {
-                ...mappedRoute,
-                callsign: foundCallsign,
-                icao24: icao24 || null,
-                source: 'flightaware',
-              };
-            }
-          }
-        } catch (searchError) {
-          const err = searchError as Error;
-          logger.debug('FlightAware search by icao24 also failed', {
-            icao24,
-            error: err.message,
-          });
-        }
-
-        logger.info('FlightAware returned no route data', {
-          icao24,
-          callsign: resolvedCallsign,
-        });
-      } catch (error) {
-        const err = error as AxiosError;
-        const statusCode = err.response?.status;
-        const isRateLimited = statusCode === 429;
-
-        if (isRateLimited) {
-          logger.warn('FlightAware rate limit reached (429) - trying other sources', {
-            icao24,
-            callsign,
-            status: statusCode,
-          });
-        } else {
-          logger.warn('Error fetching route from FlightAware API', {
-            icao24,
-            callsign,
-            error: err.message,
-            status: statusCode,
-            statusText: err.response?.statusText,
-          });
-        }
-      }
-    } else if (!allowExpensiveApis) {
-      logger.debug('Skipping FlightAware (background job) - using inference', { icao24, callsign });
+    if (externalRoute) {
+      return externalRoute;
     }
 
     const historyFallback = await this.getRouteFromHistory(icao24, callsign, cacheKey);
@@ -790,16 +460,54 @@ export class FlightRouteService {
         incompleteRoute: !hasArrival,
       });
 
-      await postgresRepository.storeRouteHistory({
+      const inferredPayload = {
         ...inferredRoute,
         callsign,
         icao24: icao24 || null,
         source: 'inference',
-      });
+      };
 
-      return { ...inferredRoute, source: 'inference' };
+      await postgresRepository.storeRouteHistory(inferredPayload);
+
+      if (icao24) {
+        this.fetchRouteFromExternalSources({
+          icao24,
+          callsign,
+          resolvedCallsign,
+          cacheKey,
+          isCurrentFlight,
+          allowExpensiveApis: true,
+        })
+          .then((route) => {
+            if (route && hasArrivalData(route)) {
+              logger.info('Background route refresh replaced inferred route', {
+                icao24,
+                callsign: route.callsign || callsign,
+                source: route.source,
+              });
+            }
+          })
+          .catch((error: Error) => {
+            logger.debug('Background route refresh after inference failed', {
+              icao24,
+              callsign,
+              error: error.message,
+            });
+          });
+      }
+
+      return inferredPayload;
     }
-    return aerodataboxRoute;
+
+    if (partialCachedRoute) {
+      logger.debug('Returning partial cached route after refresh failure', {
+        cacheKey,
+        icao24,
+        callsign,
+      });
+      return partialCachedRoute;
+    }
+    return null;
   }
 
   /**
@@ -1164,6 +872,507 @@ export class FlightRouteService {
       logger.error('FlightRouteService.cacheRoute failed', { cacheKey, error: err.message });
       throw error;
     }
+  }
+
+  private async fetchRouteFromAerodataboxWithPersistence(
+    icao24: string | null | undefined,
+    cacheKey: string,
+  ): Promise<Route | null> {
+    if (!icao24) return null;
+
+    try {
+      const aerodataboxData = await aerodataboxService.getFlightByIcao24(icao24.toLowerCase());
+      if (!aerodataboxData) {
+        return null;
+      }
+
+      const { routeData, callsign: aerodataboxCallsign } = aerodataboxData;
+      const mappedRoute: Route = {
+        departureAirport: routeData.departureAirport || undefined,
+        arrivalAirport: routeData.arrivalAirport || undefined,
+        flightData: routeData.flightData,
+        aircraft: routeData.aircraft
+          ? {
+            model: routeData.aircraft.model || null,
+            type: routeData.aircraft.type || null,
+            category: null,
+          }
+          : undefined,
+        flightStatus: routeData.flightStatus || null,
+        registration: routeData.registration || null,
+        source: routeData.source || 'aerodatabox',
+        callsign: routeData.callsign || null,
+        icao24: routeData.icao24 || icao24.toLowerCase(),
+      };
+
+      if (aerodataboxCallsign) {
+        try {
+          await postgresRepository.updateAircraftCallsign(icao24, aerodataboxCallsign);
+        } catch (err) {
+          const error = err as Error;
+          logger.debug('Failed to persist callsign from Aerodatabox', { icao24, error: error.message });
+        }
+      }
+
+      try {
+        await this.cacheRoute(cacheKey, mappedRoute);
+      } catch (err) {
+        const error = err as Error;
+        logger.debug('Failed to cache Aerodatabox route', { icao24, error: error.message });
+      }
+
+      try {
+        await postgresRepository.storeRouteHistory({ ...routeData, source: mappedRoute.source });
+      } catch (err) {
+        const error = err as Error;
+        logger.debug('Failed to store Aerodatabox route history', { icao24, error: error.message });
+      }
+
+      return mappedRoute;
+    } catch (err) {
+      const error = err as Error;
+      logger.debug('Aerodatabox enrichment failed', { icao24, error: error.message });
+      return null;
+    }
+  }
+
+  private async fetchRouteFromOpenSkyWithPersistence(
+    icao24: string | null | undefined,
+    callsign: string | null | undefined,
+    cacheKey: string,
+    isCurrentFlight: boolean,
+  ): Promise<Route | null> {
+    if (!icao24 || isCurrentFlight) {
+      return null;
+    }
+
+    logger.info('Trying OpenSky for route data (historical flights only)', { icao24, callsign });
+    try {
+      const route = await this.fetchRouteFromOpenSky(icao24, isCurrentFlight);
+      if (!route) {
+        return null;
+      }
+
+      logger.info('Found route from OpenSky (historical data)', {
+        icao24,
+        callsign,
+        departure: route.departureAirport?.icao || route.departureAirport?.iata,
+        arrival: route.arrivalAirport?.icao || route.arrivalAirport?.iata,
+      });
+
+      await this.cacheRoute(cacheKey, {
+        ...route,
+        callsign,
+        icao24,
+        source: 'opensky',
+      });
+
+      await postgresRepository.storeRouteHistory({
+        ...route,
+        callsign,
+        icao24,
+        source: 'opensky',
+      });
+
+      return { ...route, source: 'opensky' };
+    } catch (error) {
+      const err = error as Error;
+      logger.debug('OpenSky flight route not available', {
+        icao24,
+        error: err.message,
+      });
+      return null;
+    }
+  }
+
+  private async fetchRouteFromFlightAwareWithPersistence(
+    icao24: string | null | undefined,
+    resolvedCallsign: string | null | undefined,
+    cacheKey: string,
+    allowExpensiveApis: boolean,
+  ): Promise<Route | null> {
+    if (!this.flightAwareApiKey || !resolvedCallsign || !allowExpensiveApis) {
+      if (!allowExpensiveApis) {
+        logger.debug('Skipping FlightAware (background job) - using inference', { icao24, callsign: resolvedCallsign });
+      }
+      return null;
+    }
+
+    let skipFlightAware = false;
+    const landingStatus = await this.hasFlightLanded(resolvedCallsign);
+    if (
+      landingStatus.hasLanded
+      && landingStatus.lastArrival
+      && Date.now() - landingStatus.lastArrival < LANDED_CACHE_MAX_AGE_MS
+    ) {
+      skipFlightAware = true;
+      logger.debug('Skipping FlightAware lookup (flight recently landed)', {
+        icao24,
+        callsign: resolvedCallsign,
+        lastArrival: new Date(landingStatus.lastArrival).toISOString(),
+      });
+    }
+
+    if (skipFlightAware) {
+      return null;
+    }
+
+    logger.info('Trying FlightAware AeroAPI for route (user-initiated request)', {
+      icao24,
+      callsign: resolvedCallsign,
+    });
+
+    try {
+      const routeResult = await this.fetchRouteFromFlightAware(resolvedCallsign);
+      if (routeResult) {
+        const routes = Array.isArray(routeResult) ? routeResult : [routeResult];
+
+        if (routes.length === 0) {
+          logger.info('FlightAware returned empty route array', { icao24, callsign: resolvedCallsign });
+        } else {
+          const activeRoutes = routes.filter((r) => {
+            const status = r.flightStatus?.toLowerCase() || '';
+            return (
+              (status.includes('en route')
+                || status.includes('in flight')
+                || status === 'scheduled'
+                || status === 'departed')
+              && !r.cancelled
+              && !r.diverted
+              && !r.flightData?.actualArrival
+            );
+          });
+
+          const inFlightRoutes = activeRoutes.filter((r) => {
+            const status = r.flightStatus?.toLowerCase() || '';
+            return status.includes('en route') || status.includes('in flight');
+          });
+
+          let mostRecentRoute = routes[0];
+          if (inFlightRoutes.length > 0) {
+            [mostRecentRoute] = inFlightRoutes;
+          } else if (activeRoutes.length > 0) {
+            [mostRecentRoute] = activeRoutes;
+          }
+
+          logger.info('Successfully fetched route from FlightAware', {
+            icao24,
+            callsign: resolvedCallsign,
+            numFlights: routes.length,
+            activeFlights: activeRoutes.length,
+            departure: mostRecentRoute.departureAirport?.icao || mostRecentRoute.departureAirport?.iata,
+            arrival: mostRecentRoute.arrivalAirport?.icao || mostRecentRoute.arrivalAirport?.iata,
+            flightStatus: mostRecentRoute.flightStatus,
+          });
+
+          const enrichedRoute = { ...mostRecentRoute };
+          if (mostRecentRoute.aircraft?.type) {
+            const aircraftType = mostRecentRoute.aircraft.type;
+            let aircraftInfo;
+
+            if (aircraftType === 'Plane' && mostRecentRoute.aircraft.model) {
+              aircraftInfo = mapAircraftType(mostRecentRoute.aircraft.model, null);
+              if (!aircraftInfo.model) {
+                aircraftInfo = {
+                  model: mostRecentRoute.aircraft.model,
+                  type: aircraftType,
+                  category: null,
+                };
+              }
+            } else {
+              aircraftInfo = mapAircraftType(aircraftType, mostRecentRoute.aircraft.model);
+            }
+
+            enrichedRoute.aircraft = {
+              ...mostRecentRoute.aircraft,
+              model: aircraftInfo.model || mostRecentRoute.aircraft.model,
+              type: aircraftInfo.type || aircraftType,
+              category: aircraftInfo.category,
+            };
+          }
+
+          await this.cacheRoute(cacheKey, {
+            ...enrichedRoute,
+            callsign: resolvedCallsign,
+            icao24: icao24 || null,
+            source: 'flightaware',
+          });
+
+          for (const route of routes) {
+            try {
+              await postgresRepository.storeRouteHistory({
+                ...route,
+                callsign: resolvedCallsign,
+                icao24: icao24 || null,
+                source: 'flightaware',
+              });
+              logger.debug('Stored FlightAware flight in history', {
+                callsign: resolvedCallsign,
+                icao24,
+                departure: route.departureAirport?.icao || route.departureAirport?.iata,
+                arrival: route.arrivalAirport?.icao || route.arrivalAirport?.iata,
+                hasScheduledStart: !!route.flightData?.scheduledDeparture,
+                hasActualStart: !!route.flightData?.actualDeparture,
+              });
+            } catch (storeErr) {
+              const err = storeErr as Error;
+              if (
+                !err.message?.includes('duplicate key')
+                && !err.message?.includes('uniq_flight_routes_history_flight_key')
+              ) {
+                logger.warn('Failed to store FlightAware flight in history', {
+                  callsign: resolvedCallsign,
+                  icao24,
+                  error: err.message,
+                });
+              }
+            }
+          }
+
+          return {
+            ...enrichedRoute,
+            callsign: resolvedCallsign,
+            icao24: icao24 || null,
+            source: 'flightaware',
+          };
+        }
+      }
+
+      logger.info('FlightAware returned no route data by callsign, trying by icao24', {
+        icao24,
+        callsign: resolvedCallsign,
+      });
+
+      try {
+        const searchResponse = await httpClient.get(`${this.flightAwareBaseUrl}/flights/search`, {
+          params: {
+            query: `-ident ${icao24}`,
+            max_pages: 1,
+          },
+          headers: {
+            Accept: 'application/json; charset=UTF-8',
+            'x-apikey': this.flightAwareApiKey,
+          },
+          timeout: 8000,
+          retry: true,
+        });
+
+        if (searchResponse.data?.results && searchResponse.data.results.length > 0) {
+          const flights = searchResponse.data.results as FlightAwareFlight[];
+          const activeFlights = flights.filter((f) => {
+            const status = f.status?.toLowerCase() || '';
+            return (
+              (status.includes('en route')
+                || status.includes('in flight')
+                || status === 'scheduled'
+                || status === 'departed')
+              && !f.cancelled
+              && !f.diverted
+              && f.origin
+              && f.destination
+            );
+          });
+
+          if (activeFlights.length > 0) {
+            const flight = activeFlights[0];
+            const mappedRoute: Route = {
+              departureAirport: {
+                iata: flight.origin?.code_iata || null,
+                icao: flight.origin?.code_icao || flight.origin?.code || null,
+                name: flight.origin?.name || null,
+              },
+              arrivalAirport: {
+                iata: flight.destination?.code_iata || null,
+                icao: flight.destination?.code_icao || flight.destination?.code || null,
+                name: flight.destination?.name || null,
+              },
+              aircraft: flight.aircraft_type
+                ? {
+                  type: flight.aircraft_type || null,
+                  model: flight.aircraft_type || null,
+                }
+                : undefined,
+              flightStatus: flight.status || null,
+            };
+
+            logger.info('Found route from FlightAware by icao24', {
+              icao24,
+              callsign: flight.ident || resolvedCallsign,
+              departure: mappedRoute.departureAirport?.icao,
+              arrival: mappedRoute.arrivalAirport?.icao,
+            });
+
+            const foundCallsign = flight.ident || resolvedCallsign;
+
+            await this.cacheRoute(cacheKey, {
+              ...mappedRoute,
+              callsign: foundCallsign,
+              icao24: icao24 || null,
+              source: 'flightaware',
+            });
+
+            return {
+              ...mappedRoute,
+              callsign: foundCallsign,
+              icao24: icao24 || null,
+              source: 'flightaware',
+            };
+          }
+        }
+      } catch (searchError) {
+        const err = searchError as Error;
+        logger.debug('FlightAware search by icao24 also failed', {
+          icao24,
+          error: err.message,
+        });
+      }
+
+      logger.info('FlightAware returned no route data', {
+        icao24,
+        callsign: resolvedCallsign,
+      });
+      return null;
+    } catch (error) {
+      const err = error as AxiosError;
+      const statusCode = err.response?.status;
+      const isRateLimited = statusCode === 429;
+
+      if (isRateLimited) {
+        logger.warn('FlightAware rate limit reached (429) - trying other sources', {
+          icao24,
+          callsign: resolvedCallsign,
+          status: statusCode,
+        });
+      } else {
+        logger.warn('Error fetching route from FlightAware API', {
+          icao24,
+          callsign: resolvedCallsign,
+          error: err.message,
+          status: statusCode,
+          statusText: err.response?.statusText,
+        });
+      }
+      return null;
+    }
+  }
+
+  private async fetchRouteFromExternalSources(params: {
+    icao24: string | null | undefined;
+    callsign: string | null | undefined;
+    resolvedCallsign: string | null | undefined;
+    cacheKey: string;
+    isCurrentFlight: boolean;
+    allowExpensiveApis: boolean;
+  }): Promise<Route | null> {
+    const {
+      icao24, callsign, resolvedCallsign, cacheKey, isCurrentFlight, allowExpensiveApis,
+    } = params;
+
+    if (!allowExpensiveApis || !icao24) {
+      return null;
+    }
+
+    const start = Date.now();
+    const tasks: Array<Promise<{ source: string; route: Route | null }>> = [];
+
+    tasks.push(
+      this.fetchRouteFromAerodataboxWithPersistence(icao24, cacheKey).then((route) => ({
+        source: 'aerodatabox',
+        route,
+      })),
+    );
+
+    if (!isCurrentFlight) {
+      tasks.push(
+        this.fetchRouteFromOpenSkyWithPersistence(icao24, callsign, cacheKey, isCurrentFlight).then((route) => ({
+          source: 'opensky',
+          route,
+        })),
+      );
+    }
+
+    tasks.push(
+      this.fetchRouteFromFlightAwareWithPersistence(icao24, resolvedCallsign, cacheKey, allowExpensiveApis).then(
+        (route) => ({
+          source: 'flightaware',
+          route,
+        }),
+      ),
+    );
+
+    const timeoutPromise = new Promise<'timeout'>((resolve) => {
+      setTimeout(() => resolve('timeout'), EXTERNAL_ROUTE_TIMEOUT_MS);
+    });
+
+    const settledOrTimeout = await Promise.race<PromiseSettledResult<{ source: string; route: Route | null }>[] | 'timeout'>([
+      Promise.allSettled(tasks),
+      timeoutPromise,
+    ]);
+
+    if (settledOrTimeout === 'timeout') {
+      logger.warn('External route lookup timed out', {
+        icao24,
+        callsign,
+        timeoutMs: EXTERNAL_ROUTE_TIMEOUT_MS,
+      });
+      return null;
+    }
+
+    const settledResults = settledOrTimeout as PromiseSettledResult<{ source: string; route: Route | null }>[];
+    const fulfilled = settledResults
+      .filter((r): r is PromiseFulfilledResult<{ source: string; route: Route | null }> => r.status === 'fulfilled')
+      .map((r) => r.value)
+      .filter((r) => r.route);
+
+    if (fulfilled.length === 0) {
+      logger.debug('External route lookup completed with no usable routes', {
+        icao24,
+        callsign,
+        durationMs: Date.now() - start,
+      });
+      return null;
+    }
+
+    const pickBest = (): { source: string; route: Route } => {
+      const aerodaboxComplete = fulfilled.find(
+        (r) => r.source === 'aerodatabox' && hasArrivalData(r.route),
+      );
+      if (aerodaboxComplete && aerodaboxComplete.route) {
+        return { source: aerodaboxComplete.source, route: aerodaboxComplete.route };
+      }
+
+      const flightAwareComplete = fulfilled.find(
+        (r) => r.source === 'flightaware' && hasArrivalData(r.route),
+      );
+      if (flightAwareComplete && flightAwareComplete.route) {
+        return { source: flightAwareComplete.source, route: flightAwareComplete.route };
+      }
+
+      const openSkyRoute = fulfilled.find((r) => r.source === 'opensky' && r.route);
+      if (openSkyRoute && openSkyRoute.route) {
+        return { source: openSkyRoute.source, route: openSkyRoute.route };
+      }
+
+      const aerodaboxAny = fulfilled.find((r) => r.source === 'aerodatabox' && r.route);
+      if (aerodaboxAny && aerodaboxAny.route) {
+        return { source: aerodaboxAny.source, route: aerodaboxAny.route };
+      }
+
+      const fallback = fulfilled[0];
+      return { source: fallback.source, route: fallback.route as Route };
+    };
+
+    const best = pickBest();
+
+    logger.info('External route lookup completed', {
+      icao24,
+      callsign,
+      chosenSource: best.source,
+      durationMs: Date.now() - start,
+      hasArrival: hasArrivalData(best.route),
+    });
+
+    return best.route;
   }
 
   /**
