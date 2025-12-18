@@ -164,8 +164,9 @@ const ROUTE_CACHE_MAX_AGE_MS = Number.isFinite(ROUTE_CACHE_MAX_AGE_HOURS)
 const LANDED_CACHE_MAX_AGE_MS = 30 * 60 * 1000;
 const EXTERNAL_ROUTE_TIMEOUT_MS = Number.parseInt(process.env.ROUTE_EXTERNAL_TIMEOUT_MS || '7000', 10);
 
-const hasArrivalData = (route?: Route | null): boolean =>
-  !!(route?.arrivalAirport?.icao || route?.arrivalAirport?.iata);
+const hasArrivalData = (route?: Route | null): boolean => !!(
+  route?.arrivalAirport?.icao || route?.arrivalAirport?.iata
+);
 
 const getRouteAgeMs = (route?: Route | null): number => {
   if (!route?.cachedAt) return Number.POSITIVE_INFINITY;
@@ -184,19 +185,15 @@ export class FlightRouteService {
 
   constructor(options?: FlightRouteServiceOptions) {
     const configSource: FlightAwareConfig = (config?.external?.flightAware ?? {}) as FlightAwareConfig;
-    const resolvedBaseUrl =
-      options && Object.prototype.hasOwnProperty.call(options, 'flightAwareBaseUrl')
-        ? options.flightAwareBaseUrl
-        : configSource.baseUrl;
-    const resolvedApiKey =
-      options && Object.prototype.hasOwnProperty.call(options, 'flightAwareApiKey')
-        ? options.flightAwareApiKey
-        : configSource.apiKey;
+    const resolvedBaseUrl = options && Object.prototype.hasOwnProperty.call(options, 'flightAwareBaseUrl')
+      ? options.flightAwareBaseUrl
+      : configSource.baseUrl;
+    const resolvedApiKey = options && Object.prototype.hasOwnProperty.call(options, 'flightAwareApiKey')
+      ? options.flightAwareApiKey
+      : configSource.apiKey;
 
-    this.flightAwareBaseUrl =
-      typeof resolvedBaseUrl === 'string' && resolvedBaseUrl.trim() !== '' ? resolvedBaseUrl.trim() : undefined;
-    this.flightAwareApiKey =
-      typeof resolvedApiKey === 'string' && resolvedApiKey.trim() !== '' ? resolvedApiKey.trim() : undefined;
+    this.flightAwareBaseUrl = typeof resolvedBaseUrl === 'string' && resolvedBaseUrl.trim() !== '' ? resolvedBaseUrl.trim() : undefined;
+    this.flightAwareApiKey = typeof resolvedApiKey === 'string' && resolvedApiKey.trim() !== '' ? resolvedApiKey.trim() : undefined;
     this.cache = new Map();
     this.landedFlightsCache = new Map();
   }
@@ -629,8 +626,8 @@ export class FlightRouteService {
               if (currentIndex > 0) {
                 const previousFlight = sortedFlights[currentIndex - 1];
                 if (
-                  previousFlight.estArrivalAirport &&
-                  ((previousFlight.arrivalAirportCandidatesCount || 0) > 0 || previousFlight.estArrivalAirport)
+                  previousFlight.estArrivalAirport
+                  && ((previousFlight.arrivalAirportCandidatesCount || 0) > 0 || previousFlight.estArrivalAirport)
                 ) {
                   reliableDeparture = previousFlight.estArrivalAirport;
                   logger.debug('Inferred departure for historical flight from previous arrival', {
@@ -812,9 +809,9 @@ export class FlightRouteService {
         name: existingRoute.departure_name || depAirport?.name || null,
         location: depAirport
           ? {
-              lat: parseCoord(depAirport.latitude_deg),
-              lng: parseCoord(depAirport.longitude_deg),
-            }
+            lat: parseCoord(depAirport.latitude_deg),
+            lng: parseCoord(depAirport.longitude_deg),
+          }
           : null,
       },
       arrivalAirport: {
@@ -823,9 +820,9 @@ export class FlightRouteService {
         name: existingRoute.arrival_name || arrAirport?.name || null,
         location: arrAirport
           ? {
-              lat: parseCoord(arrAirport.latitude_deg),
-              lng: parseCoord(arrAirport.longitude_deg),
-            }
+            lat: parseCoord(arrAirport.latitude_deg),
+            lng: parseCoord(arrAirport.longitude_deg),
+          }
           : null,
       },
       source: existingRoute.source || 'flight_routes_history',
