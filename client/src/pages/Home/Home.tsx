@@ -31,6 +31,12 @@ import type { Aircraft, StarlinkSatellite, Route } from "../../types";
 import type { AirportSearchResult } from "../../types";
 import "./Home.css";
 import { inferAircraftCategory } from "../../utils/aircraft";
+import {
+  AIRPORT_FILTER_OPTIONS,
+  DEFAULT_AIRPORT_VISIBILITY,
+  isAirportVisible,
+  type AirportVisibilityMap,
+} from "../../utils/airportFilters";
 
 const MOVING_VELOCITY_THRESHOLD = 2; // knots
 const STALE_SEARCH_THRESHOLD_SECONDS = 6 * 60 * 60; // 6 hours
@@ -93,7 +99,9 @@ const Home: React.FC = () => {
     "searching" | "found" | "not-found" | "stale" | null
   >(null);
   const [showAirports, setShowAirports] = useState(true);
-  const [showClosedAirports, setShowClosedAirports] = useState(false);
+  const [airportVisibility, setAirportVisibility] = useState<AirportVisibilityMap>(
+    DEFAULT_AIRPORT_VISIBILITY
+  );
   const [selectedAirport, setSelectedAirport] =
     useState<AirportSearchResult | null>(null);
   const [airportWeather, setAirportWeather] =
@@ -111,6 +119,23 @@ const Home: React.FC = () => {
   const fetchDataRef = useRef<(() => Promise<void>) | null>(null);
   const [manualPlanes, setManualPlanes] = useState<Record<string, Aircraft>>(
     {}
+  );
+  const visibleAirports = useMemo(
+    () =>
+      airports.filter((airport) =>
+        isAirportVisible(airport, airportVisibility)
+      ),
+    [airports, airportVisibility]
+  );
+
+  const handleAirportVisibilityChange = useCallback(
+    (type: keyof AirportVisibilityMap) => {
+      setAirportVisibility((prev) => ({
+        ...prev,
+        [type]: !prev[type],
+      }));
+    },
+    []
   );
 
   const contextValue = useContext(PlaneContext);
@@ -754,7 +779,7 @@ const Home: React.FC = () => {
     // CRITICAL: Never use ID - it won't work with weather API
     if (!airportCode) {
       console.error(
-        "❌ Cannot fetch weather: No airport code (gps_code/ident/icao/iata) available.",
+        "Cannot fetch weather: No airport code (gps_code/ident/icao/iata) available.",
         "Airport ID:",
         selectedAirport.id,
         "Airport object:",
@@ -770,7 +795,7 @@ const Home: React.FC = () => {
     const airportIdStr = selectedAirport.id ? String(selectedAirport.id) : "";
     if (airportCodeStr === airportIdStr) {
       console.error(
-        "❌ BLOCKED: Attempted to use airport ID instead of code!",
+        "BLOCKED: Attempted to use airport ID instead of code!",
         "ID:",
         selectedAirport.id,
         "This would fail. Airport object:",
@@ -787,7 +812,7 @@ const Home: React.FC = () => {
       /^\d+$/.test(airportCodeStr)
     ) {
       console.error(
-        "❌ Invalid airport code format:",
+        "Invalid airport code format:",
         airportCodeStr,
         "(looks like an ID). Airport object:",
         selectedAirport
@@ -1015,14 +1040,19 @@ const Home: React.FC = () => {
           {showAirports && (
             <>
               <div className="airport-filter">
-                <label className="toggle-label">
-                  <input
-                    type="checkbox"
-                    checked={showClosedAirports}
-                    onChange={(e) => setShowClosedAirports(e.target.checked)}
-                  />
-                  <span className="toggle-text">Show Closed Airports</span>
-                </label>
+                <p className="filter-label">Airport visibility</p>
+                <div className="airport-filter-options">
+                  {AIRPORT_FILTER_OPTIONS.map((option) => (
+                    <label key={option.key} className="toggle-label">
+                      <input
+                        type="checkbox"
+                        checked={airportVisibility[option.key]}
+                        onChange={() => handleAirportVisibilityChange(option.key)}
+                      />
+                      <span className="toggle-text">{option.label}</span>
+                    </label>
+                  ))}
+                </div>
               </div>
 
               <div className="airport-search">
@@ -1081,24 +1111,17 @@ const Home: React.FC = () => {
           )}
         </div>
 
-        {showAirports && airports.length > 0 && !selectedAirport && (
+        {showAirports && visibleAirports.length > 0 && !selectedAirport && (
           <div className="airports-section">
             <div className="section-header">
               <h3>Airports in View</h3>
               <p className="airport-count">
-                {
-                  airports.filter(
-                    (a) => showClosedAirports || a.type !== "closed"
-                  ).length
-                }{" "}
+                {visibleAirports.length}{" "}
                 airports
               </p>
             </div>
             <div className="airport-list">
-              {airports
-                .filter(
-                  (airport) => showClosedAirports || airport.type !== "closed"
-                )
+              {visibleAirports
                 .slice(0, 10)
                 .map((airport) => (
                   <div
@@ -1134,14 +1157,9 @@ const Home: React.FC = () => {
                     </div>
                   </div>
                 ))}
-              {airports.filter((a) => showClosedAirports || a.type !== "closed")
-                .length > 10 && (
+              {visibleAirports.length > 10 && (
                 <div className="more-airports">
-                  +
-                  {airports.filter(
-                    (a) => showClosedAirports || a.type !== "closed"
-                  ).length - 10}{" "}
-                  more airports
+                  +{visibleAirports.length - 10} more airports
                 </div>
               )}
             </div>
@@ -1703,17 +1721,13 @@ const Home: React.FC = () => {
           {renderStarlink()}
           {renderPlanes()}
           {showAirports &&
-            airports
-              .filter(
-                (airport) => showClosedAirports || airport.type !== "closed"
-              )
-              .map((airport) => (
-                <AirportMarker
-                  key={airport.id || airport.icao}
-                  airport={airport}
-                  onAirportClick={handleAirportSelect}
-                />
-              ))}
+            visibleAirports.map((airport) => (
+              <AirportMarker
+                key={airport.id || airport.icao}
+                airport={airport}
+                onAirportClick={handleAirportSelect}
+              />
+            ))}
           {showHeatmap && mergedPlanes.length > 0 && (
             <HeatmapLayer
               points={mergedPlanes
