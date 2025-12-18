@@ -333,9 +333,11 @@ const config: AppConfig = {
       resetSeconds: Math.max(30, parseNumber(process.env.FEEDER_CIRCUIT_BREAKER_RESET_SECONDS, 300)),
     },
     perSubscriberRateLimits: {
-      statsPerHour: parseNumber(process.env.FEEDER_STATS_PER_HOUR, 60),
-      lastSeenPerHour: parseNumber(process.env.FEEDER_LAST_SEEN_PER_HOUR, 120),
-      infoPerHour: parseNumber(process.env.FEEDER_INFO_PER_HOUR, 100),
+      // Increased limits for feeders as primary data source
+      // Feeders poll every 5-10 seconds, need high limits
+      statsPerHour: parseNumber(process.env.FEEDER_STATS_PER_HOUR, 1200), // Was 60, now 1200 (20/min)
+      lastSeenPerHour: parseNumber(process.env.FEEDER_LAST_SEEN_PER_HOUR, 1200), // Was 120, now 1200 (20/min)
+      infoPerHour: parseNumber(process.env.FEEDER_INFO_PER_HOUR, 3600), // Was 100, now 3600 (60/min = 1/sec)
     },
   },
   auth: {
