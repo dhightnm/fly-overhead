@@ -391,7 +391,7 @@ class RouteRepository {
         $35, $36, $37,
         $38, $39
       )
-      ON CONFLICT ON CONSTRAINT flight_routes_history_flight_key_created_at_key DO NOTHING;
+      ON CONFLICT (flight_key, created_at) DO NOTHING;
     `;
 
     try {
